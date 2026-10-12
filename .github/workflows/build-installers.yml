@@ -5,6 +5,8 @@ name: Build Installers
 
 on:
   workflow_dispatch:
+  push:
+    branches: [ci/build-installers]
 
 permissions:
   contents: read
