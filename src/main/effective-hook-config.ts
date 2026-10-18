@@ -1,6 +1,7 @@
 import { getDefaultRepoHookSettings } from '../shared/constants'
 import { resolveHookCommandSourcePolicy } from '../shared/hook-command-source-policy'
 import type {
+  GlobalHookDefaults,
   HookCommandSourcePolicy,
   OrcaHooks,
   SetupRunPolicy
@@ -28,9 +29,27 @@ function getEffectiveHookScript(
   return shared || undefined
 }
 
+function getEffectiveHookScriptWithGlobalFallback(
+  yamlScript: string | undefined,
+  localScript: string | undefined,
+  globalScript: string | undefined,
+  policy: HookCommandSourcePolicy
+): string | undefined {
+  const base = getEffectiveHookScript(yamlScript, localScript, policy)
+  if (base) {
+    return base
+  }
+  // Why: a defined-but-policy-ignored script still blocks the fallback; explicit policy wins.
+  if (yamlScript?.trim() || localScript?.trim()) {
+    return undefined
+  }
+  return globalScript?.trim() || undefined
+}
+
 export function getEffectiveHooksFromConfig(
   repo: Repo,
-  yamlHooks: OrcaHooks | null
+  yamlHooks: OrcaHooks | null,
+  globalDefaults?: GlobalHookDefaults
 ): OrcaHooks | null {
   const localSetup = repo.hookSettings?.scripts.setup
   const localArchive = repo.hookSettings?.scripts.archive
@@ -41,8 +60,18 @@ export function getEffectiveHooksFromConfig(
   const archivePolicy = resolveHookCommandSourcePolicy(rawPolicy, {
     hasLocalScript: Boolean(localArchive?.trim())
   })
-  const setup = getEffectiveHookScript(yamlHooks?.scripts.setup, localSetup, setupPolicy)
-  const archive = getEffectiveHookScript(yamlHooks?.scripts.archive, localArchive, archivePolicy)
+  const setup = getEffectiveHookScriptWithGlobalFallback(
+    yamlHooks?.scripts.setup,
+    localSetup,
+    globalDefaults?.setup,
+    setupPolicy
+  )
+  const archive = getEffectiveHookScriptWithGlobalFallback(
+    yamlHooks?.scripts.archive,
+    localArchive,
+    globalDefaults?.archive,
+    archivePolicy
+  )
 
   if (!setup && !archive) {
     return null

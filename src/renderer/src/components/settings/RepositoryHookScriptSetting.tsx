@@ -35,7 +35,7 @@ function getEnvVars(): { name: string; description: string }[] {
   ]
 }
 
-function EnvVarChips(): React.JSX.Element {
+export function EnvVarChips(): React.JSX.Element {
   const envVars = getEnvVars()
   return (
     <div className="space-y-1.5">

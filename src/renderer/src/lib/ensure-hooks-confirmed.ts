@@ -4,7 +4,9 @@ import { resolveHookCommandSourcePolicy } from '../../../shared/hook-command-sou
 import { hashOrcaHookScript, type OrcaHookScriptKind } from './orca-hook-trust'
 import {
   checkRuntimeHooks,
+  isRuntimeEnvironmentHost,
   readRuntimeIssueCommand,
+  readRuntimeRepoHooks,
   type IssueCommandReadResult
 } from '@/runtime/runtime-hooks-client'
 import { MODAL_DISMISSED_KEY } from '@/store/slices/modal-slot-dismissal'
@@ -31,8 +33,8 @@ export function __resetTrustPromptChainForTests(): void {
   trustPromptChain = Promise.resolve()
 }
 
-function getSetupTrustContent(yamlHooks: OrcaHooks | null): string {
-  const defaultTabCommands = (yamlHooks?.defaultTabs ?? [])
+function getDefaultTabCommandsTrustContent(yamlHooks: OrcaHooks | null): string {
+  return (yamlHooks?.defaultTabs ?? [])
     .map((tab, index) => {
       const command = tab.command?.trim()
       if (!command) {
@@ -42,7 +44,7 @@ function getSetupTrustContent(yamlHooks: OrcaHooks | null): string {
       return `# defaultTabs[${index + 1}]${label}\n${command}`
     })
     .filter((entry): entry is string => entry !== null)
-  return [yamlHooks?.scripts?.setup?.trim(), ...defaultTabCommands].filter(Boolean).join('\n\n')
+    .join('\n\n')
 }
 
 function getVmRecipeTrustContent(yamlHooks: OrcaHooks | null): string {
@@ -274,6 +276,7 @@ export async function ensureHooksConfirmed(
         scriptContent = (result.sharedContent ?? '').trim()
       } else {
         const repo = findHookRepo(state, repoId, hostId)
+        const ownerHostId = hookRepoOwnerHostId(state, repoId, hostId, runtimeOwnerEnvironmentId)
         const localScript = repo?.hookSettings?.scripts?.[scriptKind]?.trim()
         const sourcePolicy = resolveHookCommandSourcePolicy(
           repo?.hookSettings?.commandSourcePolicy,
@@ -281,23 +284,51 @@ export async function ensureHooksConfirmed(
             hasLocalScript: Boolean(localScript)
           }
         )
-        if (sourcePolicy === 'local-only') {
+        const isSetupOrArchive = scriptKind === 'setup' || scriptKind === 'archive'
+        // Why: a runtime-owned repo runs hooks on its owning host, so approve the host's fallback.
+        const ownerGlobalDefaults =
+          isSetupOrArchive && !localScript && isRuntimeEnvironmentHost(ownerHostId)
+            ? (await readRuntimeRepoHooks(ownerHostId, repoId)).globalHookDefaults
+            : state.settings?.globalHookDefaults
+        const globalScript = isSetupOrArchive
+          ? (ownerGlobalDefaults?.[scriptKind]?.trim() ?? '')
+          : ''
+        // Local scripts are user-owned; a local-only policy with a local script needs no prompt.
+        if (sourcePolicy === 'local-only' && localScript) {
           return 'run'
         }
-        const result = await checkRuntimeHooks(
-          hookRepoOwnerHostId(state, repoId, hostId, runtimeOwnerEnvironmentId),
-          repoId
-        )
+        const result = await checkRuntimeHooks(ownerHostId, repoId)
         if (result.status === 'error') {
           return 'skip'
         }
         const yamlHooks = (result.hooks as OrcaHooks | null) ?? null
-        scriptContent =
-          scriptKind === 'setup'
-            ? getSetupTrustContent(yamlHooks)
-            : scriptKind === 'vmRecipe'
-              ? getVmRecipeTrustContent(yamlHooks)
-              : (yamlHooks?.scripts?.[scriptKind] ?? '').trim()
+        if (scriptKind === 'vmRecipe') {
+          scriptContent = getVmRecipeTrustContent(yamlHooks)
+        } else if (sourcePolicy === 'local-only') {
+          // Shared content never runs under local-only. The global fallback is the only
+          // untrusted script that can run, and only when no shared script exists to block it.
+          const sharedScript = (yamlHooks?.scripts?.[scriptKind] ?? '').trim()
+          scriptContent = sharedScript ? '' : globalScript
+        } else {
+          // The prompt must show every untrusted command that will run: effective setup + defaultTabs.
+          if (scriptKind === 'setup') {
+            const sharedSetup = (yamlHooks?.scripts?.setup ?? '').trim()
+            const untrustedSetup = sharedSetup || (!localScript ? globalScript : '')
+            scriptContent = [untrustedSetup, getDefaultTabCommandsTrustContent(yamlHooks)]
+              .filter(Boolean)
+              .join('\n\n')
+          } else {
+            const sharedScript = (yamlHooks?.scripts?.[scriptKind] ?? '').trim()
+            if (sharedScript) {
+              scriptContent = sharedScript
+            } else if (localScript) {
+              // A defined-but-policy-ignored local script blocks the fallback.
+              scriptContent = ''
+            } else {
+              scriptContent = globalScript
+            }
+          }
+        }
       }
     } catch {
       // Fail closed: if we cannot inspect the script, we cannot trust it.

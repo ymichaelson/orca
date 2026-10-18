@@ -148,7 +148,7 @@ export async function executeWorktreeRemoval(
     return removalResult ?? {}
   }
 
-  const hooks = getEffectiveHooks(repo)
+  const hooks = getEffectiveHooks(repo, undefined, store.getSettings().globalHookDefaults)
 
   const archiveScript = hooks?.scripts.archive
 
@@ -162,7 +162,9 @@ export async function executeWorktreeRemoval(
         canonicalWorktreePath,
         repo,
         undefined,
-        localWorktreeGitOptions
+        localWorktreeGitOptions,
+        undefined,
+        store.getSettings().globalHookDefaults
       )
       archiveHookOverride = gateWorktreeRemovalOnArchiveHook({
         worktreePath: canonicalWorktreePath,

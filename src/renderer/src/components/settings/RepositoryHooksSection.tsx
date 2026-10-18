@@ -34,6 +34,28 @@ import { useRepositoryIssueCommand } from './use-repository-issue-command'
 export { getLocalCommandSourcePolicyNotice }
 export type { LocalCommandSourcePolicyNotice }
 
+function GlobalDefaultInheritedNotice({ script }: { script: string }): React.JSX.Element {
+  return (
+    <div className="space-y-2 rounded-2xl border border-border/50 bg-background/80 p-4 shadow-sm">
+      <span className="inline-flex items-center gap-1.5 rounded-full border border-border bg-muted/30 px-2 py-0.5 text-[11px] font-medium text-muted-foreground">
+        {translate(
+          'auto.components.settings.RepositoryHooksSection.globalDefault',
+          'Global default'
+        )}
+        <span className="font-normal">
+          {translate(
+            'auto.components.settings.RepositoryHooksSection.globalDefaultHint',
+            '- used because this project has no local or shared script'
+          )}
+        </span>
+      </span>
+      <pre className="overflow-x-auto whitespace-pre-wrap break-words rounded-lg border border-border/50 bg-muted/30 p-3 font-mono text-[11.5px] leading-5 text-foreground">
+        {script}
+      </pre>
+    </div>
+  )
+}
+
 type RepositoryHooksSectionProps = {
   repo: Repo
   yamlHooks: OrcaHooks | null
@@ -90,6 +112,15 @@ export function RepositoryHooksSection({
   const hasSharedSetupScript = Boolean(sharedSetupScript?.trim())
   const hasSharedArchiveScript = Boolean(sharedArchiveScript?.trim())
   const hasSharedScript = hasSharedSetupScript || hasSharedArchiveScript
+  const globalDefaults = useAppStore((state) => state.settings?.globalHookDefaults)
+  const globalSetupScript = globalDefaults?.setup?.trim() ? globalDefaults.setup : undefined
+  const globalArchiveScript = globalDefaults?.archive?.trim() ? globalDefaults.archive : undefined
+  const inheritsGlobalSetup =
+    !hasSharedSetupScript && !hookSettingsDraft.scripts.setup?.trim() && Boolean(globalSetupScript)
+  const inheritsGlobalArchive =
+    !hasSharedArchiveScript &&
+    !hookSettingsDraft.scripts.archive?.trim() &&
+    Boolean(globalArchiveScript)
   const hasLocalScript = Boolean(
     hookSettingsDraft.scripts.setup?.trim() || hookSettingsDraft.scripts.archive?.trim()
   )
@@ -143,6 +174,9 @@ export function RepositoryHooksSection({
           'hook'
         ]}
       >
+        {inheritsGlobalSetup && globalSetupScript ? (
+          <GlobalDefaultInheritedNotice script={globalSetupScript} />
+        ) : null}
         <RepositoryHookScriptSetting
           key={`${repo.id}:setup`}
           field={localHookFields[0]}
@@ -196,6 +230,9 @@ export function RepositoryHooksSection({
           'hook'
         ]}
       >
+        {inheritsGlobalArchive && globalArchiveScript ? (
+          <GlobalDefaultInheritedNotice script={globalArchiveScript} />
+        ) : null}
         <RepositoryHookScriptSetting
           key={`${repo.id}:archive`}
           field={localHookFields[1]}

@@ -2,6 +2,7 @@ import { getStoredRepoSshConnectionId } from '../repo-execution-host'
 import { createHash } from 'node:crypto'
 import { readFile } from 'node:fs/promises'
 import type { Repo } from '../../shared/repo-types'
+import type { GlobalHookDefaults, OrcaHooks } from '../../shared/orca-yaml-hook-types'
 import { getEffectiveHooks, hasHooksFile, hasUnrecognizedOrcaYamlKeys, loadHooks } from '../hooks'
 import {
   getDefaultTabCommandTrustContent,
@@ -14,6 +15,7 @@ import { joinWorktreeRelativePath } from './runtime-relative-paths'
 
 type RuntimeRepositoryHooksCommandsDeps = {
   resolveRepo: (selector: string) => Promise<Repo>
+  getGlobalHookDefaults?: () => GlobalHookDefaults | undefined
 }
 
 export class RuntimeRepositoryHooksCommands {
@@ -32,14 +34,23 @@ export class RuntimeRepositoryHooksCommands {
       }
     }
     const hasFile = hasHooksFile(repo.path)
-    const hooks = getEffectiveHooks(repo)
+    const globalDefaults = this.deps.getGlobalHookDefaults?.()
+    const hooks = getEffectiveHooks(repo, undefined, globalDefaults)
     const sharedHooks = hasFile ? loadHooks(repo.path) : null
     return {
       hasHooksFile: hasFile,
       hooks,
       setupRunPolicy: getEffectiveSetupRunPolicy(repo),
       source: hasFile ? ('orca.yaml' as const) : hooks ? ('legacy' as const) : null,
-      setupTrust: setupTrust(repo, getDefaultTabCommandTrustContent(sharedHooks))
+      // Why: a client approving trust for a runtime-owned repo must see the
+      // owning host's defaults, not its own.
+      globalHookDefaults: globalDefaults,
+      setupTrust: setupTrust(
+        repo,
+        getDefaultTabCommandTrustContent(sharedHooks),
+        globalDefaults,
+        sharedHooks
+      )
     }
   }
 
@@ -86,10 +97,29 @@ export class RuntimeRepositoryHooksCommands {
 
 function setupTrust(
   repo: Repo,
-  scriptContentValue: string | undefined
+  sharedTrustContent: string | undefined,
+  globalDefaults: GlobalHookDefaults | undefined,
+  sharedHooks: OrcaHooks | null
 ): { contentHash: string; scriptContent: string } | undefined {
-  const scriptContent = scriptContentValue?.trim()
-  if (!scriptContent || repo.hookSettings?.commandSourcePolicy === 'local-only') {
+  const localSetup = repo.hookSettings?.scripts.setup?.trim()
+  const sharedSetup = sharedHooks?.scripts.setup?.trim()
+  const globalSetup = globalDefaults?.setup?.trim()
+  // Why: the fallback runs only when the project defines no local or shared setup script.
+  const fallbackApplies = !localSetup && !sharedSetup && Boolean(globalSetup)
+  const isLocalOnly = repo.hookSettings?.commandSourcePolicy === 'local-only'
+  if (isLocalOnly && !fallbackApplies) {
+    return undefined
+  }
+  // Under local-only, defaultTabs never run, so the fallback trust content is the global script alone.
+  const scriptContent = fallbackApplies
+    ? isLocalOnly
+      ? globalSetup
+      : getDefaultTabCommandTrustContent({
+          scripts: { setup: globalSetup },
+          defaultTabs: sharedHooks?.defaultTabs
+        }).trim()
+    : sharedTrustContent?.trim()
+  if (!scriptContent) {
     return undefined
   }
   return { contentHash: createHash('sha256').update(scriptContent).digest('hex'), scriptContent }

@@ -12,12 +12,14 @@ import {
 import type { RemoteHostPlatform } from './ssh-remote-platform'
 import {
   downloadFileViaSystemSsh,
-  uploadDirectoryViaSystemSsh,
   uploadFileViaSystemSsh,
-  writeBufferViaSystemSsh,
-  writeFileViaSystemSsh,
-  type SystemSshBuildArgsOptions
-} from './ssh-system-fallback'
+  writeBufferViaSystemSsh
+} from './system-transport/system-ssh-file-binary-transfer'
+import {
+  uploadDirectoryViaSystemSsh,
+  writeFileViaSystemSsh
+} from './system-transport/system-ssh-file-transfer'
+import type { SystemSshBuildArgsOptions } from './system-transport/system-ssh-args'
 
 export type SshRemoteFileOptions = {
   hostPlatform?: RemoteHostPlatform

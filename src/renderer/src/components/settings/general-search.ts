@@ -25,6 +25,25 @@ export const getGeneralWorkspaceSearchEntries = createLocalizedCatalog(() => [
   },
   {
     title: translate(
+      'auto.components.settings.general.search.globalHookDefaults',
+      'Global default hook scripts'
+    ),
+    description: translate(
+      'auto.components.settings.general.search.globalHookDefaultsDescription',
+      'Fallback setup and archive scripts for projects with no local or shared script.'
+    ),
+    keywords: [
+      ...translateSearchKeyword('auto.components.settings.general.search.hook', 'hook'),
+      ...translateSearchKeyword('auto.components.settings.general.search.setup', 'setup'),
+      ...translateSearchKeyword('auto.components.settings.general.search.archive', 'archive'),
+      ...translateSearchKeyword('auto.components.settings.general.search.script', 'script'),
+      ...translateSearchKeyword('auto.components.settings.general.search.global', 'global'),
+      ...translateSearchKeyword('auto.components.settings.general.search.default', 'default'),
+      ...translateSearchKeyword('auto.components.settings.general.search.df10666259', 'worktree')
+    ]
+  },
+  {
+    title: translate(
       'auto.components.settings.general.search.externalWorktrees',
       'External worktrees'
     ),

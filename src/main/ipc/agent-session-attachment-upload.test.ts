@@ -17,7 +17,7 @@ let serverStore: AgentSessionAttachmentStore
 let failMethod: string | null = null
 
 // The paired server, played by a real store: every call answers as the RPC handler would.
-vi.mock('./runtime-environment-transport-routing', () => ({
+vi.mock('./runtime-environments/runtime-environment-transport-routing', () => ({
   callRuntimeEnvironment: async (
     _userDataPath: string,
     _environmentId: string,

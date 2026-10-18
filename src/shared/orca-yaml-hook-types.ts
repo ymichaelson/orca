@@ -61,6 +61,13 @@ export type RepoHookSettings = {
   }
 }
 
+/** Global fallback for worktree hook scripts. Applies only when a project
+ *  defines no local or shared script for that hook. */
+export type GlobalHookDefaults = {
+  setup: string
+  archive: string
+}
+
 export type PersistedTrustedOrcaHookEntry = {
   contentHash: string
   approvedAt: number

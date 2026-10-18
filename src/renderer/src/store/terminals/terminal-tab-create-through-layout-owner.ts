@@ -8,7 +8,7 @@
 import { createBrowserUuid } from '@/lib/browser-uuid'
 import { afterLayoutFrame, layoutFramesFlowing } from '@/runtime/layout-frame-position'
 import { expectTabRowFields } from '@/runtime/layout-owner-pane-intents'
-import { runtimeEnvironmentIdForWorkspaceOwner } from '@/lib/resolve-owner'
+import { runtimeEnvironmentIdUnlessTwin } from '@/lib/resolve-owner'
 import { newGroupSplitOf } from '@/runtime/layout-owner-new-group-split'
 import { callRuntimeRpc } from '@/runtime/runtime-rpc-client'
 import { layoutFrameTerminalTab } from '@/runtime/layout-frame-terminal-panes'
@@ -25,15 +25,6 @@ import type { AppState } from '../types'
  * recorded. A field main's copy lacks keeps the window's: a runtime create records a shell only
  * when its launch named one, so a WSL worktree's resolved shell lives only here.
  */
-// Why: as `sendLayoutApply`, a twin stays on main's path: it edits this window's layout, not a host.
-function isPairedServerLayout(
-  state: Parameters<typeof runtimeEnvironmentIdForWorkspaceOwner>[0],
-  workspaceId: string
-): boolean {
-  const owner = runtimeEnvironmentIdForWorkspaceOwner(state, { workspaceId })
-  return owner.kind === 'resolved' && owner.environmentId !== null
-}
-
 export function withMainTerminalFacts(tab: TerminalTab): TerminalTab {
   const main = layoutFrameTerminalTab(tab.worktreeId, tab.id)
   if (!main) {
@@ -95,9 +86,8 @@ export function terminalTabCreateCommand(
 }
 
 /**
- * Sends a tab the window just drew to main. Nothing to undo on any answer: main holding the same
- * pane already, or a paired server or no partition holding the workspace, leaves the window's own
- * session save to carry the tab, as today.
+ * Sends a tab the window just drew to main. Nothing to undo on any answer: main's frame is what
+ * stays drawn, since the window's session save no longer carries the tab. A refusal is logged.
  */
 export function recordCreatedTerminalTabInLayoutOwner(
   state: AppState,
@@ -106,20 +96,21 @@ export function recordCreatedTerminalTabInLayoutOwner(
   // Why: a paired server mirrors this workspace's tabs; main does not own its layout. A tab main
   // already holds is its own.
   if (
-    isPairedServerLayout(state, command.workspace) ||
+    // Why: as `sendLayoutApply`, a twin stays on main's path: it edits this window's layout.
+    runtimeEnvironmentIdUnlessTwin(state, command.workspace) !== null ||
     layoutFrameTerminalTab(command.workspace, command.tabId)
   ) {
     return
   }
   void callRuntimeRpc<LayoutApplyReply>({ kind: 'local' }, 'layout.apply', { command }).then(
     (reply) => {
-      if (!reply.ok && reply.code !== 'host_not_owned') {
+      if (!reply.ok) {
         console.warn('[layout-owner] createTerminalTab refused:', reply.code)
       }
     },
     (error: unknown) => {
       console.warn(
-        '[layout-owner] createTerminalTab failed:',
+        '[layout-owner] createTerminalTab refused: call_failed',
         error instanceof Error ? error.message : error
       )
     }
@@ -139,7 +130,7 @@ export function createInitialTerminalThroughLayoutOwner(
   worktreeId: string,
   create: (ids?: { tabId: string; leafId: string }) => void
 ): boolean {
-  if (isPairedServerLayout(getState(), worktreeId)) {
+  if (runtimeEnvironmentIdUnlessTwin(getState(), worktreeId) !== null) {
     return false
   }
   const tabId = createBrowserUuid()

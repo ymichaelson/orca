@@ -21,7 +21,7 @@ import { RuntimeRepositoryHooksCommands } from '../runtime-repository-hooks-comm
 import { RuntimeRepositoryIssueCommand } from '../runtime-repository-issue-command'
 import { ClientHostedBrowserRowPublisher } from '../client-hosted-browser-row-publication'
 import { getRuntimeBrowserPageRegistry } from '../runtime-browser-page-registry'
-import { getBrowserHostLeaseRegistry } from '../browser-host-lease-registry-instance'
+import { getBrowserHostLeaseRegistry } from '../browser-host/browser-host-lease-registry-instance'
 import type { RuntimeLeafRecord } from '../runtime-terminal-state-records'
 import {
   isChatScratchWorktreeId,
@@ -302,7 +302,8 @@ export abstract class OrcaRuntimeWithFileCommands extends OrcaRuntimeWithPreserv
   protected readonly gitHubProjectCommands = new RuntimeGitHubProjectCommands()
 
   protected readonly repositoryHooks = new RuntimeRepositoryHooksCommands({
-    resolveRepo: (selector) => this.resolveRepoSelector(selector)
+    resolveRepo: (selector) => this.resolveRepoSelector(selector),
+    getGlobalHookDefaults: () => this.store?.getSettings().globalHookDefaults
   })
 
   protected readonly repositoryIssueCommand = new RuntimeRepositoryIssueCommand({

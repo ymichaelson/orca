@@ -183,7 +183,7 @@ export function loadWorkspace(args: WorkspaceLoadArgs): WorkspaceLayout {
   if (groupLayout) {
     workspace.groupLayout = groupLayout
   }
-  const editorFiles = loadEditorFiles(args, tabs)
+  const editorFiles = loadEditorFiles(args, tabs, worktreeId)
   if (editorFiles) {
     workspace.editorFiles = editorFiles
   }

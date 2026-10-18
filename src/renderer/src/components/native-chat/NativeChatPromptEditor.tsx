@@ -82,7 +82,11 @@ export function NativeChatPromptEditor({
         NativeChatSkill,
         NativeChatFileReference,
         NativeChatImageReference,
-        Placeholder.configure({ placeholder: () => placeholderRef.current })
+        // A disabled box still says why it is disabled, as the plain text box's placeholder does.
+        Placeholder.configure({
+          placeholder: () => placeholderRef.current,
+          showOnlyWhenEditable: false
+        })
       ],
       content:
         (scopeKey && readNativeChatDraftDocument(scopeKey, initialValue)) ||
@@ -295,7 +299,12 @@ export function NativeChatPromptEditor({
 
   return (
     <NativeChatImageRowProvider value={imageRow}>
-      <EditorContent editor={editor} {...events} />
+      <EditorContent
+        editor={editor}
+        {...events}
+        data-disabled={disabled || undefined}
+        className="data-[disabled]:cursor-not-allowed data-[disabled]:opacity-50"
+      />
     </NativeChatImageRowProvider>
   )
 }

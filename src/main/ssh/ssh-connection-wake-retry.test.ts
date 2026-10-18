@@ -1,14 +1,12 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import {
   advanceToNextSshClient,
-  clientInstances,
   connectWithFakeTimers,
-  emitSshEvent,
   nextSshClientCreation,
   resetSshConnectionMocks,
-  spawnSystemSshCommandMock,
-  ssh2Mock
+  spawnSystemSshCommandMock
 } from './ssh-connection-test-harness'
+import { clientInstances, emitSshEvent, ssh2Mock } from './__tests__/ssh-connection-test-client'
 import {
   createCallbacks,
   createHangingSystemCommandChannel,
@@ -16,22 +14,43 @@ import {
   createTarget
 } from './ssh-connection-test-fixtures'
 import { SshConnection } from './ssh-connection'
-import { resolveWithSshG } from './ssh-config-parser'
+import { resolveWithSshG } from './config/ssh-g-config-resolution'
 import { SshConnectionManager } from './ssh-connection-manager'
 import { RECONNECT_BACKOFF_MS } from './ssh-connection-utils'
+import { recordSshUserDisconnected, resetSshUserDisconnectsForTests } from './ssh-user-disconnect'
 
-vi.mock('ssh2', async () => (await import('./ssh-connection-test-harness')).createSsh2Module())
-vi.mock('./system-ssh-binary', async () =>
+vi.mock('ssh2', async () =>
+  (await import('./__tests__/ssh-connection-test-client')).createSsh2Module()
+)
+vi.mock('./system-transport/system-ssh-binary', async () =>
   (await import('./ssh-connection-test-harness')).createSystemSshBinaryModule()
 )
-vi.mock('./ssh-system-fallback', async () =>
-  (await import('./ssh-connection-test-harness')).createSystemFallbackModule()
+vi.mock('./system-transport/system-ssh-args', async (importOriginal) =>
+  (await import('./ssh-connection-test-harness')).withSystemSshArgsMocks(await importOriginal())
+)
+vi.mock('./system-transport/system-ssh-command', async (importOriginal) =>
+  (await import('./ssh-connection-test-harness')).withSystemSshCommandMocks(await importOriginal())
+)
+vi.mock('./system-transport/system-ssh-file-binary-transfer', async (importOriginal) =>
+  (await import('./ssh-connection-test-harness')).withSystemSshFileBinaryTransferMocks(
+    await importOriginal()
+  )
+)
+vi.mock('./system-transport/system-ssh-file-transfer', async (importOriginal) =>
+  (await import('./ssh-connection-test-harness')).withSystemSshFileTransferMocks(
+    await importOriginal()
+  )
 )
 vi.mock('./ssh-control-socket', async () =>
   (await import('./ssh-connection-test-harness')).createControlSocketModule()
 )
-vi.mock('./ssh-config-parser', async () =>
+vi.mock('./config/ssh-config-parser', async () =>
   (await import('./ssh-connection-test-harness')).createSshConfigParserModule()
+)
+vi.mock('./config/ssh-g-config-resolution', async (importOriginal) =>
+  (await import('./ssh-connection-test-harness')).withSshGConfigResolutionMocks(
+    await importOriginal()
+  )
 )
 
 function failHandshakes(): void {
@@ -61,6 +80,7 @@ async function spendLadderWhileAsleep(conn: SshConnection): Promise<void> {
 describe('SshConnection retry after wake or network return', () => {
   beforeEach(() => {
     resetSshConnectionMocks()
+    resetSshUserDisconnectsForTests()
     vi.useFakeTimers()
   })
   afterEach(() => {
@@ -199,5 +219,24 @@ describe('SshConnection retry after wake or network return', () => {
     expect(manager.getState(createTarget().id)?.status).toBe('connected')
     expect(manager.retryStalledReconnects()).toEqual([])
     await manager.disconnectAll()
+  })
+
+  it('never redials a host the user disconnected while its teardown is still queued', async () => {
+    const { conn } = recordStatuses()
+    await connectWithFakeTimers(conn)
+    // A drop already waiting on its backoff when the user presses Disconnect.
+    failHandshakes()
+    emitSshEvent('close')
+    expect(conn.getState().status).toBe('reconnecting')
+    recordSshUserDisconnected(createTarget().id)
+    ssh2Mock.connectBehavior = 'ready'
+    const clientsBefore = clientInstances.length
+
+    await vi.advanceTimersByTimeAsync(10 * 60_000)
+    expect(conn.retryAfterNetworkReturn()).toBe(false)
+    await conn.reconnect()
+    expect(clientInstances).toHaveLength(clientsBefore)
+
+    await conn.disconnect()
   })
 })

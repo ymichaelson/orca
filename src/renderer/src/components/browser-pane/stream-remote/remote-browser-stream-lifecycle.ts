@@ -115,7 +115,7 @@ export class RemoteBrowserStreamLifecycle {
         }
         // Why this can be the loser of a race: the stream token is claimed before subscribe is
         // awaited, so a close can arrive and arm a restart while this promise is still rejecting —
-        // the host closes the subscription and only then throws (src/main/ipc/runtime-environments.ts
+        // the host closes the subscription and only then throws (src/main/ipc/runtime-environments/runtime-environments.ts
         // 'pairing changed'). Publishing 'stopped' over an armed restart shows a manual control for
         // one backoff step and then swaps it for a spinner. The armed restart is the newer owner.
         if (this.restartScheduler.isScheduled) {

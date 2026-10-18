@@ -1123,7 +1123,8 @@ async function performLocalWorktreeCreate(
   const workspaceRoot = await computeWorkspaceRootAsync(repo.path, worktreePathSettings)
 
   // Why: this validation doesn't depend on remote refs, so it can overlap a required remote-tracking base refresh.
-  const primarySetupScript = getEffectiveHooks(repo)?.scripts.setup
+  const primarySetupScript = getEffectiveHooks(repo, undefined, settings.globalHookDefaults)
+    ?.scripts.setup
   if (primarySetupScript) {
     shouldRunSetupForCreate(repo, args.setupDecision)
   }
@@ -1645,7 +1646,11 @@ async function performLocalWorktreeCreate(
   let defaultTabs: CreateWorktreeResult['defaultTabs']
   await timing.time('prepare_setup', async () => {
     const createdYamlHooks = loadHooks(worktreePath)
-    const createdEffectiveHooks = getEffectiveHooksFromConfig(repo, createdYamlHooks)
+    const createdEffectiveHooks = getEffectiveHooksFromConfig(
+      repo,
+      createdYamlHooks,
+      settings.globalHookDefaults
+    )
     try {
       defaultTabs = getDefaultTabsLaunch(createdYamlHooks, repo, args.setupDecision)
     } catch (error) {

@@ -35,7 +35,7 @@ export async function prepareRuntimeLocalWorktreeSetup(args: {
   let warning = args.warning
   let setup: CreateWorktreeResult['setup']
   const yamlHooks = loadHooks(worktreePath)
-  const hooks = getEffectiveHooks(repo, worktreePath)
+  const hooks = getEffectiveHooks(repo, worktreePath, args.settings.globalHookDefaults)
   const effectiveDecision = resolveRuntimeSetupDecision(request)
   let defaultTabs: CreateWorktreeResult['defaultTabs']
   try {
@@ -73,7 +73,15 @@ export async function prepareRuntimeLocalWorktreeSetup(args: {
       }
     } else {
       didStartInProcessSetupHook = true
-      void runHook('setup', worktreePath, repo, worktreePath, args.runtimeTarget).then((result) => {
+      void runHook(
+        'setup',
+        worktreePath,
+        repo,
+        worktreePath,
+        args.runtimeTarget,
+        undefined,
+        args.settings.globalHookDefaults
+      ).then((result) => {
         if (!result.success) {
           console.error(`[hooks] setup hook failed for ${worktreePath}:`, result.output)
         }

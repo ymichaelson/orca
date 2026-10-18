@@ -37,6 +37,12 @@ export const SIDEBAR_INPUT_METHODS = [
     handler: async (_params, { runtime }) => requireSwitchedOn(runtime.pairedServerRows).snapshot()
   }),
   defineMethod({
+    name: 'sidebarInputs.workspaceRows',
+    permission: 'workspace',
+    params: null,
+    handler: async (_params, { runtime }) => requireSwitchedOn(runtime.workspaceRows).snapshot()
+  }),
+  defineMethod({
     name: 'sidebarInputs.reviewFacts',
     permission: 'workspace',
     params: null,

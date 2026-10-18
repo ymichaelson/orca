@@ -80,7 +80,7 @@ async function acceptRuntimeRegisteredLocalWorktreeRemoval(args: {
 }): Promise<RemoveWorktreeResult & { warning?: string }> {
   const { repo, registeredWorktree, localOptions } = args
   const canonicalPath = registeredWorktree.path
-  const hooks = getEffectiveHooks(repo)
+  const hooks = getEffectiveHooks(repo, undefined, args.store.getSettings().globalHookDefaults)
   let warning: string | undefined
   // Precondition, not an advisory: this runs before the registration refresh, the preflights, the
   // PTY stop and `removeWorktree`, so a throw here leaves every one of them untouched (#19334).
@@ -91,7 +91,9 @@ async function acceptRuntimeRegisteredLocalWorktreeRemoval(args: {
       canonicalPath,
       repo,
       undefined,
-      args.hasLocalOptions ? localOptions : undefined
+      args.hasLocalOptions ? localOptions : undefined,
+      undefined,
+      args.store.getSettings().globalHookDefaults
     )
     archiveHookOverride = gateWorktreeRemovalOnArchiveHook({
       worktreePath: canonicalPath,

@@ -4,6 +4,7 @@ import { OpenInMenuSetting } from './OpenInMenuSetting'
 import { SearchableSetting } from './SearchableSetting'
 import { SettingsSubsectionHeader, SettingsSwitchRow } from './SettingsFormControls'
 import { WorkspaceDirectorySetting } from './WorkspaceDirectorySetting'
+import { GlobalHookDefaultsSetting } from './GlobalHookDefaultsSetting'
 import { translate } from '@/i18n/i18n'
 import { GlobalWorktreeVisibilitySourcesSetting } from './GlobalWorktreeVisibilitySourcesSetting'
 import { GLOBAL_WORKTREE_VISIBILITY_SETTINGS_TARGET_ID } from '@/lib/settings-navigation-types'
@@ -37,6 +38,31 @@ export function GeneralWorkspaceSettingsSection({
       />
 
       <WorkspaceDirectorySetting settings={settings} updateSettings={updateSettings} />
+
+      <SearchableSetting
+        title={translate(
+          'auto.components.settings.GeneralWorkspaceSettingsSection.globalHookDefaults',
+          'Global default hook scripts'
+        )}
+        description={translate(
+          'auto.components.settings.GeneralWorkspaceSettingsSection.globalHookDefaultsDescription',
+          'Fallback setup and archive scripts for projects with no local or shared script.'
+        )}
+        keywords={[
+          'hook',
+          'setup',
+          'archive',
+          'script',
+          'command',
+          'global',
+          'default',
+          'fallback',
+          'worktree',
+          'orca.yaml'
+        ]}
+      >
+        <GlobalHookDefaultsSetting settings={settings} updateSettings={updateSettings} />
+      </SearchableSetting>
 
       <div
         id={GLOBAL_WORKTREE_VISIBILITY_SETTINGS_TARGET_ID}

@@ -106,12 +106,12 @@ allowBuilds:
   '@swc/core': false
   '@vscode/windows-process-tree': false
   agent-browser: false
+  bun: true
   cpu-features: true
   electron-winstaller: false
   esbuild: true
   msw: false
   node-pty: true
-  sherpa-onnx: true
   ssh2: false
   '@orca/windows-registry': false
   '@orca/windows-security': false

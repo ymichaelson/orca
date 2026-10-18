@@ -1,5 +1,6 @@
 import type { GlobalSettingsBase } from './global-settings-base'
 import type { ExecutionHostId } from './execution-host'
+import type { GlobalHookDefaults } from './orca-yaml-hook-types'
 import type { OrcaWorkspaceLayout } from './orca-workspace-layout'
 import type { GitHubProjectSettings } from './github/project-types'
 import type { VoiceSettings } from './speech-types'
@@ -55,6 +56,9 @@ export type GlobalSettings = GlobalSettingsBase & {
   /** Per-host overrides keyed by ExecutionHostId. Effective value for a
    *  host-varying setting is `host override ?? client default`. */
   hostSettingOverrides?: Partial<Record<ExecutionHostId, HostSettingOverrides>>
+  /** Global fallback for worktree hook scripts. Used only when a project
+   *  defines no local or shared script for that hook. Absent reads as empty. */
+  globalHookDefaults?: GlobalHookDefaults
   nestWorkspaces: boolean
   workspaceDirHistory?: OrcaWorkspaceLayout[]
   refreshLocalBaseRefOnWorktreeCreate: boolean

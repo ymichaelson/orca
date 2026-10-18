@@ -11,7 +11,7 @@ import { dropIncoherentCondaActivationEnv } from './pty/conda-activation-env'
 import { toLinuxPath } from './wsl'
 import { runWslProcess } from './wsl/wsl-runner'
 import type { HookRuntimeTarget } from './hook-runtime-target'
-import type { OrcaHooks } from '../shared/orca-yaml-hook-types'
+import type { GlobalHookDefaults, OrcaHooks } from '../shared/orca-yaml-hook-types'
 import type { Repo } from '../shared/repo-types'
 import type { ProjectExecutionRuntimeResolution } from '../shared/project-execution-runtime'
 import { spawn } from 'node:child_process'
@@ -164,15 +164,20 @@ export function hasUnrecognizedOrcaYamlKeys(repoPath: string): boolean {
   }
 }
 
-export function getEffectiveHooks(repo: Repo, worktreePath?: string): OrcaHooks | null {
+export function getEffectiveHooks(
+  repo: Repo,
+  worktreePath?: string,
+  globalDefaults?: GlobalHookDefaults
+): OrcaHooks | null {
   const hooksRoot = worktreePath ?? repo.path
-  return getEffectiveHooksFromConfig(repo, loadHooks(hooksRoot))
+  return getEffectiveHooksFromConfig(repo, loadHooks(hooksRoot), globalDefaults)
 }
 
 export function getSetupCommandSource(
   repo: Repo,
-  worktreePath?: string
-): { source: 'yaml' | 'local' | 'both'; command: string } | null {
+  worktreePath?: string,
+  globalDefaults?: GlobalHookDefaults
+): { source: 'yaml' | 'local' | 'both' | 'global'; command: string } | null {
   const hooksRoot = worktreePath ?? repo.path
   const yamlHooks = loadHooks(hooksRoot)
   const yamlSetup = yamlHooks?.scripts.setup?.trim()
@@ -183,15 +188,25 @@ export function getSetupCommandSource(
   })
 
   if (policy === 'local-only') {
-    return localSetup ? { source: 'local', command: localSetup } : null
+    if (localSetup) {
+      return { source: 'local', command: localSetup }
+    }
+    if (yamlSetup) {
+      return null
+    }
+  } else {
+    if (policy === 'run-both' && yamlSetup && localSetup) {
+      return { source: 'both', command: `${yamlSetup}\n${localSetup}` }
+    }
+
+    if (yamlSetup) {
+      return { source: 'yaml', command: yamlSetup }
+    }
   }
 
-  if (policy === 'run-both' && yamlSetup && localSetup) {
-    return { source: 'both', command: `${yamlSetup}\n${localSetup}` }
-  }
-
-  if (yamlSetup) {
-    return { source: 'yaml', command: yamlSetup }
+  const globalSetup = globalDefaults?.setup?.trim()
+  if (!yamlSetup && !localSetup && globalSetup) {
+    return { source: 'global', command: globalSetup }
   }
 
   return null
@@ -207,11 +222,12 @@ export function runHook(
   hooksPath?: string,
   projectRuntime?: ProjectExecutionRuntimeResolution | HookRuntimeTarget,
   /** Deadline override. Production uses HOOK_TIMEOUT; tests use it to exercise the timeout path. */
-  timeoutMs: number = HOOK_TIMEOUT
+  timeoutMs: number = HOOK_TIMEOUT,
+  globalDefaults?: GlobalHookDefaults
   // Why (#19334): an absent exitCode means no exit was ever observed. The archive-hook removal
   // gate reads that as `unverifiable` rather than folding it into a zero.
 ): Promise<{ success: boolean; output: string; exitCode?: number }> {
-  const hooks = getEffectiveHooks(repo, hooksPath)
+  const hooks = getEffectiveHooks(repo, hooksPath, globalDefaults)
   const script = hooks?.scripts[hookName]
 
   if (!script) {

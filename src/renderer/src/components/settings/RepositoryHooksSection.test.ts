@@ -3,14 +3,17 @@
 import React, { act } from 'react'
 import { createRoot, type Root } from 'react-dom/client'
 import { afterEach, describe, expect, it, vi } from 'vitest'
+import type { OrcaHooks } from '../../../../shared/orca-yaml-hook-types'
 import type { Repo } from '../../../../shared/repo-types'
 import { readRuntimeIssueCommand } from '@/runtime/runtime-hooks-client'
 import { getLocalCommandSourcePolicyNotice, RepositoryHooksSection } from './RepositoryHooksSection'
 
+let mockSettings: Record<string, unknown> = {}
+
 vi.mock('@/store', () => ({
   useAppStore: (selector: (state: unknown) => unknown) =>
     selector({
-      settings: {},
+      settings: mockSettings,
       settingsSearchQuery: ''
     })
 }))
@@ -33,6 +36,7 @@ const repo: Repo = {
 function renderRepositoryHooksSection(args: {
   onUpdateHookSettings: (settings: NonNullable<Repo['hookSettings']>) => void
   repo?: Repo
+  yamlHooks?: OrcaHooks | null
 }): { container: HTMLDivElement; root: Root } {
   const container = document.createElement('div')
   document.body.appendChild(container)
@@ -41,7 +45,7 @@ function renderRepositoryHooksSection(args: {
     root.render(
       React.createElement(RepositoryHooksSection, {
         repo: args.repo ?? repo,
-        yamlHooks: null,
+        yamlHooks: args.yamlHooks ?? null,
         hasHooksFile: false,
         hooksInspectionReady: true,
         mayNeedUpdate: false,
@@ -61,6 +65,7 @@ afterEach(() => {
   act(() => rendered?.root.unmount())
   rendered?.container.remove()
   rendered = null
+  mockSettings = {}
 })
 
 describe('getLocalCommandSourcePolicyNotice', () => {
@@ -169,5 +174,50 @@ describe('RepositoryHooksSection execution ownership', () => {
     })
 
     expect(readRuntimeIssueCommand).toHaveBeenCalledWith('runtime:hub', repo.id)
+  })
+})
+
+describe('RepositoryHooksSection global default hint', () => {
+  it('shows the inherited global setup script when the project has no script', () => {
+    mockSettings = {
+      globalHookDefaults: { setup: 'global setup', archive: '' }
+    }
+    rendered = renderRepositoryHooksSection({ onUpdateHookSettings: () => {} })
+
+    expect(rendered.container.textContent).toContain('Global default')
+    expect(rendered.container.textContent).toContain('global setup')
+  })
+
+  it('hides the hint when a local script is set', () => {
+    mockSettings = {
+      globalHookDefaults: { setup: 'global setup', archive: '' }
+    }
+    rendered = renderRepositoryHooksSection({
+      onUpdateHookSettings: () => {},
+      repo: {
+        ...repo,
+        hookSettings: { mode: 'auto', scripts: { setup: 'local setup', archive: '' } }
+      }
+    })
+
+    expect(rendered.container.textContent).not.toContain('Global default')
+  })
+
+  it('hides the hint when a shared script is set', () => {
+    mockSettings = {
+      globalHookDefaults: { setup: 'global setup', archive: '' }
+    }
+    rendered = renderRepositoryHooksSection({
+      onUpdateHookSettings: () => {},
+      yamlHooks: { scripts: { setup: 'shared setup' } }
+    })
+
+    expect(rendered.container.textContent).not.toContain('Global default')
+  })
+
+  it('hides the hint when no global default is set', () => {
+    rendered = renderRepositoryHooksSection({ onUpdateHookSettings: () => {} })
+
+    expect(rendered.container.textContent).not.toContain('Global default')
   })
 })

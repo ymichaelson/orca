@@ -10,6 +10,7 @@ import type { GlobalSettings } from '../../../../shared/global-settings-types'
 
 vi.mock('./WorkspaceDirectorySetting', () => ({ WorkspaceDirectorySetting: () => null }))
 vi.mock('./OpenInMenuSetting', () => ({ OpenInMenuSetting: () => null }))
+vi.mock('./GlobalHookDefaultsSetting', () => ({ GlobalHookDefaultsSetting: () => null }))
 vi.mock('@/components/ui/tooltip', () => ({
   Tooltip: ({ children }: { children: ReactNode }) => <>{children}</>,
   TooltipTrigger: ({ children }: { children: ReactNode }) => <>{children}</>,

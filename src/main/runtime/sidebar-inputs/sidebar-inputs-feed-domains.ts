@@ -6,6 +6,7 @@ import type { RuntimeStore } from '../runtime-store-contract'
 import type { OrcaRuntimeWithSidebarTemporal } from './orca-runtime-sidebar-temporal'
 import type { PairedServerRowsProducer } from './paired-server-rows-producer'
 import type { WorkspaceCreationRegistry } from './workspace-creation-registry'
+import type { WorkspaceRowsProducer } from './workspace-rows-producer'
 import type { SidebarInputsFeedDomain } from './sidebar-inputs-feed'
 import { readDesktopSidebarFacts } from './desktop-sidebar-facts'
 
@@ -31,6 +32,7 @@ export type SidebarInputsFeedSources = {
   facts: OrcaRuntimeWithSidebarTemporal
   pairedServerRows: PairedServerRowsProducer
   workspaceCreations: WorkspaceCreationRegistry
+  workspaceRows: WorkspaceRowsProducer
   store: () => RuntimeStore | null
   onClientEvent: (
     listener: (event: RuntimeClientEvent) => void,
@@ -42,7 +44,7 @@ export type SidebarInputsFeedSources = {
 export function sidebarInputsFeedDomains(
   sources: SidebarInputsFeedSources
 ): SidebarInputsFeedDomain[] {
-  const { facts, pairedServerRows, workspaceCreations } = sources
+  const { facts, pairedServerRows, workspaceCreations, workspaceRows } = sources
   const watchCatalog = (changed: () => void): (() => void) =>
     sources.onClientEvent(
       (event) => {
@@ -77,6 +79,11 @@ export function sidebarInputsFeedDomains(
       name: 'creations',
       read: () => workspaceCreations.snapshot().creations,
       watch: (changed) => workspaceCreations.revision.onChange(changed)
+    },
+    {
+      name: 'workspaces',
+      read: async () => (await workspaceRows.snapshot()).rows,
+      watch: (changed) => workspaceRows.revision.onChange(changed)
     },
     {
       name: 'pairedServerHosts',

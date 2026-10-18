@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from 'vitest'
-import { getDefaultTabsLaunch } from './effective-hook-config'
+import { getDefaultTabsLaunch, getEffectiveHooksFromConfig } from './effective-hook-config'
 import {
   makeHookTestRepo,
   TEST_REPO_ORCA_YAML_PATH,
@@ -398,5 +398,140 @@ describe('getDefaultTabsLaunch', () => {
       tabs: hooks.defaultTabs,
       runCommands: false
     })
+  })
+})
+
+describe('getEffectiveHooksFromConfig with global defaults', () => {
+  const makeRepo = (hookSettings?: {
+    mode?: 'auto' | 'override'
+    commandSourcePolicy?: 'shared-only' | 'local-only' | 'run-both'
+    scripts?: { setup: string; archive: string }
+  }) => makeHookTestRepo(hookSettings)
+  const GLOBAL = { setup: 'echo "global setup"', archive: 'echo "global archive"' }
+  const yaml = (scripts: { setup?: string; archive?: string }) => ({ scripts })
+
+  it('uses the global default when no local or shared script exists', () => {
+    expect(getEffectiveHooksFromConfig(makeRepo(), yaml({}), GLOBAL)).toEqual({
+      scripts: { setup: 'echo "global setup"', archive: 'echo "global archive"' }
+    })
+  })
+
+  it('treats a whitespace-only global default as empty', () => {
+    expect(
+      getEffectiveHooksFromConfig(makeRepo(), yaml({}), { setup: '  ', archive: '' })
+    ).toBeNull()
+  })
+
+  it('returns null when global defaults are omitted and no script exists', () => {
+    expect(getEffectiveHooksFromConfig(makeRepo(), yaml({}))).toBeNull()
+  })
+
+  it('prefers the shared script over the global default', () => {
+    expect(
+      getEffectiveHooksFromConfig(makeRepo(), yaml({ setup: 'echo "shared setup"' }), GLOBAL)
+    ).toEqual({ scripts: { setup: 'echo "shared setup"', archive: 'echo "global archive"' } })
+  })
+
+  it('prefers the local script over the global default', () => {
+    const repo = makeRepo({
+      mode: 'override',
+      scripts: { setup: 'echo "local setup"', archive: '' }
+    })
+    expect(getEffectiveHooksFromConfig(repo, yaml({}), GLOBAL)).toEqual({
+      scripts: { setup: 'echo "local setup"', archive: 'echo "global archive"' }
+    })
+  })
+
+  it('concatenates shared and local under run-both and ignores the global default', () => {
+    const repo = makeRepo({
+      mode: 'override',
+      commandSourcePolicy: 'run-both',
+      scripts: { setup: 'echo "local setup"', archive: '' }
+    })
+    expect(
+      getEffectiveHooksFromConfig(repo, yaml({ setup: 'echo "shared setup"' }), GLOBAL)
+    ).toEqual({
+      scripts: {
+        setup: 'echo "shared setup"\necho "local setup"',
+        archive: 'echo "global archive"'
+      }
+    })
+  })
+
+  it('does not fall back when a policy-ignored local script exists under shared-only', () => {
+    const repo = makeRepo({
+      mode: 'override',
+      commandSourcePolicy: 'shared-only',
+      scripts: { setup: 'echo "local setup"', archive: '' }
+    })
+    expect(getEffectiveHooksFromConfig(repo, yaml({}), GLOBAL)).toEqual({
+      scripts: { archive: 'echo "global archive"' }
+    })
+  })
+
+  it('does not fall back when a policy-ignored shared script exists under local-only', () => {
+    const repo = makeRepo({
+      mode: 'override',
+      commandSourcePolicy: 'local-only',
+      scripts: { setup: '', archive: '' }
+    })
+    expect(
+      getEffectiveHooksFromConfig(repo, yaml({ setup: 'echo "shared setup"' }), GLOBAL)
+    ).toEqual({ scripts: { archive: 'echo "global archive"' } })
+  })
+
+  it('resolves setup and archive independently', () => {
+    const repo = makeRepo({
+      mode: 'override',
+      scripts: { setup: '', archive: 'echo "local archive"' }
+    })
+    expect(
+      getEffectiveHooksFromConfig(repo, yaml({ setup: 'echo "shared setup"' }), GLOBAL)
+    ).toEqual({
+      scripts: { setup: 'echo "shared setup"', archive: 'echo "local archive"' }
+    })
+  })
+})
+
+describe('getEffectiveHooks with global defaults', () => {
+  const makeRepo = (hookSettings?: {
+    mode?: 'auto' | 'override'
+    commandSourcePolicy?: 'shared-only' | 'local-only' | 'run-both'
+    scripts?: { setup: string; archive: string }
+  }) => makeHookTestRepo(hookSettings)
+  const GLOBAL = { setup: 'echo "global setup"', archive: 'echo "global archive"' }
+
+  it('passes global defaults through to the fallback', async () => {
+    const fs = await import('node:fs')
+    vi.mocked(fs.existsSync).mockReturnValue(false)
+
+    const { getEffectiveHooks } = await import('./hooks')
+    expect(getEffectiveHooks(makeRepo(), undefined, GLOBAL)).toEqual({
+      scripts: { setup: 'echo "global setup"', archive: 'echo "global archive"' }
+    })
+  })
+
+  it('reports the global source when the fallback applies', async () => {
+    const fs = await import('node:fs')
+    vi.mocked(fs.existsSync).mockReturnValue(false)
+
+    const { getSetupCommandSource } = await import('./hooks')
+    expect(getSetupCommandSource(makeRepo(), undefined, GLOBAL)).toEqual({
+      source: 'global',
+      command: 'echo "global setup"'
+    })
+  })
+
+  it('does not report the global source when a policy-ignored script blocks it', async () => {
+    const fs = await import('node:fs')
+    vi.mocked(fs.existsSync).mockReturnValue(false)
+
+    const { getSetupCommandSource } = await import('./hooks')
+    const repo = makeRepo({
+      mode: 'override',
+      commandSourcePolicy: 'shared-only',
+      scripts: { setup: 'echo "local setup"', archive: '' }
+    })
+    expect(getSetupCommandSource(repo, undefined, GLOBAL)).toBeNull()
   })
 })

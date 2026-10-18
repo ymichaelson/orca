@@ -1,4 +1,8 @@
-import type { OrcaHooks } from '../../../shared/orca-yaml-hook-types'
+import type {
+  GlobalHookDefaults,
+  OrcaHooks,
+  SetupRunPolicy
+} from '../../../shared/orca-yaml-hook-types'
 import type { ExecutionHostId } from '../../../shared/execution-host'
 import type { SetupScriptImportCandidate } from '../../../shared/setup-script-imports'
 import { callRuntimeRpc } from './runtime-rpc-client'
@@ -28,6 +32,36 @@ export type IssueCommandReadResult = {
   effectiveContent: string | null
   localFilePath: string
   source: 'local' | 'shared' | 'none'
+}
+
+export type RepoHooksResult = {
+  hasHooksFile: boolean
+  hooks: OrcaHooks | null
+  setupRunPolicy: SetupRunPolicy
+  source: 'orca.yaml' | 'legacy' | null
+  globalHookDefaults?: GlobalHookDefaults | null
+  setupTrust?: { contentHash: string; scriptContent: string }
+}
+
+export async function readRuntimeRepoHooks(
+  hostId: ExecutionHostId,
+  repoId: string
+): Promise<RepoHooksResult> {
+  const target = getHookInspectionTarget(hostId)
+  if (target.kind !== 'environment') {
+    throw new Error('Repository hook defaults are only read from runtime owners.')
+  }
+  return callRuntimeRpc<RepoHooksResult>(
+    target,
+    'repo.hooks',
+    { repo: repoId },
+    { timeoutMs: 15_000 }
+  )
+}
+
+/** Whether hooks for a repo owned by this host execute on a runtime environment. */
+export function isRuntimeEnvironmentHost(hostId: ExecutionHostId): boolean {
+  return ipcOrRuntimeTargetForHostId(hostId)?.kind === 'environment'
 }
 
 export async function checkRuntimeHooks(

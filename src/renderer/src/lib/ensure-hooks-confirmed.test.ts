@@ -38,7 +38,7 @@ type PendingPrompt = {
   resolve: (decision: 'run' | 'skip') => void
 }
 
-function createTestState(overrides?: Partial<AppState>): {
+function createTestState(overrides?: Partial<Record<keyof AppState, unknown>>): {
   state: AppState
   pending: PendingPrompt[]
 } {
@@ -625,5 +625,236 @@ describe('ensureHooksConfirmed', () => {
 
     expect(decision).toBe('skip')
     expect(pending).toHaveLength(0)
+  })
+})
+
+describe('ensureHooksConfirmed global defaults', () => {
+  beforeEach(() => {
+    hooksCheckMock.mockReset()
+    readIssueCommandMock.mockReset()
+    runtimeEnvironmentCallMock.mockReset()
+    runtimeEnvironmentTransportCallMock.mockReset()
+    runtimeEnvironmentTransportCallMock.mockImplementation(
+      (args: RuntimeEnvironmentCallRequest) => {
+        return (
+          createCompatibleRuntimeStatusResponseIfNeeded(args) ?? runtimeEnvironmentCallMock(args)
+        )
+      }
+    )
+    clearRuntimeCompatibilityCacheForTests()
+    installHooksApiMock()
+    __resetTrustPromptChainForTests()
+  })
+
+  const globalState = (overrides?: Partial<Record<keyof AppState, unknown>>) =>
+    createTestState({
+      settings: {
+        globalHookDefaults: { setup: 'global setup', archive: 'global archive' }
+      },
+      ...overrides
+    })
+
+  it('prompts with the global setup script when no local or shared script exists', async () => {
+    const { state, pending } = globalState()
+    hooksCheckMock.mockResolvedValue({
+      hasHooks: true,
+      hooks: { scripts: {} },
+      mayNeedUpdate: false
+    })
+
+    const promise = ensureHooksConfirmed(state, 'repo-1', 'setup')
+
+    await vi.waitFor(() => expect(pending).toHaveLength(1))
+    expect(pending[0].data.scriptContent).toBe('global setup')
+    expect(pending[0].data.previouslyApproved).toBe(false)
+
+    pending[0].resolve('run')
+    await expect(promise).resolves.toBe('run')
+  })
+
+  it('prompts with the global archive script when no local or shared script exists', async () => {
+    const { state, pending } = globalState()
+    hooksCheckMock.mockResolvedValue({
+      hasHooks: true,
+      hooks: { scripts: {} },
+      mayNeedUpdate: false
+    })
+
+    const promise = ensureHooksConfirmed(state, 'repo-1', 'archive')
+
+    await vi.waitFor(() => expect(pending).toHaveLength(1))
+    expect(pending[0].data.scriptContent).toBe('global archive')
+
+    pending[0].resolve('run')
+    await expect(promise).resolves.toBe('run')
+  })
+
+  it('skips the prompt when the global script was already approved for the repo', async () => {
+    const { state, pending } = globalState()
+    state.trustedOrcaHooks['repo-1'] = {
+      setup: { contentHash: await hashOrcaHookScript('global setup'), approvedAt: 1 }
+    }
+    hooksCheckMock.mockResolvedValue({
+      hasHooks: true,
+      hooks: { scripts: {} },
+      mayNeedUpdate: false
+    })
+
+    const decision = await ensureHooksConfirmed(state, 'repo-1', 'setup')
+
+    expect(decision).toBe('run')
+    expect(pending).toHaveLength(0)
+  })
+
+  it('prompts with the shared script, not the global default, when shared exists', async () => {
+    const { state, pending } = globalState()
+    hooksCheckMock.mockResolvedValue({
+      hasHooks: true,
+      hooks: { scripts: { setup: 'shared setup' } },
+      mayNeedUpdate: false
+    })
+
+    const promise = ensureHooksConfirmed(state, 'repo-1', 'setup')
+
+    await vi.waitFor(() => expect(pending).toHaveLength(1))
+    expect(pending[0].data.scriptContent).toBe('shared setup')
+
+    pending[0].resolve('skip')
+    await expect(promise).resolves.toBe('skip')
+  })
+
+  it('does not prompt when a local script wins over the global default', async () => {
+    const { state, pending } = globalState({
+      repos: [
+        {
+          id: 'repo-1',
+          displayName: 'Repo One',
+          hookSettings: { scripts: { setup: 'local setup', archive: '' } }
+        }
+      ]
+    })
+
+    const decision = await ensureHooksConfirmed(state, 'repo-1', 'setup')
+
+    expect(decision).toBe('run')
+    expect(pending).toHaveLength(0)
+    expect(hooksCheckMock).not.toHaveBeenCalled()
+  })
+
+  it('does not prompt when a policy-ignored local script blocks the fallback', async () => {
+    const { state, pending } = globalState({
+      repos: [
+        {
+          id: 'repo-1',
+          displayName: 'Repo One',
+          hookSettings: {
+            commandSourcePolicy: 'shared-only',
+            scripts: { setup: 'local setup', archive: '' }
+          }
+        }
+      ]
+    })
+    hooksCheckMock.mockResolvedValue({
+      hasHooks: true,
+      hooks: { scripts: {} },
+      mayNeedUpdate: false
+    })
+
+    const decision = await ensureHooksConfirmed(state, 'repo-1', 'setup')
+
+    expect(decision).toBe('run')
+    expect(pending).toHaveLength(0)
+  })
+
+  it('does not prompt under local-only when a shared script blocks the fallback', async () => {
+    const { state, pending } = globalState({
+      repos: [
+        {
+          id: 'repo-1',
+          displayName: 'Repo One',
+          hookSettings: { commandSourcePolicy: 'local-only', scripts: { setup: '', archive: '' } }
+        }
+      ]
+    })
+    hooksCheckMock.mockResolvedValue({
+      hasHooks: true,
+      hooks: { scripts: { setup: 'shared setup' } },
+      mayNeedUpdate: false
+    })
+
+    const decision = await ensureHooksConfirmed(state, 'repo-1', 'setup')
+
+    expect(decision).toBe('run')
+    expect(pending).toHaveLength(0)
+  })
+
+  it('prompts with the global script alone under local-only, without defaultTabs', async () => {
+    const { state, pending } = globalState({
+      repos: [
+        {
+          id: 'repo-1',
+          displayName: 'Repo One',
+          hookSettings: { commandSourcePolicy: 'local-only', scripts: { setup: '', archive: '' } }
+        }
+      ]
+    })
+    hooksCheckMock.mockResolvedValue({
+      hasHooks: true,
+      hooks: { scripts: {}, defaultTabs: [{ command: 'pnpm dev' }] },
+      mayNeedUpdate: false
+    })
+
+    const promise = ensureHooksConfirmed(state, 'repo-1', 'setup')
+
+    await vi.waitFor(() => expect(pending).toHaveLength(1))
+    expect(pending[0].data.scriptContent).toBe('global setup')
+
+    pending[0].resolve('run')
+    await expect(promise).resolves.toBe('run')
+  })
+
+  it('prompts with defaultTabs only when a local script blocks the fallback', async () => {
+    const { state, pending } = globalState({
+      repos: [
+        {
+          id: 'repo-1',
+          displayName: 'Repo One',
+          hookSettings: {
+            commandSourcePolicy: 'shared-only',
+            scripts: { setup: 'local setup', archive: '' }
+          }
+        }
+      ]
+    })
+    hooksCheckMock.mockResolvedValue({
+      hasHooks: true,
+      hooks: { scripts: {}, defaultTabs: [{ command: 'pnpm dev' }] },
+      mayNeedUpdate: false
+    })
+
+    const promise = ensureHooksConfirmed(state, 'repo-1', 'setup')
+
+    await vi.waitFor(() => expect(pending).toHaveLength(1))
+    expect(pending[0].data.scriptContent).toBe('# defaultTabs[1]\npnpm dev')
+
+    pending[0].resolve('run')
+    await expect(promise).resolves.toBe('run')
+  })
+
+  it('prompts with the global script plus defaultTabs when both will run', async () => {
+    const { state, pending } = globalState()
+    hooksCheckMock.mockResolvedValue({
+      hasHooks: true,
+      hooks: { scripts: {}, defaultTabs: [{ command: 'pnpm dev' }] },
+      mayNeedUpdate: false
+    })
+
+    const promise = ensureHooksConfirmed(state, 'repo-1', 'setup')
+
+    await vi.waitFor(() => expect(pending).toHaveLength(1))
+    expect(pending[0].data.scriptContent).toBe('global setup\n\n# defaultTabs[1]\npnpm dev')
+
+    pending[0].resolve('run')
+    await expect(promise).resolves.toBe('run')
   })
 })
