@@ -419,6 +419,8 @@ export type GlobalSettings = GlobalSettingsBase & {
   agentYoloDefaultsMigrated?: boolean
   /** Why: disabling must persist so startup doesn't reinstall global agent hook entries the user just removed. */
   agentStatusHooksEnabled: boolean
+  /** Global kill-switch for inbound review notifications (phase 1a poller). Off = no repo polls, regardless of per-repo config. */
+  reviewNotificationsEnabled: boolean
   /** A local agent-state-rules.json that replaces downloaded and bundled rules, for testing a rule
    *  change. */
   agentStateRulesPath?: string | null

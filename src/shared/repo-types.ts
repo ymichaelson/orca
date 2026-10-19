@@ -2,6 +2,7 @@ import type { RepoIcon } from './repo-icon'
 import type { GhAccountBinding } from './github/account-binding'
 import type { GitHubRepositoryIdentity } from './github/pull-request-types'
 import type { RepoHookSettings } from './orca-yaml-hook-types'
+import type { ReviewNotificationConfig } from './review-notification-types'
 import type { ForkSyncMode } from './git-fork-sync'
 import type { GitRemoteIdentity } from './git-remote-identity'
 import type { RepoSourceControlAiOverrides } from './source-control-ai-types'
@@ -70,6 +71,11 @@ export type Repo = {
   /** Optional repo-scoped workspace root override. Relative paths resolve from `path`. */
   worktreeBasePath?: string
   hookSettings?: RepoHookSettings
+  /**
+   * Phase 1a: inbound review notifications (new MRs/PRs/issues). Absent =
+   * all off; the poller treats the repo as disabled. Never migrated.
+   */
+  reviewNotifications?: ReviewNotificationConfig
   /** SSH target ID for remote repos. null/undefined = local. */
   connectionId?: string | null
   /**

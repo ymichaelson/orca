@@ -28,6 +28,7 @@ import {
 } from './main-process-runtime-service'
 import { initializeMainProcessAutomations } from './main-process-automations'
 import { initializeMainProcessPlugins } from './main-process-plugins'
+import { initializeMainProcessReviewNotifications } from './main-process-review-notifications'
 import { collectWorktreeTrashSweepRoots, sweepStaleWorktreeTrash } from '../worktree-trash'
 import { loadWorktreeRemovalRecordsForStore } from './worktree-removal-records-load'
 import { runAfterFirstWindowShown } from './first-window-deferral'
@@ -49,6 +50,8 @@ export async function initializeReadyRuntimeServices(): Promise<void> {
   initializeMainProcessAccountServices()
   const runtime = initializeMainProcessRuntime()
   initializeMainProcessAutomations()
+  // Phase 1a: idle unless a repo opts into review notifications.
+  initializeMainProcessReviewNotifications()
   configureRuntimeServices(runtime)
   installFirstWorkRenameHookSubscription()
   await initializeMainProcessPlugins(runtime)

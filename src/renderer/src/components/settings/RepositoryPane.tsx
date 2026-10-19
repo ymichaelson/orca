@@ -9,6 +9,7 @@ import { Label } from '../ui/label'
 import { Separator } from '../ui/separator'
 import { useShallow } from 'zustand/react/shallow'
 import { RepositoryHooksSection } from './RepositoryHooksSection'
+import { ReviewNotificationsSection } from './ReviewNotificationsSection'
 import { McpConfigSection } from './McpConfigSection'
 import { WorktreeSymlinksSection } from './WorktreeSymlinksSection'
 import { SparsePresetSettingsSection } from './SparsePresetSettingsSection'
@@ -389,6 +390,13 @@ export function RepositoryPane({
     ) : null,
     !isFolder && (forceFullPaneForRepoMatch || matchesSettingsSearch(searchQuery, mcpEntries)) ? (
       <McpConfigSection key={`mcp-configs:${selectedHostId}:${repo.id}`} repo={repo} />
+    ) : null,
+    !isFolder ? (
+      <ReviewNotificationsSection
+        key={`review-notifications:${repo.id}`}
+        repo={repo}
+        updateRepo={updateSelectedRepo}
+      />
     ) : null
   ].filter(Boolean)
 
