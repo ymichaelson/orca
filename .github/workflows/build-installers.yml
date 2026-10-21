@@ -1,0 +1,120 @@
+name: Build Installers
+
+# Manual, unsigned Windows + Linux packages for forks. Mirrors release-cut's package legs
+# without signing, publishing, or telemetry identity.
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [build/add-script-installers]
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          # Why windows-2022: windows-latest's VS image breaks node-gyp (see release-cut).
+          - os: windows-2022
+            platform: win
+            release_command: 'node config/scripts/ensure-native-runtime.mjs --runtime=electron; if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }; pnpm exec electron-builder --config config/electron-builder.config.cjs --win --publish never'
+            artifact_glob: |
+              dist/*.exe
+              dist/*.yml
+            eb_cache_path: |
+              ~\AppData\Local\electron\Cache
+              ~\AppData\Local\electron-builder\Cache
+          - os: ubuntu-latest
+            platform: linux-x64
+            release_command: node config/scripts/ensure-native-runtime.mjs --runtime=electron && pnpm exec electron-builder --config config/electron-builder.config.cjs --linux AppImage deb rpm --x64 --publish never
+            artifact_glob: |
+              dist/*.AppImage
+              dist/*.deb
+              dist/*.rpm
+              dist/*.yml
+            eb_cache_path: |
+              ~/.cache/electron
+              ~/.cache/electron-builder
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 90
+    env:
+      NODE_OPTIONS: --max-old-space-size=4096
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v6
+        with:
+          persist-credentials: false
+
+      - name: Setup pnpm
+        uses: pnpm/setup@v2
+        with:
+          install: false
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v6
+        with:
+          node-version-file: package.json
+          cache: pnpm
+          cache-dependency-path: |
+            pnpm-lock.yaml
+            mobile/pnpm-lock.yaml
+
+      - name: Use external node-gyp to avoid pnpm's bundled copy (Linux only)
+        if: runner.os == 'Linux'
+        run: |
+          npm install -g node-gyp@11.5.0
+          echo "npm_config_node_gyp=$(npm root -g)/node-gyp/bin/node-gyp.js" >> "$GITHUB_ENV"
+
+      - name: Cache electron-builder downloads
+        uses: actions/cache@v5
+        with:
+          path: ${{ matrix.eb_cache_path }}
+          key: electron-builder-${{ matrix.platform }}-${{ hashFiles('pnpm-lock.yaml') }}
+          restore-keys: |
+            electron-builder-${{ matrix.platform }}-
+
+      - name: Install dependencies
+        uses: nick-fields/retry@v4
+        with:
+          timeout_minutes: 10
+          max_attempts: 3
+          retry_wait_seconds: 30
+          command: pnpm install --frozen-lockfile
+
+      - uses: ./.github/actions/install-mobile-dependencies
+
+      # Why: build:release imports AT-SPI bindings; rpm is electron-builder's fpm backend for .rpm.
+      - name: Install Linux build dependencies
+        if: runner.os == 'Linux'
+        run: sudo apt-get update && sudo apt-get install -y python3-gi gir1.2-atspi-2.0 at-spi2-core xclip xdotool rpm
+
+      # Why: the packaged Windows CLI launcher is a native Rust binary.
+      - name: Ensure the Rust toolchain for the Windows CLI launcher
+        if: matrix.platform == 'win'
+        shell: pwsh
+        run: |
+          if (-not (Get-Command cargo -ErrorAction SilentlyContinue)) {
+            rustup toolchain install stable --profile minimal
+            rustup default stable
+          }
+          cargo --version
+
+      - name: Build app
+        shell: bash
+        run: pnpm run build:release
+
+      - name: Package
+        run: ${{ matrix.release_command }}
+        env:
+          ORCA_BUILD_COMMIT: ${{ github.sha }}
+
+      - name: Upload installers
+        uses: actions/upload-artifact@v4
+        with:
+          name: orca-${{ matrix.platform }}
+          path: ${{ matrix.artifact_glob }}
+          if-no-files-found: error
