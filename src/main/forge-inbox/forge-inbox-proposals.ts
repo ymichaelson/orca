@@ -18,6 +18,43 @@ export function readForgeProposal(ctx: ForgeLedgerContext, id: number): ForgePro
   return row ? proposalFromRow(row) : null
 }
 
+/** Appends one proposal inside a caller-held transaction; lifecycle checks belong to the caller. */
+export function appendForgeProposalInTransaction(
+  ctx: ForgeLedgerContext,
+  input: {
+    runId: number
+    itemId: number
+    revision: number
+    policyGeneration: number
+    status: 'pending' | 'stale'
+    body: unknown
+  }
+): ForgeProposal {
+  const now = ctx.now()
+  const inserted = ctx.db
+    .prepare(
+      `INSERT INTO proposals (run_id, item_id, revision, policy_generation, status, body_json,
+         created_at, resolved_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?)`
+    )
+    .run(
+      input.runId,
+      input.itemId,
+      input.revision,
+      input.policyGeneration,
+      input.status,
+      JSON.stringify(input.body ?? null),
+      now,
+      input.status === 'pending' ? null : now
+    )
+  const id = rowNumber({ v: inserted.lastInsertRowid }, 'v')
+  recordForgeChange(ctx, input.itemId, 'proposal', id, input.status)
+  const proposal = readForgeProposal(ctx, id)
+  if (!proposal) {
+    throw new Error('forge inbox proposal vanished inside its create transaction')
+  }
+  return proposal
+}
+
 /**
  * A proposal for an outdated revision is stored stale. Approval state never drives run state.
  * `supersedePending` makes this the item's only live proposal: a newer draft replaces older ones.
@@ -48,28 +85,19 @@ export function createForgeProposal(
       .get(run.itemId)
     const isCurrent =
       current !== undefined && rowNumber(current, 'current_revision') === run.revision
-    const now = ctx.now()
-    const inserted = ctx.db
-      .prepare(
-        `INSERT INTO proposals (run_id, item_id, revision, policy_generation, status, body_json,
-           created_at, resolved_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?)`
-      )
-      .run(
-        run.id,
-        run.itemId,
-        run.revision,
-        run.policyGeneration,
-        isCurrent ? 'pending' : 'stale',
-        JSON.stringify(input.body ?? null),
-        now,
-        isCurrent ? null : now
-      )
-    const id = rowNumber({ v: inserted.lastInsertRowid }, 'v')
-    recordForgeChange(ctx, run.itemId, 'proposal', id, isCurrent ? 'pending' : 'stale')
+    const proposal = appendForgeProposalInTransaction(ctx, {
+      runId: run.id,
+      itemId: run.itemId,
+      revision: run.revision,
+      policyGeneration: run.policyGeneration,
+      status: isCurrent ? 'pending' : 'stale',
+      body: input.body
+    })
     if (isCurrent && input.supersedePending) {
       const older = ctx.db
         .prepare("SELECT id FROM proposals WHERE item_id = ? AND status = 'pending' AND id <> ?")
-        .all(run.itemId, id)
+        .all(run.itemId, proposal.id)
+      const now = ctx.now()
       for (const row of older) {
         const olderId = rowNumber(row, 'id')
         ctx.db
@@ -79,10 +107,6 @@ export function createForgeProposal(
           .run(now, olderId)
         recordForgeChange(ctx, run.itemId, 'proposal', olderId, 'stale')
       }
-    }
-    const proposal = readForgeProposal(ctx, id)
-    if (!proposal) {
-      throw new Error('forge inbox proposal vanished inside its create transaction')
     }
     return { ok: true, proposal }
   })
