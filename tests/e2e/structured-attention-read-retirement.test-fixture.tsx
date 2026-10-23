@@ -53,6 +53,7 @@ export const NOTIFICATION_SETTINGS: NotificationSettings = {
   agentTaskComplete: true,
   agentNeedsInput: true,
   terminalBell: true,
+  forgeInbox: true,
   suppressWhenFocused: true,
   customSoundId: 'system',
   customSoundPath: null,
