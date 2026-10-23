@@ -54,6 +54,12 @@ import {
   requeueForgeWebhookNeedsAuth
 } from './forge-inbox-webhook-delivery-state'
 import { updateForgeProjectPolicy } from './forge-inbox-project-policy-update'
+import {
+  claimForgePatchRequest,
+  markInterruptedForgePatchRequestsUnverifiable,
+  readForgePatchRequest
+} from './forge-inbox-patch-requests'
+import { finishForgePatchRequest } from './forge-inbox-patch-request-completion'
 import { readForgeItemWatermark } from './forge-inbox-item-watermark'
 import { readForgeProjectInvalidationGeneration } from './forge-inbox-project-invalidation'
 import {
@@ -112,6 +118,7 @@ export class ForgeInboxLedger {
     )
     markInterruptedForgeReceiptsUnknown(ledger.ctx)
     markInterruptedForgeRunsUnverifiable(ledger.ctx)
+    markInterruptedForgePatchRequestsUnverifiable(ledger.ctx)
     return ledger
   }
 
@@ -268,6 +275,18 @@ export class ForgeInboxLedger {
 
   getRun(runId: number) {
     return readForgeRun(this.ctx, runId)
+  }
+
+  claimPatchRequest(input: Parameters<typeof claimForgePatchRequest>[1]) {
+    return claimForgePatchRequest(this.ctx, input)
+  }
+
+  getPatchRequest(scope: ForgeInstanceScope, requestId: number, callerKey: string) {
+    return readForgePatchRequest(this.ctx, requestId, callerKey, scope)
+  }
+
+  finishPatchRequest(input: Parameters<typeof finishForgePatchRequest>[1]) {
+    return finishForgePatchRequest(this.ctx, input)
   }
 
   createProposal(input: Parameters<typeof createForgeProposal>[1]) {
