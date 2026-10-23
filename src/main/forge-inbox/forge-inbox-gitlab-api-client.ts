@@ -1,13 +1,17 @@
 import type { z } from 'zod'
 import {
+  gitlabBranchSchema,
   gitlabCommitSchema,
+  gitlabCurrentUserSchema,
   gitlabDiffFileSchema,
   gitlabIssueSchema,
   gitlabMergeRequestSchema,
   gitlabNoteSchema,
   gitlabPipelineSchema,
+  gitlabProjectSchema,
   gitlabTreeEntrySchema,
   type GitlabCommit,
+  type GitlabCurrentUser,
   type GitlabDiffFile,
   type GitlabIssue,
   type GitlabMergeRequest,
@@ -15,7 +19,9 @@ import {
   type GitlabPipeline,
   type GitlabTreeEntry
 } from './forge-inbox-gitlab-api-schemas'
+import { isForgePatchBranchAllowed } from './forge-inbox-patch-draft'
 import {
+  createGitlabApiInstanceRequester,
   createGitlabApiRequester,
   createGitlabApiTextRequester,
   type GitlabApiDeps,
@@ -40,7 +46,11 @@ const TREE_MAX_PAGES = 20
 const TREE_MAX_ITEMS = 20_000
 const TREE_MAX_BYTES = 4 * 1024 * 1024
 const PINNED_REF = /^(?:[0-9a-f]{40}|[0-9a-f]{64})$/
+const NUMERIC_PROJECT_ID = /^[1-9][0-9]{0,15}$/
 const FILE_PATH_MAX_BYTES = 4096
+
+export type GitlabRepositoryBranchHead = { branch: string; sha: string }
+export type GitlabProjectRepository = { projectId: number; httpUrl: string }
 
 export type GitlabApiReader = {
   getMergeRequest(iid: number): Promise<GitlabApiResult<GitlabMergeRequest>>
@@ -55,9 +65,42 @@ export type GitlabApiReader = {
   getRepositoryFile(ref: string, path: string): Promise<GitlabApiResult<string>>
   /** Commit metadata at one pinned object id, used to reconstruct the object locally. */
   getRepositoryCommit(ref: string): Promise<GitlabApiResult<GitlabCommit>>
+  /** One branch's head, bound to the exact configured project and requested branch name. */
+  getRepositoryBranchHead(branch: string): Promise<GitlabApiResult<GitlabRepositoryBranchHead>>
+  /** The configured project's canonical clone URL; only same-origin, same-base-path URLs are accepted. */
+  getProjectRepository(): Promise<GitlabApiResult<GitlabProjectRepository>>
+  /** Commit identity only; profile fields are stripped and this must never reach a model prompt. */
+  getCurrentUser(): Promise<GitlabApiResult<GitlabCurrentUser>>
 }
 
 const isPositiveSafeInteger = (value: number): boolean => Number.isSafeInteger(value) && value > 0
+
+/** The API's clone URL is only usable if it stays under the instance we already trust. */
+function cloneUrlWithinBase(baseUrl: string, raw: string): string | null {
+  let url: URL
+  let base: URL
+  try {
+    url = new URL(raw)
+    base = new URL(baseUrl)
+  } catch {
+    return null
+  }
+  if (
+    (url.protocol !== 'http:' && url.protocol !== 'https:') ||
+    url.username !== '' ||
+    url.password !== '' ||
+    url.search !== '' ||
+    url.hash !== ''
+  ) {
+    return null
+  }
+  const basePath = base.pathname.replace(/\/+$/, '')
+  return url.origin === base.origin &&
+    url.pathname.startsWith(`${basePath}/`) &&
+    url.pathname.length > basePath.length + 1
+    ? url.href
+    : null
+}
 
 async function getOne<T>(
   requester: GitlabApiRequester,
@@ -81,6 +124,10 @@ async function getOne<T>(
 export function createGitlabApiReader(deps: GitlabApiDeps, scope: GitlabApiScope): GitlabApiReader {
   const requester = createGitlabApiRequester(deps, scope)
   const textRequester = createGitlabApiTextRequester(deps, scope)
+  const instanceRequester = createGitlabApiInstanceRequester(deps, {
+    baseUrl: scope.baseUrl,
+    expectedConfigRevision: scope.expectedConfigRevision
+  })
   return {
     listRepositoryTree(ref) {
       if (!PINNED_REF.test(ref)) {
@@ -122,6 +169,62 @@ export function createGitlabApiReader(deps: GitlabApiDeps, scope: GitlabApiScope
       }
       const parsed = gitlabCommitSchema.safeParse(response.json)
       return parsed.success && parsed.data.id === ref
+        ? { ok: true, data: parsed.data, complete: true }
+        : { ok: false, code: 'bad-response' }
+    },
+    async getRepositoryBranchHead(branch) {
+      if (!isForgePatchBranchAllowed(branch)) {
+        return { ok: false, code: 'bad-response' }
+      }
+      const response = await requester.get(`/repository/branches/${encodeURIComponent(branch)}`)
+      if (!response.ok) {
+        return response
+      }
+      const parsed = gitlabBranchSchema.safeParse(response.json)
+      if (
+        !parsed.success ||
+        parsed.data.name !== branch ||
+        !PINNED_REF.test(parsed.data.commit.id)
+      ) {
+        return { ok: false, code: 'bad-response' }
+      }
+      return {
+        ok: true,
+        data: { branch: parsed.data.name, sha: parsed.data.commit.id },
+        complete: true
+      }
+    },
+    async getProjectRepository() {
+      if (
+        !NUMERIC_PROJECT_ID.test(scope.projectId) ||
+        !Number.isSafeInteger(Number(scope.projectId))
+      ) {
+        return { ok: false, code: 'bad-response' }
+      }
+      const response = await requester.get('')
+      if (!response.ok) {
+        return response
+      }
+      const parsed = gitlabProjectSchema.safeParse(response.json)
+      if (!parsed.success) {
+        return { ok: false, code: 'bad-response' }
+      }
+      const projectId = Number(scope.projectId)
+      const httpUrl =
+        parsed.data.id === projectId
+          ? cloneUrlWithinBase(scope.baseUrl, parsed.data.http_url_to_repo)
+          : null
+      return httpUrl === null
+        ? { ok: false, code: 'bad-response' }
+        : { ok: true, data: { projectId, httpUrl }, complete: true }
+    },
+    async getCurrentUser() {
+      const response = await instanceRequester.get('/user')
+      if (!response.ok) {
+        return response
+      }
+      const parsed = gitlabCurrentUserSchema.safeParse(response.json)
+      return parsed.success
         ? { ok: true, data: parsed.data, complete: true }
         : { ok: false, code: 'bad-response' }
     },

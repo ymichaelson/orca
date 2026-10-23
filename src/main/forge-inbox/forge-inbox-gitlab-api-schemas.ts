@@ -26,6 +26,21 @@ export const gitlabMergeRequestSchema = z
       .string()
       .nullish()
       .transform((branch) => branch ?? null),
+    source_branch: z
+      .string()
+      .nullish()
+      .transform((branch) => branch ?? null),
+    // A fork merge request is pushed to its source project, never the configured target project.
+    source_project_id: z
+      .number()
+      .int()
+      .nullish()
+      .transform((id) => id ?? null),
+    target_project_id: z
+      .number()
+      .int()
+      .nullish()
+      .transform((id) => id ?? null),
     draft: z.boolean().nullish(),
     work_in_progress: z.boolean().nullish(),
     sha: z.string().nullable(),
@@ -107,6 +122,32 @@ export const gitlabCommitSchema = z
   })
   .strip()
 
+export const gitlabBranchSchema = z
+  .object({ name: z.string(), commit: z.object({ id: z.string() }).strip() })
+  .strip()
+
+export const gitlabProjectSchema = z
+  .object({ id: z.number().int(), http_url_to_repo: z.string() })
+  .strip()
+
+const identityName = z.string().min(1).max(255)
+const identityEmail = z
+  .string()
+  .min(1)
+  .max(320)
+  .nullish()
+  .transform((email) => email ?? null)
+
+// Only commit identity leaves this schema; profile fields are dropped so they cannot reach a model.
+export const gitlabCurrentUserSchema = z
+  .object({
+    name: identityName,
+    username: identityName,
+    email: identityEmail,
+    commit_email: identityEmail
+  })
+  .strip()
+
 export type GitlabHeadPipeline = NonNullable<GitlabMergeRequest['headPipeline']>
 export type GitlabCommit = z.infer<typeof gitlabCommitSchema>
 export type GitlabMergeRequest = z.infer<typeof gitlabMergeRequestSchema>
@@ -115,3 +156,4 @@ export type GitlabDiffFile = z.infer<typeof gitlabDiffFileSchema>
 export type GitlabPipeline = z.infer<typeof gitlabPipelineSchema>
 export type GitlabIssue = z.infer<typeof gitlabIssueSchema>
 export type GitlabTreeEntry = z.infer<typeof gitlabTreeEntrySchema>
+export type GitlabCurrentUser = z.infer<typeof gitlabCurrentUserSchema>
