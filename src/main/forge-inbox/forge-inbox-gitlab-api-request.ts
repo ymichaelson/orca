@@ -62,6 +62,12 @@ export type GitlabApiScope = {
   expectedConfigRevision: number
 }
 
+/** Instance-level endpoints such as `/user` are not under a project path. */
+export type GitlabApiInstanceScope = {
+  baseUrl: string
+  expectedConfigRevision: number
+}
+
 const STATUS_CODES: Record<number, GitlabApiErrorCode> = {
   401: 'unauthorized',
   403: 'forbidden',
@@ -98,6 +104,34 @@ function projectUrl(
   }
 }
 
+function instanceUrl(
+  scope: GitlabApiInstanceScope,
+  path: string,
+  query: Record<string, string>
+): string | null {
+  const prefix = `${scope.baseUrl}/api/v4`
+  const search = new URLSearchParams(query).toString()
+  const url = `${prefix}${path}${search ? `?${search}` : ''}`
+  try {
+    const parsed = new URL(url)
+    const base = new URL(scope.baseUrl)
+    const basePath = base.pathname.replace(/\/+$/, '')
+    return parsed.origin === base.origin && parsed.pathname.startsWith(`${basePath}/api/v4/`)
+      ? url
+      : null
+  } catch {
+    return null
+  }
+}
+
+function apiUrl(
+  scope: GitlabApiScope | GitlabApiInstanceScope,
+  path: string,
+  query: Record<string, string>
+): string | null {
+  return 'projectId' in scope ? projectUrl(scope, path, query) : instanceUrl(scope, path, query)
+}
+
 type GitlabRequestSpec = {
   method: 'GET' | 'POST'
   path: string
@@ -114,7 +148,7 @@ type GitlabRequestSpec = {
  */
 async function send(
   deps: GitlabApiDeps,
-  scope: GitlabApiScope,
+  scope: GitlabApiScope | GitlabApiInstanceScope,
   spec: GitlabRequestSpec
 ): Promise<GitlabTextResponse | GitlabApiFailure> {
   const stale = (): boolean => deps.readConfigRevision() !== scope.expectedConfigRevision
@@ -125,7 +159,7 @@ async function send(
   if (token === null || !SENDABLE_TOKEN.test(token)) {
     return { ok: false, code: 'no-credential' }
   }
-  const url = projectUrl(scope, spec.path, spec.query)
+  const url = apiUrl(scope, spec.path, spec.query)
   if (url === null) {
     return { ok: false, code: 'bad-response' }
   }
@@ -189,7 +223,7 @@ async function send(
 
 async function sendJson(
   deps: GitlabApiDeps,
-  scope: GitlabApiScope,
+  scope: GitlabApiScope | GitlabApiInstanceScope,
   spec: GitlabRequestSpec
 ): Promise<GitlabJsonResponse | GitlabApiFailure> {
   const response = await send(deps, scope, spec)
@@ -215,6 +249,17 @@ async function sendText(
 export function createGitlabApiRequester(
   deps: GitlabApiDeps,
   scope: GitlabApiScope
+): GitlabApiRequester {
+  return {
+    get(path, query = {}) {
+      return sendJson(deps, scope, { method: 'GET', path, query, recheckStaleAfterResponse: true })
+    }
+  }
+}
+
+export function createGitlabApiInstanceRequester(
+  deps: GitlabApiDeps,
+  scope: GitlabApiInstanceScope
 ): GitlabApiRequester {
   return {
     get(path, query = {}) {

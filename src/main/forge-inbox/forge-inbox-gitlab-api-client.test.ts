@@ -132,6 +132,9 @@ describe('forge inbox GitLab read client', () => {
         title: 'Fix it',
         description: 'Explains the fix',
         target_branch: 'main',
+        source_branch: null,
+        source_project_id: null,
+        target_project_id: null,
         draft: false,
         sha: 'a'.repeat(40),
         diff_refs: mergeRequest.diff_refs,
@@ -280,6 +283,38 @@ describe('forge inbox GitLab read client', () => {
       diff_refs: null
     })
     expect(bare.ok && bare.data).toMatchObject({ draft: false, diff_refs: null })
+  })
+
+  it('keeps the source branch and project ids used to resolve a fork target', async () => {
+    const { reader, script } = setup()
+    script.push(
+      json({
+        ...mergeRequest,
+        source_branch: 'feature/topic',
+        source_project_id: 41,
+        target_project_id: 42
+      }),
+      json({
+        ...mergeRequest,
+        source_branch: null,
+        source_project_id: null,
+        target_project_id: null
+      })
+    )
+
+    const fork = await reader.getMergeRequest(7)
+    const nulled = await reader.getMergeRequest(7)
+
+    expect(fork.ok && fork.data).toMatchObject({
+      source_branch: 'feature/topic',
+      source_project_id: 41,
+      target_project_id: 42
+    })
+    expect(nulled.ok && nulled.data).toMatchObject({
+      source_branch: null,
+      source_project_id: null,
+      target_project_id: null
+    })
   })
 
   it('accepts null assignees on issues', async () => {
