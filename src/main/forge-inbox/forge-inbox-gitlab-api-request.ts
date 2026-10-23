@@ -2,6 +2,7 @@ import type { MainHttpClient } from '../network/http-client'
 import {
   API_RESPONSE_JSON_LIMITS,
   FetchResponseBodyTooLargeError,
+  readFetchResponseBytesWithinLimit,
   readFetchResponseTextWithinLimit
 } from '../../shared/fetch-response-body'
 import { assertJsonTextStructureWithinLimits } from '../../shared/json-text-structure-limit'
@@ -205,9 +206,12 @@ async function send(
     await cancelUnreadResponseBody(response)
     return failure
   }
-  let text: string
+  let body: string | Uint8Array
   try {
-    text = await readFetchResponseTextWithinLimit(response, GITLAB_API_RESPONSE_MAX_BYTES)
+    body =
+      spec.accept === 'text'
+        ? await readFetchResponseBytesWithinLimit(response, GITLAB_API_RESPONSE_MAX_BYTES)
+        : await readFetchResponseTextWithinLimit(response, GITLAB_API_RESPONSE_MAX_BYTES)
   } catch (error) {
     // Why: a timeout, abort or reset mid-body is retryable; only an oversize body is not.
     return {
@@ -217,6 +221,16 @@ async function send(
   }
   if (spec.recheckStaleAfterResponse && stale()) {
     return { ok: false, code: 'stale-config' }
+  }
+  let text: string
+  try {
+    // Raw blobs must roundtrip byte for byte, including a leading UTF-8 BOM.
+    text =
+      typeof body === 'string'
+        ? body
+        : new TextDecoder('utf-8', { fatal: true, ignoreBOM: true }).decode(body)
+  } catch {
+    return { ok: false, code: 'bad-response' }
   }
   return { ok: true, text, headers: response.headers }
 }
