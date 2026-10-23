@@ -195,6 +195,44 @@ describe('forge inbox ledger', () => {
     expect(ledger.getRun(run!.id)?.state).toBe('running')
   })
 
+  it('refuses a proposal from a running run whose policy generation was revoked', () => {
+    const { itemId, runId } = ingest({ queueRun: { reason: 'x' } })
+    const claimed = ledger.claimNextQueuedRun(SCOPE)!
+    expect(claimed.id).toBe(runId)
+    expect(ledger.bumpPolicyGeneration(PROJECT)).toBe(claimed.policyGeneration + 1)
+    const before = ledger.listChanges(SCOPE, { afterSeq: 0 })
+
+    const made = ledger.createProposal({
+      runId: claimed.id,
+      expectedGeneration: claimed.generation,
+      body: {}
+    })
+
+    expect(made).toEqual({ ok: false, reason: 'policy-generation-mismatch' })
+    expect(ledger.listChanges(SCOPE, { afterSeq: 0 })).toEqual(before)
+    expect(ledger.getItemDetail(SCOPE, itemId, 'c')?.proposals).toEqual([])
+    expect(ledger.getRun(claimed.id)?.state).toBe('running')
+  })
+
+  it('binds a proposal to the policy generation the run was queued under', () => {
+    ingest({ queueRun: { reason: 'x' } })
+    const generation = ledger.bumpPolicyGeneration(PROJECT)
+    ingest({ dedupeKey: 'd2', versionToken: 'v2', queueRun: { reason: 'x' } })
+    const run = ledger.claimNextQueuedRun(SCOPE)!
+    expect(run.policyGeneration).toBe(generation)
+
+    const made = ledger.createProposal({
+      runId: run.id,
+      expectedGeneration: run.generation,
+      body: {}
+    })
+
+    if (!made.ok) {
+      throw new Error(made.reason)
+    }
+    expect(made.proposal.policyGeneration).toBe(run.policyGeneration)
+  })
+
   it('consumes an approval once and refuses a mismatched revision', () => {
     const { proposal } = runningProposal()
     const wrong = ledger.consumeProposal(proposal.id, {
