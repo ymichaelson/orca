@@ -130,6 +130,7 @@ export type ForgePushProposalFailure =
   | 'item-mismatch'
   | 'run-not-running'
   | 'generation-mismatch'
+  | 'policy-generation-mismatch'
   | 'not-found'
   | 'not-pending'
   | 'not-a-push'

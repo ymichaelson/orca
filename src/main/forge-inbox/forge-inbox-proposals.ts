@@ -7,7 +7,7 @@ import type { ForgeProposal, ForgeReceipt } from './forge-inbox-types'
 
 export type ForgeProposalCreateResult =
   | { ok: true; proposal: ForgeProposal }
-  | { ok: false; reason: 'run-not-running' | 'generation-mismatch' }
+  | { ok: false; reason: 'run-not-running' | 'generation-mismatch' | 'policy-generation-mismatch' }
 
 export type ForgeProposalResolveResult =
   | { ok: true; proposal: ForgeProposal }
@@ -39,6 +39,10 @@ export function createForgeProposal(
     if (run.generation !== input.expectedGeneration) {
       return { ok: false, reason: 'generation-mismatch' }
     }
+    // Running work keeps its old rules; a revoked run must not bind its draft to the newer policy.
+    if (run.policyGeneration !== policyGenerationOfItem(ctx, run.itemId)) {
+      return { ok: false, reason: 'policy-generation-mismatch' }
+    }
     const current = ctx.db
       .prepare('SELECT current_revision FROM items WHERE id = ?')
       .get(run.itemId)
@@ -54,7 +58,7 @@ export function createForgeProposal(
         run.id,
         run.itemId,
         run.revision,
-        policyGenerationOfItem(ctx, run.itemId),
+        run.policyGeneration,
         isCurrent ? 'pending' : 'stale',
         JSON.stringify(input.body ?? null),
         now,

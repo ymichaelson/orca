@@ -22,6 +22,7 @@ export type ForgePatchProposalFailure =
   | 'item-mismatch'
   | 'run-not-running'
   | 'generation-mismatch'
+  | 'policy-generation-mismatch'
   | 'not-found'
   | 'not-pending'
   | 'not-a-patch'
