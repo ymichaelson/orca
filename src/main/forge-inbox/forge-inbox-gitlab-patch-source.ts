@@ -1,6 +1,7 @@
 import type { GitlabApiReader } from './forge-inbox-gitlab-api-client'
 import type { GitlabTreeEntry } from './forge-inbox-gitlab-api-schemas'
-import { FORGE_PATCH_MAX_FILE_BYTES } from './forge-inbox-patch-draft'
+import { createForgeGitBlob, isForgeGitSha1 } from './forge-inbox-git-objects'
+import { FORGE_PATCH_MAX_FILE_BYTES, isForgePatchPathAllowed } from './forge-inbox-patch-draft'
 import type { ForgePatchPathContent, ForgePatchSource } from './forge-inbox-patch-tree'
 
 export type GitlabPatchSourceDeps = {
@@ -26,6 +27,9 @@ export function createGitlabPatchSource(deps: GitlabPatchSourceDeps): ForgePatch
 
   return {
     async readPath(path): Promise<ForgePatchPathContent> {
+      if (!isForgeGitSha1(deps.ref) || !isForgePatchPathAllowed(path)) {
+        return { kind: 'unavailable' }
+      }
       const tree = await entries()
       if (tree === null) {
         return { kind: 'unavailable' }
@@ -44,11 +48,14 @@ export function createGitlabPatchSource(deps: GitlabPatchSourceDeps): ForgePatch
       if (entry.mode === '120000') {
         return { kind: 'unsupported', why: 'link' }
       }
-      if (entry.type !== 'blob') {
+      if (entry.type !== 'blob' || (entry.mode !== '100644' && entry.mode !== '100755')) {
         return { kind: 'unsupported', why: 'non-blob' }
       }
+      if (!isForgeGitSha1(entry.id)) {
+        return { kind: 'unavailable' }
+      }
       const response = await deps.reader.getRepositoryFile(deps.ref, path)
-      if (!response.ok) {
+      if (!response.ok || !response.complete) {
         return { kind: 'unavailable' }
       }
       if (response.data.includes('\u0000')) {
@@ -56,6 +63,13 @@ export function createGitlabPatchSource(deps: GitlabPatchSourceDeps): ForgePatch
       }
       if (Buffer.byteLength(response.data, 'utf8') > FORGE_PATCH_MAX_FILE_BYTES) {
         return { kind: 'unsupported', why: 'too-large' }
+      }
+      const blob = createForgeGitBlob(response.data)
+      if (blob.content.toString('utf8') !== response.data) {
+        return { kind: 'unsupported', why: 'binary' }
+      }
+      if (blob.oid !== entry.id) {
+        return { kind: 'unavailable' }
       }
       return { kind: 'file', content: response.data }
     }

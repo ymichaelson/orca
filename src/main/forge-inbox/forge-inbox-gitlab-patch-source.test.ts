@@ -1,13 +1,26 @@
+import { mkdtempSync, readdirSync, rmSync } from 'node:fs'
+import { tmpdir } from 'node:os'
+import { join } from 'node:path'
 import { describe, expect, it, vi } from 'vitest'
-import type { GitlabApiReader } from './forge-inbox-gitlab-api-client'
+import { createGitlabApiReader, type GitlabApiReader } from './forge-inbox-gitlab-api-client'
 import type { GitlabTreeEntry } from './forge-inbox-gitlab-api-schemas'
+import { createForgeGitBlob } from './forge-inbox-git-objects'
 import { createGitlabPatchSource } from './forge-inbox-gitlab-patch-source'
+import {
+  buildForgePatchDraft,
+  FORGE_PATCH_MAX_FILE_BYTES,
+  sha256OfContent
+} from './forge-inbox-patch-draft'
+import { applyForgePatchInIsolation } from './forge-inbox-patch-tree'
 
 const REF = 'a'.repeat(40)
 
-function entry(overrides: Partial<GitlabTreeEntry> & { path: string }): GitlabTreeEntry {
+function entry(
+  overrides: Partial<GitlabTreeEntry> & { path: string },
+  content = 'old\n'
+): GitlabTreeEntry {
   return {
-    id: `id-${overrides.path}`,
+    id: createForgeGitBlob(content).oid,
     name: overrides.path,
     type: 'blob',
     mode: '100644',
@@ -45,7 +58,7 @@ describe('forge patch gitlab source', () => {
   })
 
   it('caches one tree listing for every path it is asked about', async () => {
-    const reader = readerWith([entry({ path: 'a.ts' }), entry({ path: 'b.ts' })], {
+    const reader = readerWith([entry({ path: 'a.ts' }, 'a\n'), entry({ path: 'b.ts' }, 'b\n')], {
       'a.ts': 'a\n',
       'b.ts': 'b\n'
     })
@@ -87,6 +100,196 @@ describe('forge patch gitlab source', () => {
     await expect(binary.readPath('a.ts')).resolves.toEqual({ kind: 'unsupported', why: 'binary' })
     await expect(large.readPath('a.ts')).resolves.toEqual({ kind: 'unsupported', why: 'too-large' })
   })
+
+  it('refuses content whose canonical Git blob id differs from the pinned tree', async () => {
+    const source = createGitlabPatchSource({
+      reader: readerWith(
+        [entry({ path: 'a.txt', id: 'ce013625030ba8dba906f756967f9e9ca394464a' })],
+        {
+          'a.txt': 'jello\n'
+        }
+      ),
+      ref: REF
+    })
+
+    await expect(source.readPath('a.txt')).resolves.toEqual({ kind: 'unavailable' })
+  })
+
+  it('materializes nothing when the raw blob differs from the pinned tree despite an approved content hash', async () => {
+    const source = createGitlabPatchSource({
+      reader: readerWith(
+        [entry({ path: 'z-existing.txt', id: 'ce013625030ba8dba906f756967f9e9ca394464a' })],
+        { 'z-existing.txt': 'jello\n' }
+      ),
+      ref: REF
+    })
+    const draft = buildForgePatchDraft({
+      target: { instanceId: 'gitlab-main', projectId: '42' },
+      baseSha: REF,
+      branch: 'main',
+      operations: [
+        {
+          op: 'create',
+          path: 'a-created.txt',
+          content: 'created\n',
+          resultSha256: sha256OfContent('created\n')
+        },
+        {
+          op: 'update',
+          path: 'z-existing.txt',
+          baseSha256: sha256OfContent('jello\n'),
+          content: 'updated\n',
+          resultSha256: sha256OfContent('updated\n')
+        }
+      ]
+    })
+    if (!draft.ok) {
+      throw new Error(`draft rejected: ${draft.reason}`)
+    }
+    const parentDirectory = mkdtempSync(join(tmpdir(), 'forge-source-exactness-'))
+    try {
+      const result = await applyForgePatchInIsolation({ source, parentDirectory }, draft.draft)
+
+      expect(readdirSync(parentDirectory)).toEqual([])
+      expect(result).toEqual({ ok: false, reason: 'source-unavailable' })
+    } finally {
+      rmSync(parentDirectory, { recursive: true, force: true })
+    }
+  })
+
+  it('accepts a literal replacement character when its UTF-8 bytes match the tree', async () => {
+    const content = '�\n'
+    const source = createGitlabPatchSource({
+      reader: readerWith([entry({ path: 'a.txt' }, content)], { 'a.txt': content }),
+      ref: REF
+    })
+
+    await expect(source.readPath('a.txt')).resolves.toEqual({ kind: 'file', content })
+  })
+
+  it.each(['100600', '040000', '', '100644 '])(
+    'refuses unsupported blob mode %j before fetching content',
+    async (mode) => {
+      const reader = readerWith([entry({ path: 'a.txt', mode })], { 'a.txt': 'old\n' })
+      const source = createGitlabPatchSource({ reader, ref: REF })
+
+      await expect(source.readPath('a.txt')).resolves.toEqual({
+        kind: 'unsupported',
+        why: 'non-blob'
+      })
+      expect(reader.getRepositoryFile).not.toHaveBeenCalled()
+    }
+  )
+
+  it.each(['not-an-oid', 'A'.repeat(40), 'a'.repeat(64)])(
+    'refuses an unsupported tree object id %j before fetching content',
+    async (id) => {
+      const reader = readerWith([entry({ path: 'a.txt', id })], { 'a.txt': 'old\n' })
+      const source = createGitlabPatchSource({ reader, ref: REF })
+
+      await expect(source.readPath('a.txt')).resolves.toEqual({ kind: 'unavailable' })
+      expect(reader.getRepositoryFile).not.toHaveBeenCalled()
+    }
+  )
+
+  it('does not accept an incomplete blob read even when its content hashes to the tree id', async () => {
+    const reader = readerWith([entry({ path: 'a.txt' })])
+    reader.getRepositoryFile = async () => ({ ok: true, data: 'old\n', complete: false })
+    const source = createGitlabPatchSource({ reader, ref: REF })
+
+    await expect(source.readPath('a.txt')).resolves.toEqual({ kind: 'unavailable' })
+  })
+
+  it.each(['main', 'A'.repeat(40), 'a'.repeat(64)])(
+    'refuses an unpinned or unsupported base %j before reading',
+    async (ref) => {
+      const reader = readerWith([])
+      const source = createGitlabPatchSource({ reader, ref })
+
+      await expect(source.readPath('a.txt')).resolves.toEqual({ kind: 'unavailable' })
+      expect(reader.listRepositoryTree).not.toHaveBeenCalled()
+    }
+  )
+
+  it.each(['../a.txt', '/a.txt', 'a\\b.txt', 'a/../b.txt', '.git/config', ''])(
+    'refuses an unsafe path %j before reading',
+    async (path) => {
+      const reader = readerWith([])
+      const source = createGitlabPatchSource({ reader, ref: REF })
+
+      await expect(source.readPath(path)).resolves.toEqual({ kind: 'unavailable' })
+      expect(reader.listRepositoryTree).not.toHaveBeenCalled()
+    }
+  )
+
+  it('refuses strings that cannot roundtrip as UTF-8 even when their replacement blob id matches', async () => {
+    const content = String.fromCharCode(0xd800)
+    const source = createGitlabPatchSource({
+      reader: readerWith([entry({ path: 'a.txt' }, content)], { 'a.txt': content }),
+      ref: REF
+    })
+
+    await expect(source.readPath('a.txt')).resolves.toEqual({
+      kind: 'unsupported',
+      why: 'binary'
+    })
+  })
+
+  it.each(['100644', '100755'])(
+    'accepts verified UTF-8 at the exact file byte limit with mode %s',
+    async (mode) => {
+      const content = 'é'.repeat(FORGE_PATCH_MAX_FILE_BYTES / 2)
+      const source = createGitlabPatchSource({
+        reader: readerWith([entry({ path: 'a.txt', mode }, content)], { 'a.txt': content }),
+        ref: REF
+      })
+
+      await expect(source.readPath('a.txt')).resolves.toEqual({ kind: 'file', content })
+    }
+  )
+
+  it.each([
+    ['BOM and CRLF', Buffer.from([0xef, 0xbb, 0xbf, 0x68, 0x69, 0x0d, 0x0a]), true],
+    ['malformed UTF-8', Buffer.from([0x80]), false],
+    ['different raw bytes', Buffer.from('jello\n'), false]
+  ] as const)(
+    'verifies %s through the real bounded GitLab reader',
+    async (_label, bytes, accepted) => {
+      const expected = _label === 'different raw bytes' ? 'hello\n' : bytes.toString('utf8')
+      const requests: URL[] = []
+      const script = [
+        new Response(JSON.stringify([entry({ path: 'a.txt' }, expected)])),
+        new Response(bytes)
+      ]
+      const reader = createGitlabApiReader(
+        {
+          http: {
+            fetch: async (url: string) => {
+              requests.push(new URL(url))
+              const response = script.shift()
+              if (response === undefined) {
+                throw new Error('unscripted request')
+              }
+              return response
+            }
+          },
+          readToken: () => 'read-token',
+          readConfigRevision: () => 1
+        },
+        { baseUrl: 'https://git.example.com', projectId: '42', expectedConfigRevision: 1 }
+      )
+      const source = createGitlabPatchSource({ reader, ref: REF })
+
+      await expect(source.readPath('a.txt')).resolves.toEqual(
+        accepted ? { kind: 'file', content: expected } : { kind: 'unavailable' }
+      )
+      expect(requests.map((url) => url.searchParams.get('ref'))).toEqual([REF, REF])
+      expect(requests.map((url) => url.pathname)).toEqual([
+        '/api/v4/projects/42/repository/tree',
+        '/api/v4/projects/42/repository/files/a.txt/raw'
+      ])
+    }
+  )
 
   it('treats an incomplete tree as unavailable rather than guessing absence', async () => {
     const source = createGitlabPatchSource({

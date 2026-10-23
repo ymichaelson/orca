@@ -18,6 +18,7 @@ function json(body: unknown, init: ResponseInit = {}): Response {
 function setup() {
   const requests: Request[] = []
   const script: Response[] = []
+  let revision = 1
   const reader = createGitlabApiReader(
     {
       http: {
@@ -31,11 +32,11 @@ function setup() {
         }
       },
       readToken: () => TOKEN,
-      readConfigRevision: () => 1
+      readConfigRevision: () => revision
     },
     { baseUrl: BASE_URL, projectId: '42', expectedConfigRevision: 1 }
   )
-  return { reader, requests, script }
+  return { reader, requests, script, bumpRevision: () => (revision += 1) }
 }
 
 function entry(path: string, overrides: Record<string, unknown> = {}) {
@@ -117,6 +118,115 @@ describe('gitlab repository reads', () => {
     expect(url.pathname).toBe('/gitlab/api/v4/projects/42/repository/files/src%2Fa%20b.ts/raw')
     expect(url.searchParams.get('ref')).toBe(REF)
     expect(requests[0]?.init.headers).toMatchObject({ Accept: 'text/plain' })
+  })
+
+  it.each([
+    ['a stray continuation byte', [0x80]],
+    ['an overlong sequence', [0xc0, 0xaf]],
+    ['an encoded surrogate', [0xed, 0xa0, 0x80]],
+    ['a truncated sequence', [0xe2, 0x82]],
+    ['a code point above Unicode', [0xf4, 0x90, 0x80, 0x80]]
+  ])('refuses raw bytes containing %s instead of replacing them', async (_label, bytes) => {
+    const { reader, script } = setup()
+    script.push(new Response(Uint8Array.from(bytes)))
+
+    await expect(reader.getRepositoryFile(REF, 'a.txt')).resolves.toEqual({
+      ok: false,
+      code: 'bad-response'
+    })
+  })
+
+  it.each(['', '﻿hello\r\n', 'é\r\n漢字 😀\n', '�\n'])(
+    'preserves every UTF-8 byte of %j',
+    async (content) => {
+      const { reader, script } = setup()
+      const bytes = Buffer.from(content, 'utf8')
+      script.push(
+        new Response(
+          new ReadableStream<Uint8Array>({
+            start(controller) {
+              for (const byte of bytes) {
+                controller.enqueue(Uint8Array.of(byte))
+              }
+              controller.close()
+            }
+          })
+        )
+      )
+
+      const result = await reader.getRepositoryFile(REF, 'a.txt')
+
+      expect(result).toEqual({ ok: true, complete: true, data: content })
+      if (!result.ok) {
+        throw new Error('expected exact text')
+      }
+      expect(Buffer.from(result.data, 'utf8')).toEqual(bytes)
+    }
+  )
+
+  it('retains the raw response byte limit and cancels an oversized stream', async () => {
+    const { reader, script } = setup()
+    let cancelled = false
+    script.push(
+      new Response(
+        new ReadableStream<Uint8Array>({
+          pull(controller) {
+            controller.enqueue(new Uint8Array(1024 * 1024))
+          },
+          cancel() {
+            cancelled = true
+          }
+        }),
+        { headers: { 'content-length': '1' } }
+      )
+    )
+
+    await expect(reader.getRepositoryFile(REF, 'a.txt')).resolves.toEqual({
+      ok: false,
+      code: 'too-large'
+    })
+    expect(cancelled).toBe(true)
+  })
+
+  it('keeps a failed raw body read retryable instead of calling it invalid UTF-8', async () => {
+    const { reader, script } = setup()
+    script.push(
+      new Response(
+        new ReadableStream<Uint8Array>({
+          start(controller) {
+            controller.error(new Error('connection reset'))
+          }
+        })
+      )
+    )
+
+    await expect(reader.getRepositoryFile(REF, 'a.txt')).resolves.toEqual({
+      ok: false,
+      code: 'network'
+    })
+  })
+
+  it('discards exact raw content when config changes during the body read', async () => {
+    const { reader, script, bumpRevision } = setup()
+    script.push(
+      new Response(
+        new ReadableStream<Uint8Array>(
+          {
+            pull(controller) {
+              bumpRevision()
+              controller.enqueue(Buffer.from('hello\n'))
+              controller.close()
+            }
+          },
+          { highWaterMark: 0 }
+        )
+      )
+    )
+
+    await expect(reader.getRepositoryFile(REF, 'a.txt')).resolves.toEqual({
+      ok: false,
+      code: 'stale-config'
+    })
   })
 
   it('maps a missing file and an invalid ref to failures without a request', async () => {
