@@ -14,9 +14,8 @@ import {
   type SubscribeNativeChatTranscriptArgs
 } from '../native-chat/transcript-watch'
 import { abortWhenRendererGone } from './renderer-lifetime-abort'
-import { agentHookServer } from '../agent-hooks/server'
-import { nativeChatTranscriptPathOnExecutionHost } from '../native-chat/ssh-transcript-path'
 import { getStructuredAgentSessionHost } from '../native-chat/agent-session-wire/structured-agent-session-registry'
+import { resolveNativeChatTranscriptRead } from './native-chat-protected-transcript'
 
 // Re-export so existing test imports of `clearNativeChatTranscriptCache` from
 // this module keep working after the cache moved to transcript-read-cache.ts.
@@ -40,16 +39,11 @@ async function readSession(args: NativeChatReadSessionArgs): Promise<ReadTranscr
   const { agent, sessionId } = args
   // Clamp to a positive window; default to the desktop window for the first page.
   const limit = args.limit && args.limit > 0 ? Math.floor(args.limit) : DESKTOP_READ_WINDOW
-  return readNativeChatTranscriptTail({
-    agent,
-    sessionId,
-    transcriptPath: nativeChatTranscriptPathOnExecutionHost(
-      agentHookServer.getStatusSnapshot(),
-      sessionId,
-      args.transcriptPath
-    ),
-    limit
-  })
+  const { transcriptPath, refusal } = resolveNativeChatTranscriptRead(args)
+  if (refusal !== null) {
+    return { error: refusal }
+  }
+  return readNativeChatTranscriptTail({ agent, sessionId, transcriptPath, limit })
 }
 
 export type NativeChatSubscribeArgs = {
@@ -189,8 +183,21 @@ async function handleSubscribe(event: IpcMainEvent, args: NativeChatSubscribeArg
   if (sender.isDestroyed()) {
     return
   }
-  const { subscriptionId, agent, sessionId, transcriptPath } = args
+  const { subscriptionId, agent, sessionId } = args
   const limit = args.limit && args.limit > 0 ? Math.floor(args.limit) : DESKTOP_READ_WINDOW
+  const { transcriptPath, refusal } = resolveNativeChatTranscriptRead(args)
+  if (refusal !== null) {
+    sender.send('nativeChat:appended', {
+      subscriptionId,
+      frame: {
+        type: 'snapshot',
+        messages: [],
+        hasMore: false,
+        error: refusal
+      }
+    } satisfies NativeChatAppendedPayload)
+    return
+  }
   // Replace any prior subscription under the same id (session change/resubscribe).
   const pending = beginPendingSubscription(sender.id, subscriptionId)
   const rendererSignal = registerSenderCleanup(sender)
@@ -200,11 +207,7 @@ async function handleSubscribe(event: IpcMainEvent, args: NativeChatSubscribeArg
   const subscribeArgs: SubscribeNativeChatTranscriptArgs = {
     agent,
     sessionId,
-    transcriptPath: nativeChatTranscriptPathOnExecutionHost(
-      agentHookServer.getStatusSnapshot(),
-      sessionId,
-      transcriptPath
-    ),
+    transcriptPath,
     initialLimit: limit,
     onTranscriptPending: () => {
       if (!canPublish()) {

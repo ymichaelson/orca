@@ -9,6 +9,8 @@ export type StructuredProviderSessionOwnership = {
   providerSessionId: string
   conversationName?: string
   lease: AgentSessionLease
+  /** Forge analysis, whose transcript no reader may be handed unless it renders inertly. */
+  protected: boolean
 }
 
 /** Which chat owns each conversation, under the Session History row id its agent's registration
@@ -25,7 +27,8 @@ export function listStructuredProviderSessionOwnership(
           provider: record.provider,
           providerSessionId: history.rowSessionId(link),
           conversationName: record.conversationName,
-          lease: record.lease
+          lease: record.lease,
+          protected: record.protectedAnalysis !== undefined
         }))
       : []
   })

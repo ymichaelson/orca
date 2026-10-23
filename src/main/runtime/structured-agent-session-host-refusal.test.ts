@@ -8,7 +8,7 @@ import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { isAgentSessionRefusalError } from '../../shared/agent-session-wire-refusals'
-import { JOURNAL_DB_SCHEMA_VERSION } from '../native-chat/agent-session-journal/journal-database-schema'
+import { JOURNAL_DB_SUPPORTED_VERSION } from '../native-chat/agent-session-journal/journal-database-schema'
 import {
   JournalHostDatabase,
   journalDatabasePath
@@ -137,7 +137,7 @@ describe('a process whose journal will not open', () => {
   it('installs over a database a newer Orca wrote, and leaves it byte-identical', async () => {
     const path = journalDatabasePath(root)
     const seeded = new Database(path)
-    seeded.pragma(`user_version = ${JOURNAL_DB_SCHEMA_VERSION + 1}`)
+    seeded.pragma(`user_version = ${JOURNAL_DB_SUPPORTED_VERSION + 1}`)
     seeded.close()
     const before = await digest(path)
 

@@ -1,5 +1,6 @@
 import type { AgentSessionRecord } from '../../../shared/agent-session-record'
 import type { AgentSessionStatusSummary } from '../../../shared/agent-session-wire'
+import type { StructuredAgentSessionStatusProjection } from '../../../shared/structured-agent-session-projection'
 import { normalizeOptionalField } from '../../../shared/agent-status-field-normalization'
 import { AGENT_MODEL_MAX_LENGTH } from '../../../shared/agent-status-types'
 import type { AgentSessionJournal } from '../agent-session-journal/journal-store'
@@ -58,7 +59,10 @@ export function structuredAgentSessionStatusSummary({
         }
       : {}),
     ...(session.restartResume ? { restartResume: { phase: session.restartResume.phase } } : {}),
-    ...projected,
+    ...(record?.protectedAnalysis ? contentFreeStatusSummary(projected) : projected),
+    // Named apart from the content above: a reader that draws this chat needs to know to do it
+    // inertly, and the marker itself is what lets it.
+    ...(record?.protectedAnalysis ? { protectedAnalysis: true as const } : {}),
     // Only a working session is still being stopped; any other status already ended that work.
     ...(stopping && projected.status === 'working' ? { stopping: true as const } : {}),
     ...(record?.rewind?.phase === 'prepared' || record?.rewind?.phase === 'provider-succeeded'
@@ -73,6 +77,21 @@ export function structuredAgentSessionStatusSummary({
     ...(typeof record?.sleptAt === 'number' ? { sleptAt: record.sleptAt } : {}),
     updatedAt: journal.lastActivityAt() || now()
   }
+}
+
+/** A protected analysis's prompt, tool input and reply are untrusted MR text, and a summary fans
+ *  out to readers (session lists, worktree.ps, mobile attention) that draw no inert content. */
+function contentFreeStatusSummary(
+  projected: StructuredAgentSessionStatusProjection
+): StructuredAgentSessionStatusProjection {
+  const {
+    latestPrompt: _prompt,
+    toolName: _toolName,
+    toolInput: _toolInput,
+    lastAssistantMessage: _reply,
+    ...rest
+  } = projected
+  return { ...rest, latestPrompt: '' }
 }
 
 /** The record's name, and the failure to replace it only while that is still the name. */

@@ -20,6 +20,9 @@ export type NativeChatWebLinkDeps = {
   /** Off: a plain click opens the routed destination outright, as it did before actions existed. */
   actionsEnabled: boolean
   plainClickBehavior?: TerminalLinkClickBehavior
+  /** Untrusted text: every activation names its destination first — modifiers and the
+   *  open-directly setting included. */
+  confirmEveryActivation?: boolean
   restoreFocus: () => void
   request: (request: LinkActionRequest) => void
 }
@@ -56,7 +59,23 @@ export function handleNativeChatWebLink(
 ): boolean {
   const open = (destination: HttpLinkDestination | undefined): void =>
     openNativeChatWebLink(url, deps, destination)
+  const requestDestination = (): void => {
+    const keyboardAnchor = event.detail === 0 ? event.currentTarget?.getBoundingClientRect() : null
+    deps.request({
+      anchorX: keyboardAnchor?.left ?? event.clientX,
+      anchorY: keyboardAnchor?.bottom ?? event.clientY,
+      destination: url,
+      kind: 'url',
+      restoreFocus: deps.restoreFocus,
+      ...buildHttpLinkActions(deps.destinations, open)
+    })
+  }
 
+  if (deps.confirmEveryActivation) {
+    event.preventDefault()
+    requestDestination()
+    return true
+  }
   if (isTerminalLinkDirectActivation(event)) {
     event.preventDefault()
     open(
@@ -79,14 +98,6 @@ export function handleNativeChatWebLink(
     return true
   }
   event.preventDefault()
-  const keyboardAnchor = event.detail === 0 ? event.currentTarget?.getBoundingClientRect() : null
-  deps.request({
-    anchorX: keyboardAnchor?.left ?? event.clientX,
-    anchorY: keyboardAnchor?.bottom ?? event.clientY,
-    destination: url,
-    kind: 'url',
-    restoreFocus: deps.restoreFocus,
-    ...buildHttpLinkActions(deps.destinations, open)
-  })
+  requestDestination()
   return true
 }

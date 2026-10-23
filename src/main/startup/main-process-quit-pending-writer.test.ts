@@ -1,6 +1,7 @@
 import { EventEmitter } from 'node:events'
 import { afterEach, expect, it, vi } from 'vitest'
 import { WILL_QUIT_TEARDOWN_DEADLINE_MS } from '../quit-teardown-deadline'
+import { FORGE_INBOX_STOP_DEADLINE_MS } from './main-process-forge-inbox-stop'
 
 const settled = () => vi.fn(async () => {})
 const idle = () => vi.fn()
@@ -139,6 +140,7 @@ it('writes a pane grid still inside its write burst before the final flush', asy
       disposeSkillUploadSessions: settled(),
       getRuntimeId: () => undefined,
       closeNotificationDismissals: settled(),
+      stopForgeInboxService: settled(),
       flushPaneGrids: () => paneGrids.promise
     }
   })
@@ -196,6 +198,7 @@ it.each([
         disposeSkillUploadSessions: settled(),
         getRuntimeId: () => undefined,
         closeNotificationDismissals,
+        stopForgeInboxService: settled(),
         flushPaneGrids: () => null
       },
       runtimeRpc: { setMobileRelayPairingProvider: idle(), stop: vi.fn(() => rpcStop.promise) }
@@ -217,3 +220,54 @@ it.each([
     expect(app.quit).toHaveBeenCalledOnce()
   }
 )
+
+const quitRuntime = (stopForgeInboxService: () => Promise<void>) => ({
+  getOffscreenBrowserBackend: () => null,
+  getAgentBrowserBridge: () => null,
+  getEmulatorBridge: () => null,
+  disposeSkillUploadSessions: settled(),
+  getRuntimeId: () => undefined,
+  closeNotificationDismissals: settled(),
+  flushPaneGrids: () => null,
+  stopForgeInboxService
+})
+
+it('releases admission only after the forge inbox service has stopped', async () => {
+  const forgeStop = Promise.withResolvers<void>()
+  const { app, admission, store } = await startQuit(async () => {}, {
+    runtime: quitRuntime(() => forgeStop.promise)
+  })
+  await vi.advanceTimersByTimeAsync(0)
+  expect(store.freezeWritesAsync).toHaveBeenCalledOnce()
+  expect(admission.release).not.toHaveBeenCalled()
+  expect(app.quit).not.toHaveBeenCalled()
+
+  forgeStop.resolve()
+  await vi.advanceTimersByTimeAsync(0)
+  expect(admission.release).toHaveBeenCalledOnce()
+  expect(app.quit).toHaveBeenCalledOnce()
+})
+
+it('still releases admission and quits when the forge inbox service fails to stop', async () => {
+  const error = vi.spyOn(console, 'error').mockImplementation(() => {})
+  const { app, admission } = await startQuit(async () => {}, {
+    runtime: quitRuntime(() => Promise.reject(new Error('stop failed')))
+  })
+  await vi.advanceTimersByTimeAsync(0)
+  expect(admission.release).toHaveBeenCalledOnce()
+  expect(app.quit).toHaveBeenCalledOnce()
+  expect(error).toHaveBeenCalled()
+})
+
+it('releases admission and quits even when the forge inbox stop never settles', async () => {
+  const error = vi.spyOn(console, 'error').mockImplementation(() => {})
+  const { app, admission } = await startQuit(async () => {}, {
+    runtime: quitRuntime(() => new Promise<void>(() => {}))
+  })
+  await vi.advanceTimersByTimeAsync(FORGE_INBOX_STOP_DEADLINE_MS - 1)
+  expect(admission.release).not.toHaveBeenCalled()
+  await vi.advanceTimersByTimeAsync(1)
+  expect(admission.release).toHaveBeenCalledOnce()
+  expect(app.quit).toHaveBeenCalledOnce()
+  expect(error).toHaveBeenCalledWith('[forge-inbox] stop timed out')
+})

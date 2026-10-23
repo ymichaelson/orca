@@ -29,7 +29,8 @@ export const OPENS_EVERY_STRUCTURED_CHAT: StructuredChatOpener = () => true
 
 export function projectStructuredAiVaultSessions(
   result: AiVaultListResult,
-  opensChat: StructuredChatOpener
+  opensChat: StructuredChatOpener,
+  readsProtected = false
 ): AiVaultListResult {
   const owner = ownershipLookup()
   if (!owner) {
@@ -40,7 +41,7 @@ export function projectStructuredAiVaultSessions(
     if (!ownership) {
       return [session]
     }
-    if (!opensChat(ownership.provider)) {
+    if (!rowIsReadable(ownership, opensChat, readsProtected)) {
       return []
     }
     return [{ ...session, ...ownedRow(session.agent, ownership) }]
@@ -55,7 +56,8 @@ export function projectStructuredAiVaultSessions(
  *  An owned hit opens its chat, so it carries no terminal resume command. */
 export function projectStructuredAiVaultSearchResponse(
   response: AiVaultSearchResponse,
-  opensChat: StructuredChatOpener
+  opensChat: StructuredChatOpener,
+  readsProtected = false
 ): AiVaultSearchResponse {
   const owner = response.kind === 'results' ? ownershipLookup() : null
   if (!owner || response.kind !== 'results') {
@@ -68,7 +70,7 @@ export function projectStructuredAiVaultSearchResponse(
       if (!ownership) {
         return [hit]
       }
-      if (!opensChat(ownership.provider)) {
+      if (!rowIsReadable(ownership, opensChat, readsProtected)) {
         return []
       }
       const { resumeCommand: _resumeCommand, ...owned } = hit
@@ -84,6 +86,7 @@ export async function searchWithStructuredOwners(
   options: {
     ensureHost?: (() => Promise<unknown>) | undefined
     opensChat: StructuredChatOpener
+    readsProtected?: boolean | undefined
   }
 ): Promise<AiVaultSearchResponse> {
   const { ensureHost } = options
@@ -98,8 +101,18 @@ export async function searchWithStructuredOwners(
     : true
   const response = await search
   return (await hostReady)
-    ? projectStructuredAiVaultSearchResponse(response, options.opensChat)
+    ? projectStructuredAiVaultSearchResponse(response, options.opensChat, options.readsProtected)
     : response
+}
+
+/** The row or hit of a chat the reader may see: one it can open, and, when protected, one whose
+ *  text it promises to draw inertly. */
+function rowIsReadable(
+  ownership: StructuredProviderSessionOwnership,
+  opensChat: StructuredChatOpener,
+  readsProtected: boolean
+): boolean {
+  return opensChat(ownership.provider) && (readsProtected || !ownership.protected)
 }
 
 function ownedRow(rowAgent: string, ownership: StructuredProviderSessionOwnership) {
@@ -184,9 +197,22 @@ export async function assertLegacyAiVaultResumeCommandAllowed(
   }
 }
 
+/** The row a legacy reader names. Its `agent` is whatever that reader's own params allow: an id
+ *  no structured agent owns simply answers no ownership. */
+type LegacyTranscriptRow = Omit<
+  Pick<AiVaultPrepareSessionResumeArgs, 'agent' | 'sessionId' | 'filePath'>,
+  'agent'
+> & { agent: string }
+
+/** Whether a protected analysis owns the transcript row a legacy read names. Its title and its
+ *  first prompt are transcript text under another name, so a reader that got no row gets neither. */
+export function legacyTranscriptRowIsProtected(args: LegacyTranscriptRow): boolean {
+  return findResumeOwnership(args)?.protected === true
+}
+
 /** The chat that owns the row a resume or fork names; null when none does. */
 export function findResumeOwnership(
-  args: Pick<AiVaultPrepareSessionResumeArgs, 'agent' | 'sessionId' | 'filePath'>
+  args: LegacyTranscriptRow
 ): StructuredProviderSessionOwnership | null {
   const owners = new Set(historyRowOwners(args.agent))
   if (owners.size === 0) {

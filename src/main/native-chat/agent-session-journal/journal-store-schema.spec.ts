@@ -17,7 +17,7 @@ import type {
   AgentSessionJournalIdentity
 } from '../../../shared/agent-session-journal-types'
 import type Database from '../../sqlite/sync-database'
-import { JOURNAL_DB_SCHEMA_VERSION } from './journal-database-schema'
+import { JOURNAL_DB_SCHEMA_VERSION, JOURNAL_DB_SUPPORTED_VERSION } from './journal-database-schema'
 import { journalDatabasePath } from './journal-host-database'
 import type { AgentSessionJournal } from './journal-store'
 import {
@@ -121,7 +121,7 @@ export function registerJournalStoreSchemaTests(): void {
         turnScope: AGENT_JOURNAL_THREAD_SCOPE
       })
       await journal.close()
-      await withDatabase((db) => db.pragma(`user_version = ${JOURNAL_DB_SCHEMA_VERSION + 1}`))
+      await withDatabase((db) => db.pragma(`user_version = ${JOURNAL_DB_SUPPORTED_VERSION + 1}`))
       const before = await digest(journalDatabasePath(root))
 
       await expect(open()).rejects.toMatchObject(SAVED_BY_NEWER_ORCA)
@@ -143,7 +143,7 @@ export function registerJournalStoreSchemaTests(): void {
       await journal.close()
       await withDatabase((db) => {
         db.exec('ALTER TABLE journal_sessions RENAME TO journal_sessions_v4')
-        db.pragma(`user_version = ${JOURNAL_DB_SCHEMA_VERSION + 1}`)
+        db.pragma(`user_version = ${JOURNAL_DB_SUPPORTED_VERSION + 1}`)
       })
 
       await expect(open()).rejects.toMatchObject(SAVED_BY_NEWER_ORCA)

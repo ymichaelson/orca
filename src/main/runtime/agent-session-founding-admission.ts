@@ -3,6 +3,11 @@ import {
   agentSessionRefusalError,
   isAgentSessionRefusalError
 } from '../../shared/agent-session-wire-refusals'
+import { isAgentSessionProtectedAnalysis } from '../../shared/agent-session-protected-analysis'
+import {
+  isProtectedClaudeRecordBinding,
+  type AgentSessionProtectionFields
+} from '../../shared/agent-session-protected-claude-launch'
 import { agentSessionOperationKey } from '../../shared/agent-session-operation-ledger'
 import { foundAgentSessionRecord } from './agent-session-record-founding'
 import {
@@ -17,11 +22,24 @@ import {
 import type { AgentSessionStoreState } from './agent-session-store-state'
 import { setAgentSessionTabVisibility } from './agent-session-tab-table'
 
+/** What host founding accepts; a reservation never carries the protection fields. */
+export type AgentSessionFoundingRequest = AgentSessionReserveRequest & AgentSessionProtectionFields
+
 /** The same create admission as a reservation, with no obligation to acquire an owner. */
 export function commitAgentSessionFounding(
   state: AgentSessionStoreState,
-  request: AgentSessionReserveRequest
+  request: AgentSessionFoundingRequest
 ): AgentSessionReserveResult {
+  if (
+    (request.protectedAnalysis !== undefined &&
+      !isAgentSessionProtectedAnalysis(request.protectedAnalysis)) ||
+    !isProtectedClaudeRecordBinding({
+      ...request,
+      schemaVersion: request.protectedAnalysis ? 3 : 2
+    })
+  ) {
+    throw new Error('agent_session_store_write_invalid')
+  }
   const decision = evaluateAgentSessionReserveOperation(state, request)
   if (decision.decision === 'refused') {
     throw agentSessionRefusalError(decision.code, decision.details)
@@ -70,6 +88,12 @@ export function commitAgentSessionFounding(
     agentSessionOperationKey(operationRow.callerKey, operationRow.operationId),
     operationRow
   )
-  setAgentSessionTabVisibility(state, request.sessionId, true, request.surfaceTabId)
+  // A protected analysis record is host-owned and never appears in the tab surface.
+  setAgentSessionTabVisibility(
+    state,
+    request.sessionId,
+    request.protectedAnalysis === undefined,
+    request.surfaceTabId
+  )
   return { record, disposition: 'created', operationRow }
 }

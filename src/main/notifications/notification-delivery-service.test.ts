@@ -17,6 +17,7 @@ function makeSettings(overrides: Partial<NotificationSettings> = {}): Notificati
     enabled: true,
     agentTaskComplete: true,
     terminalBell: true,
+    forgeInbox: true,
     suppressWhenFocused: false,
     customSoundId: 'system',
     customSoundPath: null,

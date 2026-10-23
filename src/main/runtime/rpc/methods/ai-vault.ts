@@ -29,6 +29,7 @@ import {
   clientOpensStructuredChatFromHistory,
   supportsStructuredAgentSessions
 } from './structured-agent-session-policy'
+import { clientReadsProtectedOutput } from './structured-agent-session-gate'
 import {
   AiVaultListSessionsParams,
   AiVaultPrepareSessionResumeParams,
@@ -47,7 +48,8 @@ export const AI_VAULT_METHODS = [
       return supportsStructuredAgentSessions(context)
         ? searchWithStructuredOwners(response, {
             ensureHost: () => context.runtime.ensureStructuredAgentSessionHost(),
-            opensChat: (agent) => clientOpensStructuredChatFromHistory(context, agent)
+            opensChat: (agent) => clientOpensStructuredChatFromHistory(context, agent),
+            readsProtected: clientReadsProtectedOutput(context)
           })
         : response
     }
@@ -115,8 +117,10 @@ export const AI_VAULT_METHODS = [
       }
       // Why: web clients consume this response directly (no parent-side retag),
       // so sessions must come back stamped as the runtime host they addressed.
-      const projected = projectStructuredAiVaultSessions(result, (agent) =>
-        clientOpensStructuredChatFromHistory({ clientKind, clientCapabilities }, agent)
+      const projected = projectStructuredAiVaultSessions(
+        result,
+        (agent) => clientOpensStructuredChatFromHistory({ clientKind, clientCapabilities }, agent),
+        clientReadsProtectedOutput({ clientKind, clientCapabilities })
       )
       return conditionalAiVaultListResult(
         params.executionHostId

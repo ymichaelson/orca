@@ -5,7 +5,10 @@
 
 import { restoreStructuredTabsIfSupported } from './structured-session-tab-restore'
 import { defineStreamingMethod, type RpcContext } from '../core'
-import { requireStructuredHost as requireHost } from './structured-agent-session-gate'
+import {
+  clientReadsProtectedSession,
+  requireStructuredHost as requireHost
+} from './structured-agent-session-gate'
 import { structuredAgentSessionStatusSubscriptionId } from './structured-agent-session-subscription-id'
 import { clientReadsStructuredSessionAgent } from './structured-agent-session-policy'
 
@@ -74,13 +77,16 @@ export const STRUCTURED_AGENT_SESSION_STATUS_METHODS = [
                     })
                   }
                 : {}),
-              sessions: event.sessions.filter((session) =>
-                clientReadsStructuredSessionAgent(ctx, session.agent)
+              sessions: event.sessions.filter(
+                (session) =>
+                  clientReadsStructuredSessionAgent(ctx, session.agent) &&
+                  clientReadsProtectedSession(ctx, host, session.sessionId)
               )
             })
           } else if (
             event.type !== 'status' ||
-            clientReadsStructuredSessionAgent(ctx, event.session.agent)
+            (clientReadsStructuredSessionAgent(ctx, event.session.agent) &&
+              clientReadsProtectedSession(ctx, host, event.session.sessionId))
           ) {
             emit(event)
           }

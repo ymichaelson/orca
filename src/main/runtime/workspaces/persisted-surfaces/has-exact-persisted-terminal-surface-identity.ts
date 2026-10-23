@@ -1,3 +1,4 @@
+import type { ForgeInboxOwnerService } from '../../../forge-inbox/forge-inbox-owner-service'
 import type { ExecutionHostId } from '../../../../shared/execution-host'
 import type { RuntimePtyWorktreeRecord } from '../../runtime-terminal-state-records'
 import { OrcaRuntimeWithRestoredTerminalPlacement } from './restored-terminal-placement'
@@ -224,6 +225,26 @@ export abstract class OrcaRuntimeWithHasExactPersistedTerminalSurfaceIdentity ex
 
   setAutomationService(service: AutomationService): void {
     this.automation.setService(service)
+  }
+
+  attachForgeInboxService(service: ForgeInboxOwnerService): void {
+    this.forgeInbox.attach(service)
+  }
+
+  forgeInboxServiceIfAttached(): ForgeInboxOwnerService | null {
+    return this.forgeInbox.serviceIfAttached()
+  }
+
+  forgeInboxService(): ForgeInboxOwnerService {
+    return this.forgeInbox.service()
+  }
+
+  stopForgeInboxService(): Promise<void> {
+    return this.forgeInbox.stopForgeInboxService()
+  }
+
+  forgeInboxKeepsHostBusy(): boolean {
+    return this.forgeInbox.keepsHostBusy()
   }
 
   releaseFinishedAutomationRunTerminals(): Promise<number> {

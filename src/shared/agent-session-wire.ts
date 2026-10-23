@@ -239,6 +239,9 @@ export type AgentSessionStatusSummary = {
     phase: 'queued' | 'starting' | 'continued' | 'refused' | 'unconfirmed' | 'skipped'
   }
   latestPrompt: string
+  /** A protected analysis, whose transcript text is untrusted: a renderer that draws it must block
+   *  remote media and raw HTML and ask before opening a link. Absent on ordinary sessions. */
+  protectedAnalysis?: true
   /** Provider model in force for the next turn; absent until the host has read the options. */
   model?: string
   /** The chat's saved permission mode; a client re-reads options when it or `model` moves. */

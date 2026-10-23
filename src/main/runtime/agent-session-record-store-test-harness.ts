@@ -12,7 +12,7 @@ import {
   isAgentSessionProviderHandle
 } from '../../shared/agent-session-provider-handle-encoding'
 import type { AgentSessionRecord } from '../../shared/agent-session-record'
-import { JOURNAL_DB_SCHEMA_VERSION } from '../native-chat/agent-session-journal/journal-database-schema'
+import { JOURNAL_DB_SUPPORTED_VERSION } from '../native-chat/agent-session-journal/journal-database-schema'
 import {
   closeTestJournalHostDatabase,
   openTestJournalHostDatabase
@@ -138,7 +138,7 @@ export async function seedTestAgentSessionStoreFromNewerBuild(
   stateDirectory: string
 ): Promise<void> {
   openTestJournalHostDatabase(stateDirectory).db.pragma(
-    `user_version = ${JOURNAL_DB_SCHEMA_VERSION + 1}`
+    `user_version = ${JOURNAL_DB_SUPPORTED_VERSION + 1}`
   )
   closeTestJournalHostDatabase(stateDirectory)
 }

@@ -32,6 +32,7 @@ import { cancelHistoryGc } from '../terminal-history-gc'
 import { shouldQuitWhenAllWindowsClosed } from './window-all-closed-quit-policy'
 import { mainProcessState as state } from './main-process-state'
 import { isDevParentShutdownRequested } from './configure-process'
+import { stopMainProcessForgeInbox } from './main-process-forge-inbox-stop'
 import { getCanonicalUserDataPath } from '../persistence'
 import { flushUnsavedCloudSessions } from '../orca-profiles/profile-cloud-session-owner'
 
@@ -210,6 +211,8 @@ function installWillQuitHandler(): void {
     browserManager.setBrowserGuestStateChangedListener(null)
     const emulatorShutdown =
       state.runtime?.getEmulatorBridge()?.destroyAllSessions() ?? Promise.resolve()
+    // Why before the profile release: the ledger lives in the profile directory and its worker must be joined first.
+    const forgeInboxShutdown = stopMainProcessForgeInbox()
     const finalStore = state.store
     const beginSshShutdownAndFinalSave = () => {
       // Why immediately before the final store flush with no await in between: beginSshShutdown() marks every
@@ -224,6 +227,7 @@ function installWillQuitHandler(): void {
         try {
           await finalStore.flushFinalOrThrowAsync()
           await finalStore.freezeWritesAsync()
+          await forgeInboxShutdown
           state.profileStateAdmission?.release()
           state.profileStateAdmission = undefined
         } catch (error) {
@@ -298,6 +302,7 @@ function installWillQuitHandler(): void {
       { name: 'usage-cache', promise: usageCacheFlush },
       { name: 'notification-dismissals', promise: notificationDismissalClose },
       { name: 'stats', promise: statsFlush },
+      { name: 'forge-inbox', promise: forgeInboxShutdown },
       { name: 'state', promise: storeFlush }
     ])
       .then((pendingTeardowns) => {

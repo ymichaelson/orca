@@ -35,6 +35,8 @@ export async function prewarmClaudeCliFlags(
       const record = deps.store.getRecord(sessionId)
       if (
         record?.provider === 'claude' &&
+        !record.protectedAnalysis &&
+        !record.protectedClaudeLaunch &&
         record.location.executionHostId === LOCAL_EXECUTION_HOST_ID &&
         record.location.wslDistro === null &&
         record.launchDirectory

@@ -10,7 +10,8 @@ import {
   createAgentSessionRecordTablesSql,
   createJournalTablesSql,
   JOURNAL_DB_OLDEST_RELEASED_VERSION,
-  JOURNAL_DB_SCHEMA_VERSION
+  JOURNAL_DB_SCHEMA_VERSION,
+  JOURNAL_DB_SUPPORTED_VERSION
 } from './journal-database-schema'
 import { JournalUnreleasedSchemaError } from './journal-open-failure'
 import { ensureQueuedMessagesTable } from './queued-message-schema'
@@ -61,7 +62,7 @@ export function openJournalDatabase(dbPath: string): OpenJournalDatabase {
     probe.close()
     throw error
   }
-  if (stored > JOURNAL_DB_SCHEMA_VERSION) {
+  if (stored > JOURNAL_DB_SUPPORTED_VERSION) {
     probe.close()
     return {
       db: new Database(dbPath, { readonly: true, fileMustExist: true }),

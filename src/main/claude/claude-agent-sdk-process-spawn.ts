@@ -2,6 +2,10 @@ import type { PipedChildProcess, PipedProcessSpawner } from '@orca/process-host/
 import type { SpawnOptions as ClaudeAgentSdkSpawnOptions } from '@anthropic-ai/claude-agent-sdk'
 import { spawnProcess } from '@orca/process-host'
 import {
+  sealProtectedClaudeSpawn,
+  type ProtectedClaudeProcessSeal
+} from './claude-protected-process-seal'
+import {
   spawnManagedProviderProcess,
   type ManagedProviderProcess
 } from '../provider-process/managed-provider-process'
@@ -44,7 +48,8 @@ function definedEnv(env: Record<string, string | undefined>): Record<string, str
  */
 export function createClaudeCodeProcessSpawn(
   spawnImpl: PipedProcessSpawner = spawnProcess,
-  platform: NodeJS.Platform = process.platform
+  platform: NodeJS.Platform = process.platform,
+  protectedSeal?: ProtectedClaudeProcessSeal
 ): ClaudeCodeProcessSpawn {
   let managed: ManagedProviderProcess | null = null
   return {
@@ -59,7 +64,9 @@ export function createClaudeCodeProcessSpawn(
         {
           spawnImpl,
           platform,
-          inheritedEnv: definedEnv(options.env),
+          inheritedEnv: protectedSeal
+            ? sealProtectedClaudeSpawn(options, protectedSeal)
+            : definedEnv(options.env),
           site: 'claude-stream-json-teardown',
           policy: (supervised) => claudeChildClosePolicy(supervised, platform),
           acceptClose: claudeChildCloseProven

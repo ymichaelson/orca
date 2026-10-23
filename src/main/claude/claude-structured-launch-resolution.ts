@@ -1,10 +1,12 @@
 import { activeProviderContext } from '../../shared/agent-session-provider-context'
+import {
+  refuseProtectedClaudeRecord,
+  type ClaudeProtectedLaunchField
+} from './claude-protected-launch-fields'
+import type { ClaudeStructuredSdkOptions } from './claude-structured-sdk-options'
 import { getClaudeProfileRouter } from '../claude-accounts/claude-profile-installed-router'
 import { requireLegacyAgentSessionAccountHome } from '../../shared/agent-session-account-home'
-import type {
-  Options as ClaudeAgentSdkOptions,
-  PermissionMode
-} from '@anthropic-ai/claude-agent-sdk'
+import type { PermissionMode } from '@anthropic-ai/claude-agent-sdk'
 import type { AgentChatPermissionMode } from '../../shared/agent-chat-permission-mode'
 import {
   agentSessionProviderHandleKey,
@@ -34,30 +36,11 @@ import {
   type AgentSessionRewindFork
 } from '../../shared/agent-session-rewind'
 
+export type { ClaudeStructuredSdkOptions }
 export { claudeSessionIdForOrcaSession }
 
 export const CLAUDE_DEFAULT_SETTING_SOURCES = ['user', 'project', 'local'] as const
 export const CLAUDE_SESSION_STATE_EVENTS_ENV = 'CLAUDE_CODE_EMIT_SESSION_STATE_EVENTS'
-
-export type ClaudeStructuredSdkOptions = Pick<
-  ClaudeAgentSdkOptions,
-  | 'includePartialMessages'
-  | 'systemPrompt'
-  | 'settingSources'
-  | 'supportedDialogKinds'
-  | 'extraArgs'
-  | 'additionalDirectories'
-  | 'plugins'
-  | 'model'
-  | 'effort'
-  | 'permissionMode'
-  | 'allowDangerouslySkipPermissions'
-  | 'settings'
-  | 'sessionId'
-  | 'resume'
-  | 'resumeSessionAt'
-  | 'forkSession'
->
 
 /**
  * The options translation of the flags this transport used to build by hand.
@@ -92,7 +75,7 @@ export function claudeStructuredPermissionOptions(
     : { permissionMode: CLAUDE_PERMISSION_MODES[mode] }
 }
 
-export type ClaudeStructuredLaunch = {
+export type ClaudeStructuredLaunch = ClaudeProtectedLaunchField & {
   /** Always Orca's resolved user CLI: the SDK's bundled binaries are excluded from the install. */
   pathToClaudeCodeExecutable: string
   account?: ClaudeStructuredInvocation['account']
@@ -169,6 +152,7 @@ export function claudeStructuredLaunchPart(
 ): StructuredAgentLaunchPartResolver<ClaudeStructuredLaunch> {
   return async (basis, identity) => {
     const { record } = basis
+    refuseProtectedClaudeRecord(record)
     const accountHome = requireLegacyAgentSessionAccountHome(record.accountHome)
     const router = getClaudeProfileRouter()
     // A Claude record's chain holds only Claude handles; the launch admission refuses anything else.

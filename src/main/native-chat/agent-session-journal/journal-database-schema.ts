@@ -12,6 +12,17 @@
  *  and its chats are refused as a newer Orca's, so every change stays additive. */
 export const JOURNAL_DB_SCHEMA_VERSION = 4
 
+/** The shape version a database is raised to by its first protected agent-session record. It is the
+ *  highest this build writes; a database stamped past it is opened read-only.
+ *
+ *  Deliberate cost: a build that only supports 4 refuses to replay or write ANY structured chat in
+ *  such a profile, ordinary chats included. This is a downgrade fence, not an OS sandbox: raw
+ *  provider transcript files stay readable by the OS user. */
+export const JOURNAL_DB_PROTECTED_RECORD_VERSION = 5
+
+/** Past this a database is a newer build's. Opening still migrates only to `JOURNAL_DB_SCHEMA_VERSION`. */
+export const JOURNAL_DB_SUPPORTED_VERSION = JOURNAL_DB_PROTECTED_RECORD_VERSION
+
 /** The first version a release wrote; 1 and 2 only ever came from development builds. */
 export const JOURNAL_DB_OLDEST_RELEASED_VERSION = 3
 

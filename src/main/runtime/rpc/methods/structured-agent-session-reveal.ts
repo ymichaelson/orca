@@ -20,6 +20,7 @@ import { defineMethod } from '../core'
 import {
   ensureStructuredHostInstalled,
   requireStructuredCapability,
+  requireProtectedOutputReader,
   requireStructuredAgentAudience,
   requireStructuredHost
 } from './structured-agent-session-gate'
@@ -37,6 +38,7 @@ export const STRUCTURED_AGENT_SESSION_REVEAL_METHODS = [
       try {
         const host = requireStructuredHost(ctx)
         requireStructuredAgentAudience(ctx, host.sessionAgent(params.sessionId) ?? '')
+        requireProtectedOutputReader(ctx, host, params.sessionId)
         revealed = await host.revealSession(params.sessionId)
       } catch (error) {
         // The host raises its refusal as the code itself; anything else is a genuine fault and

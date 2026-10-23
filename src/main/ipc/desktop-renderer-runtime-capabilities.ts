@@ -1,4 +1,5 @@
 import { AGENT_SESSION_CURRENT_REQUESTS_CLIENT_CAPABILITY } from '../../shared/agent-session-current-requests-capability'
+import { AGENT_SESSION_PROTECTED_OUTPUT_CLIENT_CAPABILITY } from '../../shared/agent-session-protected-output-capability'
 import {
   AGENT_SESSION_ACCEPTED_SEND_RUNTIME_CAPABILITY,
   AGENT_SESSION_BACKGROUND_TASK_ROW_STOP_CAPABILITY,
@@ -69,5 +70,7 @@ export const DESKTOP_RENDERER_RUNTIME_CLIENT_CAPABILITIES: readonly RuntimeCapab
   // on, rather than as unknown, which it would report as a failure.
   AGENT_LAUNCH_TAB_CLOSED_CLIENT_CAPABILITY,
   // Same build as its host, so it reads every quick-command prompt the host stores.
-  TERMINAL_QUICK_COMMAND_LONG_PROMPTS_RUNTIME_CAPABILITY
+  TERMINAL_QUICK_COMMAND_LONG_PROMPTS_RUNTIME_CAPABILITY,
+  // Its transcript and the Inbox draw a protected analysis inertly, so it may read one.
+  AGENT_SESSION_PROTECTED_OUTPUT_CLIENT_CAPABILITY
 ] as const

@@ -33,6 +33,7 @@ type OrcadIdleExitRuntimePorts = {
   agentStates: () => readonly { state: string }[]
   hasStagedMigration: () => boolean
   automationsBusy: () => boolean
+  forgeInboxBusy: () => boolean
   /** Shutdown stops the monitor first, so a signal stop is never recorded as an idle one. */
   registerCleanup: (cleanup: () => void) => void
 }
@@ -84,6 +85,7 @@ async function startOrcadManagedIdleExit(
     hasChatProviders,
     hasStagedMigration: input.hasStagedMigration,
     automationsBusy: input.automationsBusy,
+    forgeInboxBusy: input.forgeInboxBusy,
     activationFenceExists
   }
   // Work that an exit would end; clients and terminals are excluded, as the stop already weighed them.

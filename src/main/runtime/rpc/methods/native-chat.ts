@@ -18,6 +18,8 @@ import {
   NativeChatSession,
   NativeChatUnsubscribe
 } from '../../../../shared/rpc-contract/native-chat-params'
+import { PROTECTED_TRANSCRIPT_REFUSAL } from '../../../../shared/agent-session-protected-output-capability'
+import { legacyTranscriptRowIsProtected } from '../../../ai-vault/structured-session-ownership'
 
 // Why: a long agent session can hold thousands of turns (with full tool I/O).
 // Shipping all of them over the paired connection and rendering them at once
@@ -81,15 +83,27 @@ export const NATIVE_CHAT_METHODS = [
     params: NativeChatSession,
     handler: async (params, { runtime, clientKind, signal }) => {
       const limit = params.limit ?? MOBILE_NATIVE_CHAT_DEFAULT_WINDOW
+      const transcriptPath = nativeChatTranscriptPathOnExecutionHost(
+        runtime.getAgentProviderSessionRows(),
+        params.sessionId,
+        params.transcriptPath
+      )
+      // Why: this reader hands raw transcript text to any paired client that asks, which is
+      // not the inert rendering a protected analysis requires.
+      if (
+        legacyTranscriptRowIsProtected({
+          agent: params.agent,
+          sessionId: params.sessionId,
+          filePath: transcriptPath ?? ''
+        })
+      ) {
+        return { error: PROTECTED_TRANSCRIPT_REFUSAL }
+      }
       const result = await readNativeChatTranscriptTail(
         {
           agent: params.agent,
           sessionId: params.sessionId,
-          transcriptPath: nativeChatTranscriptPathOnExecutionHost(
-            runtime.getAgentProviderSessionRows(),
-            params.sessionId,
-            params.transcriptPath
-          ),
+          transcriptPath,
           limit,
           beforeOffset: params.beforeOffset
         },
@@ -116,6 +130,26 @@ export const NATIVE_CHAT_METHODS = [
     params: NativeChatSession,
     handler: async (params, { runtime, connectionId, clientKind, signal }, emit) => {
       if (signal?.aborted) {
+        return
+      }
+      const transcriptPath = nativeChatTranscriptPathOnExecutionHost(
+        runtime.getAgentProviderSessionRows(),
+        params.sessionId,
+        params.transcriptPath
+      )
+      if (
+        legacyTranscriptRowIsProtected({
+          agent: params.agent,
+          sessionId: params.sessionId,
+          filePath: transcriptPath ?? ''
+        })
+      ) {
+        emit({
+          type: 'snapshot',
+          messages: [],
+          hasMore: false,
+          error: PROTECTED_TRANSCRIPT_REFUSAL
+        })
         return
       }
       let closed = false
@@ -156,11 +190,7 @@ export const NATIVE_CHAT_METHODS = [
       const subscribeArgs: SubscribeNativeChatTranscriptArgs = {
         agent: params.agent,
         sessionId: params.sessionId,
-        transcriptPath: nativeChatTranscriptPathOnExecutionHost(
-          runtime.getAgentProviderSessionRows(),
-          params.sessionId,
-          params.transcriptPath
-        ),
+        transcriptPath,
         initialLimit: limit,
         onInitialSnapshot: (messages, hasMore, beforeOffset, error, lifecycle) => {
           if (closed) {

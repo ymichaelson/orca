@@ -65,6 +65,8 @@ export function isStructuredChatCliForkSourceCurrent(
   const record = getStructuredAgentSessionHost()?.deps.store.getRecord(sessionId)
   return Boolean(
     record &&
+    record.protectedAnalysis === undefined &&
+    record.protectedClaudeLaunch === undefined &&
     record.location.workspaceId === workspaceId &&
     record.location.executionHostId === LOCAL_EXECUTION_HOST_ID &&
     record.location.wslDistro === null
@@ -83,6 +85,8 @@ export async function prepareStructuredChatCliFork(
   if (
     !host ||
     !record ||
+    record.protectedAnalysis !== undefined ||
+    record.protectedClaudeLaunch !== undefined ||
     !registration ||
     !head ||
     record.location.workspaceId !== args.sourceChat.workspaceId ||

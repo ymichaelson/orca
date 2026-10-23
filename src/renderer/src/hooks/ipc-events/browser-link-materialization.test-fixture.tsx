@@ -68,6 +68,7 @@ export function installBrowserLinkMaterializationProbe() {
         enabled: false,
         agentTaskComplete: false,
         terminalBell: false,
+        forgeInbox: true,
         suppressWhenFocused: true,
         customSoundId: 'system',
         customSoundPath: null,

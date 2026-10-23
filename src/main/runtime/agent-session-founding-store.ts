@@ -1,7 +1,7 @@
 import { agentSessionRefusalError } from '../../shared/agent-session-wire-refusals'
 import type { JournalOperationReceipt } from '../native-chat/agent-session-journal/journal-row-writer'
 import { commitAgentSessionFounding } from './agent-session-founding-admission'
-import type { AgentSessionReserveRequest } from './agent-session-reservation-admission'
+import type { AgentSessionFoundingRequest } from './agent-session-founding-admission'
 import { draftAgentSessionStoreState } from './agent-session-store-draft'
 import type { AgentSessionStoreTransactions } from './agent-session-store-transactions'
 
@@ -11,9 +11,9 @@ export function createAgentSessionFoundingStore(
   firstRecordListeners: ReadonlySet<() => void>
 ) {
   return {
-    prepare: (request: AgentSessionReserveRequest) =>
+    prepare: (request: AgentSessionFoundingRequest) =>
       commitAgentSessionFounding(draftAgentSessionStoreState(transactions.state), request),
-    commit: async (request: AgentSessionReserveRequest) => {
+    commit: async (request: AgentSessionFoundingRequest) => {
       let heldBefore = true
       const result = await transactions.transact((draft) => {
         heldBefore = draft.records.size > 0 || draft.unreadableRecords.size > 0
@@ -24,7 +24,7 @@ export function createAgentSessionFoundingStore(
       }
       return result
     },
-    receipt: (request: AgentSessionReserveRequest): JournalOperationReceipt => {
+    receipt: (request: AgentSessionFoundingRequest): JournalOperationReceipt => {
       let heldBefore = true
       const receipt = transactions.receipt((draft) => {
         heldBefore = draft.records.size > 0 || draft.unreadableRecords.size > 0

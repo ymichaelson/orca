@@ -7,7 +7,9 @@
 
 import { defineMethod } from '../core'
 import {
+  clientReadsProtectedSession,
   ensureStructuredHostInstalled,
+  requireProtectedOutputReader,
   requireStructuredHost,
   structuredCallerFor
 } from './structured-agent-session-gate'
@@ -27,10 +29,14 @@ export const STRUCTURED_AGENT_SESSION_RESTART_RESUME_METHODS = [
       await ensureStructuredHostInstalled(ctx)
       const host = requireStructuredHost(ctx)
       const audience = structuredAgentsReadBy(ctx, host.knownAgentIds())
+      // A protected analysis continues through Forge, never through this dialog: an ordinary
+      // client is not even told the offer exists.
+      const readable = (row: { sessionId: string }) =>
+        clientReadsProtectedSession(ctx, host, row.sessionId)
       return {
-        sessions: await host.restartResume.list(audience),
+        sessions: (await host.restartResume.list(audience)).filter(readable),
         // Acted-on offers whose agent did not carry on. Optional on the wire; older clients ignore it.
-        failed: await host.restartResume.listFailures(audience)
+        failed: (await host.restartResume.listFailures(audience)).filter(readable)
       }
     }
   }),
@@ -68,10 +74,16 @@ export const STRUCTURED_AGENT_SESSION_RESTART_RESUME_METHODS = [
     handler: async (params, ctx) => {
       await ensureStructuredHostInstalled(ctx)
       const host = requireStructuredHost(ctx)
+      const audience = structuredAgentsReadBy(ctx, host.knownAgentIds())
+      // Omitting the ids means "every offer this client sees", so the offer set has to be named
+      // first: otherwise a client that cannot render a protected analysis would still continue it.
+      const sessionIds =
+        params.sessionIds ??
+        (await host.restartResume.list(audience)).map((offer) => offer.sessionId)
       return host.restartResume.continueAfterRestart(
-        params.sessionIds,
+        sessionIds.filter((sessionId) => clientReadsProtectedSession(ctx, host, sessionId)),
         structuredCallerFor(ctx).callerKey,
-        structuredAgentsReadBy(ctx, host.knownAgentIds())
+        audience
       )
     }
   }),
@@ -85,6 +97,7 @@ export const STRUCTURED_AGENT_SESSION_RESTART_RESUME_METHODS = [
     handler: async (params, ctx) => {
       await ensureStructuredHostInstalled(ctx)
       const host = requireStructuredHost(ctx)
+      requireProtectedOutputReader(ctx, host, params.sessionId)
       return host.restartResume.continueInterrupted(params.sessionId, params.turnItemId)
     }
   }),

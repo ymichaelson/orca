@@ -1,6 +1,6 @@
 import type Database from '../../sqlite/sync-database'
 import { journalPragmaNumber } from './journal-database'
-import { JOURNAL_DB_SCHEMA_VERSION } from './journal-database-schema'
+import { JOURNAL_DB_SUPPORTED_VERSION } from './journal-database-schema'
 import { assertJournalWritable } from './journal-write-guards'
 import {
   commandReceiptSchema,
@@ -126,7 +126,7 @@ export function insertCommandReceiptIfAbsent(
   receipt: CommandReceipt
 ): CommandReceiptInsert {
   assertJournalWritable(
-    journalPragmaNumber(db, 'user_version') > JOURNAL_DB_SCHEMA_VERSION,
+    journalPragmaNumber(db, 'user_version') > JOURNAL_DB_SUPPORTED_VERSION,
     receipt.sessionId
   )
   if (!db.isTransaction) {

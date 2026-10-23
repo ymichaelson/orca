@@ -245,7 +245,11 @@ export function eraseRpcMethods(
 
 // Unsubscribes that must not retire a registration created after their dispatch began.
 export function isRegistrationFencedUnsubscribe(method: string): boolean {
-  return method === 'terminal.unsubscribe' || method === 'session.tabs.unsubscribe'
+  return (
+    method === 'terminal.unsubscribe' ||
+    method === 'session.tabs.unsubscribe' ||
+    method === 'forgeInbox.unsubscribeChanges'
+  )
 }
 
 export function isStreamingMethod(method: RpcAnyMethod): method is RpcStreamingMethod {

@@ -7,7 +7,17 @@ import type { AgentSessionRecord } from '../../shared/agent-session-record'
 import type { AgentJournalSnapshot } from '../../shared/agent-session-journal-types'
 import { agentJournalSubmissionKey } from '../../shared/agent-session-journal-item-key'
 import { setStructuredAgentSessionHost } from '../native-chat/agent-session-wire/structured-agent-session-registry'
-import { prepareStructuredChatCliFork } from './structured-chat-cli-fork'
+import {
+  isStructuredChatCliForkSourceCurrent,
+  prepareStructuredChatCliFork
+} from './structured-chat-cli-fork'
+import {
+  PROTECTED_ANALYSIS_MARKER,
+  protectedClaudeLaunchFixture
+} from '../../shared/agent-session-protected-claude-launch.test-fixture'
+import { isProtectedClaudeRecordBinding } from '../../shared/agent-session-protected-claude-launch'
+import { foundAgentSessionRecord } from '../runtime/agent-session-record-founding'
+import { structuredAgentRuntimeRegistration } from '../runtime/structured-agent-runtime-registrations'
 import { prepareLegacySharedCodexSessionResume } from '../codex/codex-legacy-session-resume'
 import { AiVaultPrepareSessionResumeParams } from '../../shared/rpc-contract/ai-vault-params'
 
@@ -34,25 +44,116 @@ function savedJournal(): AgentJournalSnapshot {
   }
 }
 function install(record: AgentSessionRecord, copy = vi.fn(), journal = savedJournal()) {
+  const journalSnapshot = vi.fn(async () => journal)
+  const resolveWorkspacePath = vi.fn(async () => root)
+  const resolveLaunchEnv = vi.fn(() => ({}))
   // oxlint-disable-next-line typescript/consistent-type-assertions -- SAFETY: preparation reads only these host dependencies.
   setStructuredAgentSessionHost({
-    journalSnapshot: async () => journal,
+    journalSnapshot,
     deps: {
       store: { getRecord: () => record, listRecords: () => [record] },
       adapter: { copyConversation: copy },
-      resolveWorkspacePath: async () => root,
-      resolveLaunchEnv: () => ({})
+      resolveWorkspacePath,
+      resolveLaunchEnv
     }
   } as never)
+  return { journalSnapshot, resolveWorkspacePath, resolveLaunchEnv, copy }
 }
 afterEach(async () => {
   setStructuredAgentSessionHost(null)
   prepare.mockClear()
+  vi.restoreAllMocks()
   vi.unstubAllEnvs()
   if (root) {
     await rm(root, { recursive: true, force: true })
   }
   root = undefined
+})
+
+async function savedClaudeRecord() {
+  root = await mkdtemp(join(tmpdir(), 'chat-cli-fork-protected-'))
+  const fixture = agentSessionRecordFixture()
+  const launch = protectedClaudeLaunchFixture(join(root, 'private'))
+  const record = foundAgentSessionRecord(
+    {
+      ...fixture,
+      location: { ...fixture.location, workspaceKind: 'folder' },
+      launchDirectory: root,
+      accountHome: { variable: 'CLAUDE_CONFIG_DIR', path: join(launch.privateRoot, 'config') },
+      options: { model: 'opus' },
+      protectedAnalysis: PROTECTED_ANALYSIS_MARKER,
+      protectedClaudeLaunch: launch
+    },
+    { claimKeyId: 'key-1', now: 1_000 }
+  )
+  record.providerHandleChain = fixture.providerHandleChain
+  const directory = join(launch.privateRoot, 'config', 'projects', 'saved-workspace')
+  const filePath = join(directory, 'provider-session-alpha-1.jsonl')
+  await mkdir(directory, { recursive: true })
+  await writeFile(filePath, '{"type":"user","message":{"role":"user","content":"Saved prompt"}}\n')
+  const journal = savedJournal()
+  journal.items[0]!.itemId = 'legacy:claude:source:user-1'
+  return { record, filePath, journal }
+}
+
+it.each(['sealed', 'marker-only', 'launch-only'] as const)(
+  'refuses a %s protected CLI fork before ordinary launch or transcript preparation',
+  async (kind) => {
+    const { record, journal } = await savedClaudeRecord()
+    expect(isProtectedClaudeRecordBinding(record)).toBe(true)
+    if (kind === 'marker-only') {
+      delete record.protectedClaudeLaunch
+    } else if (kind === 'launch-only') {
+      delete record.protectedAnalysis
+      expect(isProtectedClaudeRecordBinding(record)).toBe(false)
+    }
+    const reads = install(record, vi.fn(), journal)
+    const importer = structuredAgentRuntimeRegistration('claude')?.transcriptImport
+    if (!importer) {
+      throw new Error('Missing Claude transcript importer')
+    }
+    const conversationStore = vi.spyOn(importer, 'conversationStore')
+    const findTranscript = vi.spyOn(importer, 'findTranscript')
+    await expect(prepareStructuredChatCliFork(request, prepare)).rejects.toThrow(
+      'This chat has no saved conversation available on this host.'
+    )
+    for (const read of Object.values(reads)) {
+      expect(read).not.toHaveBeenCalled()
+    }
+    expect(conversationStore).not.toHaveBeenCalled()
+    expect(findTranscript).not.toHaveBeenCalled()
+    expect(prepare).not.toHaveBeenCalled()
+  }
+)
+
+it.each(['sealed', 'marker-only', 'launch-only'] as const)(
+  'does not offer a %s protected record as a current CLI fork source',
+  async (kind) => {
+    const { record, journal } = await savedClaudeRecord()
+    if (kind === 'marker-only') {
+      delete record.protectedClaudeLaunch
+    } else if (kind === 'launch-only') {
+      delete record.protectedAnalysis
+    }
+    install(record, vi.fn(), journal)
+    expect(isStructuredChatCliForkSourceCurrent(record.sessionId, 'workspace-1')).toBe(false)
+  }
+)
+
+it('still prepares an ordinary saved Claude conversation with a native handle', async () => {
+  const { record, filePath, journal } = await savedClaudeRecord()
+  delete record.protectedAnalysis
+  delete record.protectedClaudeLaunch
+  record.schemaVersion = 2
+  const reads = install(record, vi.fn(), journal)
+  expect(isStructuredChatCliForkSourceCurrent(record.sessionId, 'workspace-1')).toBe(true)
+  await expect(prepareStructuredChatCliFork(request, prepare)).resolves.toMatchObject({
+    cliForkSource: { agent: 'claude', sessionId: 'provider-session-alpha-1', filePath, cwd: root }
+  })
+  expect(reads.resolveWorkspacePath).toHaveBeenCalledOnce()
+  expect(reads.resolveLaunchEnv).toHaveBeenCalledOnce()
+  expect(reads.journalSnapshot).toHaveBeenCalledOnce()
+  expect(prepare).toHaveBeenCalledWith(expect.objectContaining({ filePath, fork: true }))
 })
 
 it('locates the current Codex rollout in its recorded home and materializes the selected home', async () => {

@@ -29,6 +29,7 @@ function wire(host: StructuredAgentSessionHost, controller: RuntimeMobileNotific
       enabled: true,
       agentTaskComplete: true,
       terminalBell: true,
+      forgeInbox: true,
       suppressWhenFocused: false,
       customSoundId: 'system',
       customSoundPath: null,

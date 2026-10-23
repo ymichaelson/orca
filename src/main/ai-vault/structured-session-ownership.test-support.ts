@@ -3,6 +3,7 @@ import {
   agentSessionLeaseFixture,
   agentSessionRecordFixture
 } from '../../shared/agent-session-record.test-fixture'
+import { PROTECTED_ANALYSIS_MARKER } from '../../shared/agent-session-protected-claude-launch.test-fixture'
 import type { AgentSessionProviderHandle } from '../../shared/agent-session-provider-handle'
 import type { AiVaultListResult, AiVaultSession } from '../../shared/ai-vault-types'
 import type { StructuredAgentSessionAdapter } from '../native-chat/agent-session-wire/structured-agent-session-adapter'
@@ -29,6 +30,7 @@ export function installOwnership(
     provider: handle?.agent ?? 'codex',
     providerSessionId: PROVIDER_SESSION,
     lease: agentSessionLeaseFixture(),
+    protected: false,
     ...ownershipOverrides
   }
   const record = agentSessionRecordFixture(ownership.lease)
@@ -53,7 +55,10 @@ export function installOwnership(
               }
             ],
             lease: { ...ownership.lease, sessionId: ownership.sessionId },
-            ...(ownership.conversationName ? { conversationName: ownership.conversationName } : {})
+            ...(ownership.conversationName ? { conversationName: ownership.conversationName } : {}),
+            ...(ownership.protected
+              ? { schemaVersion: 3, protectedAnalysis: PROTECTED_ANALYSIS_MARKER }
+              : {})
           }
         ]
       }

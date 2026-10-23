@@ -32,6 +32,16 @@ export function buildNotificationOptions(
     }
   }
 
+  // Why fixed copy: the host composed it from the reason alone, so no repo prose or model output arrives here.
+  if (args.source === 'forge-inbox') {
+    return {
+      title:
+        normalizeNotificationText(args.forgeInbox?.title, NOTIFICATION_TITLE_CONTEXT_MAX_LENGTH) ||
+        'Forge Inbox',
+      body: normalizeNotificationText(args.forgeInbox?.body, NOTIFICATION_BODY_PREVIEW_MAX_LENGTH)
+    }
+  }
+
   const richOptions = buildAgentTaskCompleteNotificationOptions(args, translate)
   if (richOptions) {
     return richOptions

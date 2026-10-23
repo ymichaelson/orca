@@ -47,6 +47,8 @@ export type OrcadManagedIdleExitPorts = {
   hasStagedMigration: () => boolean
   /** An enabled schedule or an unsettled run; nothing would fire either once the host exits. */
   automationsBusy: () => boolean
+  /** An enabled webhook listener or unfinished delivery work; parked and finished rows do not count. */
+  forgeInboxBusy: () => boolean
   /** Exists while a client holds the host's activation fence (update, rollback, decommission). */
   activationFenceExists: (root: string) => Promise<boolean>
 }
@@ -85,6 +87,7 @@ export function createOrcadIdleProbes(
     { name: 'chat-providers', read: () => verdict(ports.hasChatProviders()) },
     { name: 'migration', read: () => verdict(ports.hasStagedMigration()) },
     { name: 'automations', read: () => verdict(ports.automationsBusy()) },
+    { name: 'forge-inbox', read: () => verdict(ports.forgeInboxBusy()) },
     {
       name: 'activation',
       read: async () => verdict(await ports.activationFenceExists(config.activationRoot))

@@ -4,12 +4,14 @@
 // A record row this build cannot read is derived as unreadable at each load and never rewritten: a
 // write only touches changed rows, and every mutation of an unreadable id is refused.
 
+import { AGENT_SESSION_PROTECTED_RECORD_SCHEMA_VERSION } from '../../shared/agent-session-protected-analysis'
 import {
   AGENT_SESSION_RECORD_SCHEMA_VERSION,
   isPersistedAgentSessionRecord,
   type AgentSessionLease
 } from '../../shared/agent-session-record'
 import { decodePersistedAgentSessionRecord } from '../../shared/agent-session-record-stored-form'
+import { raiseJournalVersionForProtectedRecords } from '../native-chat/agent-session-journal/journal-protected-version-fence'
 import type Database from '../sqlite/sync-database'
 import type { SqliteRow } from '../sqlite/sqlite-statement'
 import type { AgentSessionStoreState } from './agent-session-store-state'
@@ -70,7 +72,8 @@ function unreadableRecordReason(value: unknown): string {
     typeof value === 'object' && value !== null && 'schemaVersion' in value
       ? value.schemaVersion
       : undefined
-  return schemaVersion === AGENT_SESSION_RECORD_SCHEMA_VERSION
+  return schemaVersion === AGENT_SESSION_RECORD_SCHEMA_VERSION ||
+    schemaVersion === AGENT_SESSION_PROTECTED_RECORD_SCHEMA_VERSION
     ? 'current_shape_invalid'
     : 'unsupported_schema'
 }
@@ -202,6 +205,9 @@ export function writeAgentSessionStoreRows(
   db: Database.Database,
   writes: AgentSessionStoreRowWrites
 ): void {
+  if (writes.protectedRecords) {
+    raiseJournalVersionForProtectedRecords(db)
+  }
   const upsertRecord = db.prepare(
     'INSERT INTO agent_session_records (session_id, record_json) VALUES (?, ?) ON CONFLICT(session_id) DO UPDATE SET record_json = excluded.record_json'
   )

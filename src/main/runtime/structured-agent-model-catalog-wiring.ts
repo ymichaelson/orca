@@ -89,7 +89,7 @@ export async function modelCatalogHostDeps(input: {
   const modelCatalog = createAgentModelCatalogService({
     store: agentModelCatalogStore,
     getRecord: (sessionId) => input.store.getRecord(sessionId) ?? undefined,
-    drivesRecord: (record) => agentDrivesSession(input.agents, record),
+    drivesRecord: (record) => !record.protectedAnalysis && agentDrivesSession(input.agents, record),
     resolveAccountHome: deps.resolveAgentAccountHome,
     recordWorkspacePath: async (record) =>
       record.launchDirectory ??

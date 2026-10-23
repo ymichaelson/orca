@@ -40,7 +40,7 @@ export function opencodeDiscoveries(
   })
 }
 
-function opencodeStorageDirs(
+export function opencodeStorageDirs(
   options: AiVaultScanOptions,
   wslHomeDirs: readonly string[]
 ): string[] {

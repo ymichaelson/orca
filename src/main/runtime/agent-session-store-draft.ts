@@ -3,6 +3,8 @@
  * only once its rows have committed, so no reader ever sees a change that might still roll back.
  */
 
+import { agentSessionProtectedAnalysisEqual } from '../../shared/agent-session-protected-analysis'
+import { protectedClaudeLaunchEqual } from '../../shared/agent-session-protected-claude-launch'
 import { encodeAgentSessionRecord } from '../../shared/agent-session-record-stored-form'
 import type {
   AgentSessionStoreState,
@@ -32,6 +34,8 @@ type KeyedRowWrites = { upsert: [key: string, json: string][]; remove: string[] 
 /** Exactly the rows a draft changed, each serialized as it will be stored. */
 export type AgentSessionStoreRowWrites = {
   records: KeyedRowWrites
+  /** Some written record is protected; derived from the typed records, never from a caller flag. */
+  protectedRecords?: boolean
   operations: KeyedRowWrites
   /** The whole list when it changed, else null. */
   retiredClaimKeys: RetiredAgentSessionClaimKey[] | null
@@ -93,6 +97,31 @@ export function agentSessionStoreDraftRowWrites(
     (sessionId, written) => isReadableAgentSessionStoreRecord(sessionId, written),
     encodeAgentSessionRecord
   )
+  // The marker is set once at founding; no later write may add, change or drop it.
+  for (const [sessionId] of records.upsert) {
+    const prior = published.records.get(sessionId)
+    const next = draft.records.get(sessionId)
+    // accountHome is derived from the immutable privateRoot by the readable-record binding.
+    if (
+      prior &&
+      next &&
+      (!protectedClaudeLaunchEqual(prior.protectedClaudeLaunch, next.protectedClaudeLaunch) ||
+        (prior.protectedClaudeLaunch &&
+          (prior.options?.model !== next.options?.model ||
+            prior.launchDirectory !== next.launchDirectory)))
+    ) {
+      throw new Error('agent_session_store_write_invalid')
+    }
+    if (
+      prior &&
+      !agentSessionProtectedAnalysisEqual(
+        prior.protectedAnalysis,
+        draft.records.get(sessionId)?.protectedAnalysis
+      )
+    ) {
+      throw new Error('agent_session_store_write_invalid')
+    }
+  }
   const operations = serializeChangedRows(published.operations, draft.operations, (key, written) =>
     isReadableAgentSessionStoreOperation(key, written)
   )
@@ -133,6 +162,9 @@ export function agentSessionStoreDraftRowWrites(
   }
   return {
     records,
+    protectedRecords: records.upsert.some(
+      ([sessionId]) => draft.records.get(sessionId)?.protectedAnalysis !== undefined
+    ),
     operations,
     retiredClaimKeys,
     sessionTabs: tabsChanged ? { recorded: draft.sessionTabs !== null, tabs } : null

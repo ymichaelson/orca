@@ -10,6 +10,7 @@ import type { TuiAgent } from '../../../shared/tui-agent'
 import { isTuiAgent } from '../../../shared/tui-agent-config'
 import type { RuntimeStore } from '../runtime-store-contract'
 import type { RuntimeClientSettingsController } from '../runtime-client-settings'
+import { RuntimeForgeInboxController } from '../runtime-forge-inbox-controller'
 import type { RuntimeAutomationController } from '../runtime-automation-controller'
 import { RuntimeArtifactController } from '../runtime-artifact-controller'
 import type { OrchestrationEnvironmentTransport } from '../orchestration/environment-transport'
@@ -77,6 +78,8 @@ export abstract class OrcaRuntimeWithRuntimeId extends RuntimeConstructionServic
   protected readonly automation!: RuntimeAutomationController
 
   protected readonly artifacts = new RuntimeArtifactController()
+
+  protected readonly forgeInbox = new RuntimeForgeInboxController()
 
   protected readonly orchestrationEnvironmentTransport!: OrchestrationEnvironmentTransport | null
 

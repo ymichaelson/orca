@@ -6,6 +6,7 @@ import { setStructuredAgentSessionHost } from '../../../native-chat/agent-sessio
 import type { AgentSessionRecord } from '../../../../shared/agent-session-record'
 import type { AgentSessionModelCatalogResult } from '../../../../shared/agent-session-wire'
 import { agentSessionRecordFixture } from '../../../../shared/agent-session-record.test-fixture'
+import { PROTECTED_ANALYSIS_MARKER } from '../../../../shared/agent-session-protected-claude-launch.test-fixture'
 import { FLOATING_TERMINAL_WORKTREE_ID } from '../../../../shared/constants'
 import {
   call,
@@ -54,6 +55,26 @@ describe('agentSession.modelCatalog', () => {
       sessionId: SESSION,
       workspacePath: '/home/me/floating-a'
     })
+  })
+
+  it('never lists models from a protected record, so no ordinary probe runs in its original folder', async () => {
+    const fixture = agentSessionRecordFixture()
+    record = {
+      ...fixture,
+      schemaVersion: 3,
+      protectedAnalysis: PROTECTED_ANALYSIS_MARKER,
+      launchDirectory: '/repo/original'
+    }
+    const resolveStructuredAgentSessionLocalWorkspacePath = vi.fn(async () => '/repo/wt')
+    const reply = await call(
+      'agentSession.modelCatalog',
+      { agent: 'codex', sessionId: SESSION, worktree: 'id:wt-1' },
+      STRUCTURED_CLIENT,
+      { resolveStructuredAgentSessionLocalWorkspacePath }
+    )
+    expect(reply).toMatchObject({ ok: true, result: { origin: 'unknown' } })
+    expect(read).not.toHaveBeenCalled()
+    expect(resolveStructuredAgentSessionLocalWorkspacePath).not.toHaveBeenCalled()
   })
 
   it('reads the catalog for the directory the named worktree runs in on this host', async () => {

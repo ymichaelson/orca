@@ -203,6 +203,9 @@ const commentMarkdownSanitizeSchema = {
 // `<br />`). Parse it, then sanitize immediately before React renders it.
 const rehypePlugins: MarkdownPlugins = [rehypeRaw, [rehypeSanitize, commentMarkdownSanitizeSchema]]
 
+/** Untrusted text: raw HTML is not parsed at all, so no tag of its choosing ever reaches the DOM. */
+const inertRehypePlugins: MarkdownPlugins = [[rehypeSanitize, commentMarkdownSanitizeSchema]]
+
 /**
  * A surface-specific markdown addition: its own remark plugins, the element attributes those
  * plugins need to survive sanitize, and the components that render them. Keep the object stable
@@ -236,6 +239,8 @@ type CommentMarkdownProps = React.ComponentPropsWithoutRef<'div'> & {
   renderCodeBlock?: DocumentCodeBlockRenderer
   renderMermaid?: boolean
   keepMermaidSourceWhilePending?: boolean
+  /** Untrusted text: draws no remote media and no raw HTML, and every link asks before it opens. */
+  inertContent?: boolean
   /** The content is still being appended to: render it block by block, so each
    *  append re-renders only the last block, and close markup its end leaves open.
    *  The block-by-block render stays on once seen. */
@@ -280,6 +285,7 @@ const CommentMarkdown = React.memo(
       renderCodeBlock,
       renderMermaid = true,
       keepMermaidSourceWhilePending = false,
+      inertContent = false,
       growing = false,
       fadeWords = false,
       extension,
@@ -287,35 +293,46 @@ const CommentMarkdown = React.memo(
     },
     ref
   ) {
+    // A surface extension draws its own elements, which inert text cannot vouch for.
+    const activeExtension = inertContent ? undefined : extension
     const baseComponents = React.useMemo(
       () =>
         selectCommentMarkdownComponents({
           variant,
           onLinkClick,
           renderCodeBlock,
-          expandImages
+          expandImages,
+          inertContent
         }),
-      [expandImages, renderCodeBlock, variant, onLinkClick]
+      [expandImages, inertContent, renderCodeBlock, variant, onLinkClick]
     )
     const components = React.useMemo(
-      () => (extension ? { ...baseComponents, ...extension.components } : baseComponents),
-      [baseComponents, extension]
+      () =>
+        activeExtension ? { ...baseComponents, ...activeExtension.components } : baseComponents,
+      [activeExtension, baseComponents]
     )
     const fadingComponents = React.useMemo(
       () => ({ ...components, span: CommentMarkdownWords }),
       [components]
     )
     const activeRehypePlugins = React.useMemo(
-      () => (extension ? extensionRehypePlugins(extension) : rehypePlugins),
-      [extension]
+      () =>
+        inertContent
+          ? inertRehypePlugins
+          : activeExtension
+            ? extensionRehypePlugins(activeExtension)
+            : rehypePlugins,
+      [activeExtension, inertContent]
     )
     const activeRemarkPlugins = React.useMemo(() => {
       const plugins = fileLinkExists
         ? [...remarkPlugins, remarkNativeChatFileLinks(fileLinkExists)]
         : remarkPlugins
-      const withExtension = extension ? [...plugins, ...extension.remarkPlugins] : plugins
+      const withExtension = activeExtension
+        ? [...plugins, ...activeExtension.remarkPlugins]
+        : plugins
       return githubRepo ? [...withExtension, remarkGitHubReferences(githubRepo)] : withExtension
-    }, [extension, fileLinkExists, githubRepo])
+    }, [activeExtension, fileLinkExists, githubRepo])
     const blocks = useMarkdownBlocks(content, growing)
     const [hadWordFade, setHadWordFade] = React.useState(fadeWords)
     if (fadeWords && !hadWordFade) {
@@ -328,7 +345,7 @@ const CommentMarkdown = React.memo(
     )
 
     return (
-      <CommentMarkdownMermaidContext.Provider value={renderMermaid}>
+      <CommentMarkdownMermaidContext.Provider value={renderMermaid && !inertContent}>
         <CommentMarkdownMermaidSourceContext.Provider value={keepMermaidSourceWhilePending}>
           <div
             ref={ref}

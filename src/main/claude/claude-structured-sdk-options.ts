@@ -1,0 +1,25 @@
+import type { Options as ClaudeAgentSdkOptions } from '@anthropic-ai/claude-agent-sdk'
+
+export type ClaudeStructuredSdkOptions = Pick<
+  ClaudeAgentSdkOptions,
+  | 'includePartialMessages'
+  | 'tools'
+  | 'strictMcpConfig'
+  | 'mcpServers'
+  | 'verbatimPrompts'
+  | 'systemPrompt'
+  | 'settingSources'
+  | 'supportedDialogKinds'
+  | 'extraArgs'
+  | 'additionalDirectories'
+  | 'plugins'
+  | 'model'
+  | 'effort'
+  | 'permissionMode'
+  | 'allowDangerouslySkipPermissions'
+  | 'settings'
+  | 'sessionId'
+  | 'resume'
+  | 'resumeSessionAt'
+  | 'forkSession'
+>

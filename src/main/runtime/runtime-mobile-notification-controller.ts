@@ -16,6 +16,7 @@ import { MobileNotificationReplayBuffer } from './mobile-notification-replay'
 import { notifyRuntimeListeners } from './runtime-async-boundaries'
 import { getRuntimeDesktopSurface } from './runtime-desktop-surface'
 import { MobileNotificationDismissalStore } from './mobile-notification-dismissal-store'
+import type { ForgeInboxNotificationSubject } from '../../shared/forge-inbox-notification-subject'
 import type { DeliveredNotificationIdentity } from '../../shared/mobile-notification-identity'
 
 export type MobileNotificationDispatchEvent = {
@@ -24,7 +25,7 @@ export type MobileNotificationDispatchEvent = {
   desktopAllowed?: boolean
   desktopAway?: boolean
   emittedAt?: number
-  source: 'agent-task-complete' | 'terminal-bell' | 'test' | 'plugin'
+  source: 'agent-task-complete' | 'terminal-bell' | 'test' | 'plugin' | 'forge-inbox'
   title: string
   body: string
   worktreeId?: string
@@ -39,6 +40,8 @@ export type MobileNotificationDispatchEvent = {
   /** See `NotificationDispatchRequest.attentionKey`: cooldowns key on it instead of the workspace. */
   attentionKey?: string
   structuredOrigin?: StructuredAttentionOrigin
+  /** Forge Inbox lane only: the client derives the host to open from its own connection to this owner. */
+  forgeInbox?: ForgeInboxNotificationSubject
 }
 
 export type MobileNotificationDismissEvent = {

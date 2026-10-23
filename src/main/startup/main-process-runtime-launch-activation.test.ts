@@ -197,7 +197,8 @@ describe('desktop startup activation', () => {
     state.isServeMode = false
     // oxlint-disable-next-line typescript/consistent-type-assertions -- SAFETY: the launch only null-checks the runtime and marks its launch-record warm-up before the mocked RPC server takes it.
     state.runtime = {
-      noteAgentLaunchStartupSettled: startupSettled
+      noteAgentLaunchStartupSettled: startupSettled,
+      stopForgeInboxService: async () => {}
     } as unknown as NonNullable<typeof state.runtime>
     // oxlint-disable-next-line typescript/consistent-type-assertions -- SAFETY: the launch only calls whenReady().
     state.windowsShellPathHydration = {

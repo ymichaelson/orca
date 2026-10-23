@@ -10,16 +10,12 @@
  * the runtime factory, but only when an Electron serve sidecar or an operator-supplied
  * Chromium proves available at startup.
  */
-import { join } from 'node:path'
 import process from 'node:process'
 import { getAppEnvironment } from '../../shared/app-environment'
 import { resolveOrcadInstallRoot, resolveUserDataPath } from './orcad-app-paths'
 import { prepareOrcadCliLauncher } from './orcad-cli-launcher'
-import {
-  installOrcadHostAdapters,
-  prepareOrcadSecretStore,
-  runOrcadQuitHandlers
-} from './orcad-host-adapters'
+import { installOrcadHostAdapters, runOrcadQuitHandlers } from './orcad-host-adapters'
+import { prepareOrcadSecretStoreAndMigrate } from './orcad-secret-store-startup'
 import { describeOrcadBindExposure, resolveOrcadBindHost } from './orcad-bind-address'
 import {
   flushOrcadProfileStoreForShutdown,
@@ -33,6 +29,8 @@ import { installOrcadStopRequestListeners } from './orcad-stop-request-listener'
 import { prepareOrcadManagedStop } from './orcad-managed-stop-admission'
 import type { OrcadHandle, OrcadOptions } from './orcad-start-contract'
 import { beginOrcadIdleExit, bindOrcadIdleShutdown } from './orcad-managed-idle-exit-host'
+import { startOrcadForgeInbox } from './orcad-forge-inbox'
+import { getMainHttpClient } from '../network/http-client'
 import { orcadAutomationsKeepHostBusy, startOrcadAutomations } from './orcad-automations'
 import {
   changedAiVaultSearchSettings,
@@ -76,18 +74,6 @@ export async function startOrcad(options: OrcadOptions = {}): Promise<OrcadHandl
   )
   const version = getAppEnvironment().getVersion()
   return { readiness, managedStop: { version, runtimeId: readiness.runtimeId, instance }, stop }
-}
-
-async function prepareOrcadSecretStoreAndMigrate(userDataPath: string): Promise<void> {
-  const { getSecretStore } = await import('../../shared/secret-store')
-  const { reportSecretProtectionGap } = await import('../host/secret-protection-report')
-  const { migratePlaintextCredentials, orcadCredentialRoot } =
-    await import('./orcad-plaintext-credential-migration')
-  // Why the credential root, not userData: a disposable ORCA_USER_DATA would take the key with it.
-  if (await prepareOrcadSecretStore(orcadCredentialRoot(), userDataPath)) {
-    migratePlaintextCredentials(getSecretStore())
-  }
-  reportSecretProtectionGap({ dataFile: join(userDataPath, 'orca-data.json') })
 }
 
 async function startOrcadRuntime(
@@ -168,8 +154,11 @@ async function startOrcadRuntime(
   const idleExitStartup = beginOrcadIdleExit(runtimeUserDataPath)
   // Why before the profile store: it unseals protected settings as it loads.
   await prepareOrcadSecretStoreAndMigrate(runtimeUserDataPath)
-  const { store: profileStore, authority: profileStateAuthority } =
-    await createOrcadProfileStateStartup(runtimeUserDataPath)
+  const {
+    store: profileStore,
+    authority: profileStateAuthority,
+    profileDirectory
+  } = await createOrcadProfileStateStartup(runtimeUserDataPath)
   const observedPaneIdentities = new AgentStatusObservedPaneIdentities()
   const observedStatusCapture = new AgentStatusObservedPaneIdentityCapture(observedPaneIdentities)
   profileStoreForShutdown = profileStore
@@ -338,6 +327,14 @@ async function startOrcadRuntime(
     console.error('[orcad-migration] installing pending shell history failed:', error)
   })
 
+  // Registered before the RPC server so reverse cleanup stops RPC first; a failed start never blocks serving.
+  await startOrcadForgeInbox({
+    runtime,
+    profileDirectory,
+    http: getMainHttpClient(),
+    registerCleanup
+  })
+
   const bindHost = resolveOrcadBindHost(options.bind)
   const rpc = new OrcaRuntimeRpcServer({
     runtime,
@@ -383,6 +380,7 @@ async function startOrcadRuntime(
     agentStates: () => agentHookServer.getStatusSnapshot(),
     hasStagedMigration: () => profileStore.hasStagedOrcadMigrationCatalog(),
     automationsBusy: () => orcadAutomationsKeepHostBusy(profileStore),
+    forgeInboxBusy: () => runtime.forgeInboxKeepsHostBusy(),
     registerCleanup
   })
   return { readiness }

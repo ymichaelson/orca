@@ -1,4 +1,5 @@
 import type { MarkdownDocument } from '../../shared/filesystem-entry-types'
+import type { ForgeInboxNotificationClickTarget } from '../../shared/forge-inbox-notification-subject'
 import { ipcRenderer } from 'electron'
 import type { PersistedUIState } from '../../shared/persisted-ui-state-types'
 import type { KeybindingActionId } from '../../shared/keybindings'
@@ -36,6 +37,16 @@ export const uiStateAndMenuCommandsApi = {
   },
   consumePendingSkillShare: (): Promise<string | null> =>
     ipcRenderer.invoke('ui:consumePendingSkillShare'),
+  onOpenForgeInboxItem: (
+    callback: (target: ForgeInboxNotificationClickTarget) => void
+  ): (() => void) => {
+    const listener = (
+      _event: Electron.IpcRendererEvent,
+      target: ForgeInboxNotificationClickTarget
+    ): void => callback(target)
+    ipcRenderer.on('ui:openForgeInboxItem', listener)
+    return () => ipcRenderer.removeListener('ui:openForgeInboxItem', listener)
+  },
   onOpenMarkdownFiles: (callback: (documents: MarkdownDocument[]) => void): (() => void) => {
     const listener = (_event: Electron.IpcRendererEvent, documents: MarkdownDocument[]): void =>
       callback(documents)

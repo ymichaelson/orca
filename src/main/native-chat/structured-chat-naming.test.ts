@@ -1,6 +1,7 @@
 import { describe, expect, it, vi } from 'vitest'
 import type { AgentSessionRecord } from '../../shared/agent-session-record'
 import { agentSessionRecordFixture } from '../../shared/agent-session-record.test-fixture'
+import { PROTECTED_ANALYSIS_MARKER } from '../../shared/agent-session-protected-claude-launch.test-fixture'
 import { StructuredAgentSessionStatusFeed } from './agent-session-wire/structured-agent-session-status-feed'
 import type {
   AgentSessionStatusEvent,
@@ -88,6 +89,42 @@ function rig(provider: 'claude' | 'codex') {
     }
   }
 }
+
+describe('protected analysis never enters ordinary secondary name generation', () => {
+  it('skips automatic naming before reading a protected prompt even if no fixed name exists', async () => {
+    const state = rig('claude')
+    const record = state.read()
+    if (!record) {
+      throw new Error('Missing fixture')
+    }
+    state.replace({ ...record, schemaVersion: 3, protectedAnalysis: PROTECTED_ANALYSIS_MARKER })
+    state.handle(state.summary, { replay: false })
+    await settle()
+    expect(state.deps.readFirstPrompt).not.toHaveBeenCalled()
+    expect(state.deps.readJournalFirstPrompt).not.toHaveBeenCalled()
+    expect(state.deps.generate).not.toHaveBeenCalled()
+    expect(state.setConversationName).not.toHaveBeenCalled()
+  })
+
+  it('refuses explicit regeneration before reading the protected journal', async () => {
+    const state = rig('claude')
+    const record = state.read()
+    if (!record) {
+      throw new Error('Missing fixture')
+    }
+    state.replace({
+      ...record,
+      schemaVersion: 3,
+      protectedAnalysis: PROTECTED_ANALYSIS_MARKER,
+      conversationName: 'Merge request analysis'
+    })
+    expect(state.handle.regenerate(record.sessionId)).toBe(false)
+    await settle()
+    expect(state.deps.readFirstPrompt).not.toHaveBeenCalled()
+    expect(state.deps.readJournalFirstPrompt).not.toHaveBeenCalled()
+    expect(state.deps.generate).not.toHaveBeenCalled()
+  })
+})
 
 describe.each(['claude', 'codex'] as const)('structured %s chat naming', (provider) => {
   it('names the chat from its first prompt at once, then takes the generated name', async () => {

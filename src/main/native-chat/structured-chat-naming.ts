@@ -172,7 +172,13 @@ export function createStructuredChatNamingHandler(deps: StructuredChatNamingDeps
     const store = deps.getStore()
     const record = store?.getRecord(summary.sessionId)
     const namingOff = () => deps.getSettings().nativeChatAutoName === false
-    if (!store || !record || record.conversationName !== undefined || namingOff()) {
+    if (
+      !store ||
+      !record ||
+      record.protectedAnalysis ||
+      record.conversationName !== undefined ||
+      namingOff()
+    ) {
       return
     }
     const workerTask = deps.workerTaskTitle(record)
@@ -255,7 +261,7 @@ export function createStructuredChatNamingHandler(deps: StructuredChatNamingDeps
     regenerate: (sessionId) => {
       const store = deps.getStore()
       const record = store?.getRecord(sessionId)
-      if (!store || !record) {
+      if (!store || !record || record.protectedAnalysis) {
         return false
       }
       // A first name still owed must not start after, and replace, the one asked for.

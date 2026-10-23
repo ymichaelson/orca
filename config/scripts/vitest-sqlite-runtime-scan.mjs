@@ -19,7 +19,8 @@ const SQLITE_HARNESSES = new Set([
   'persistence-test-harness',
   'agent-session-record-store-test-harness',
   'structured-agent-session-rest-test-rig',
-  'journal-host-database-test-support'
+  'journal-host-database-test-support',
+  'forge-inbox-owner-service-test-kit'
 ])
 export const SQLITE_MODULES = [
   'src/main/sqlite/sync-database',

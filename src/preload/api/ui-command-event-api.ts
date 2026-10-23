@@ -5,6 +5,7 @@ import type {
 import type { JiraQuickFilterState } from '../../shared/jira-quick-filters'
 import type { JiraSavedFilterState, JiraSavedFilterMutation } from '../../shared/jira-saved-filters'
 import type { MarkdownDocument } from '../../shared/filesystem-entry-types'
+import type { ForgeInboxNotificationClickTarget } from '../../shared/forge-inbox-notification-subject'
 import type { PersistedUIState } from '../../shared/persisted-ui-state-types'
 import type { TuiAgent } from '../../shared/tui-agent'
 import type {
@@ -80,6 +81,10 @@ export type UiCommandEventApi = {
   consumePendingOpenSettings: () => Promise<boolean>
   onOpenSkillShare: (callback: (shareId: string) => void) => () => void
   consumePendingSkillShare: () => Promise<string | null>
+  /** A Forge Inbox banner click names the item to open; the subject's owner ids the Inbox, not a host path. */
+  onOpenForgeInboxItem: (
+    callback: (target: ForgeInboxNotificationClickTarget) => void
+  ) => () => void
   /** OS "Open With" Markdown/CSV/TSV documents; the local IPC name is retained. */
   onOpenMarkdownFiles: (callback: (documents: MarkdownDocument[]) => void) => () => void
   /** Drains the "Open With" paths queued before this renderer's listener attached. */

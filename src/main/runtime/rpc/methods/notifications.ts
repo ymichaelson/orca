@@ -18,8 +18,11 @@ export const NOTIFICATION_METHODS = [
     name: 'notifications.subscribe',
     permission: 'workspace',
     params: NotificationsSubscribeParams,
-    handler: async (params, { runtime, connectionId }, emit) => {
-      const shouldEmit = createNotificationStreamFilter(params?.includeDesktopSuppressed)
+    handler: async (params, { runtime, connectionId, clientCapabilities }, emit) => {
+      const shouldEmit = createNotificationStreamFilter(
+        params?.includeDesktopSuppressed,
+        clientCapabilities
+      )
       await new Promise<void>((resolve) => {
         const unsubscribe = runtime.onNotificationDispatched((event) => {
           if (shouldEmit(event)) {
@@ -63,11 +66,11 @@ export const NOTIFICATION_METHODS = [
     // Why: returns only notifications with seq > lastSeenSeq. The runtime owns
     // the monotonic seq, so this is the single source of truth for what the
     // client missed while its socket was reaped.
-    handler: async (params, { runtime }) => {
+    handler: async (params, { runtime, clientCapabilities }) => {
       const missed = runtime.getMissedNotificationsSince(params.lastSeenSeq, params.epoch)
       return {
         notifications: missed.filter(
-          createNotificationStreamFilter(params.includeDesktopSuppressed)
+          createNotificationStreamFilter(params.includeDesktopSuppressed, clientCapabilities)
         ),
         epoch: runtime.getMobileNotificationEpoch(),
         ...(params.deliveredPushes

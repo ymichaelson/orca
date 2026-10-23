@@ -2,6 +2,10 @@ import { homedir } from 'node:os'
 import { describe, expect, it, vi } from 'vitest'
 import type { AgentSessionRecord } from '../../shared/agent-session-record'
 import { LOCAL_EXECUTION_HOST_ID, type ExecutionHostId } from '../../shared/execution-host'
+import {
+  PROTECTED_ANALYSIS_MARKER,
+  protectedClaudeLaunchFixture
+} from '../../shared/agent-session-protected-claude-launch.test-fixture'
 import { agentSessionRecordFixture } from '../native-chat/agent-session-record-test-fixture'
 import { prewarmClaudeCliFlags } from './claude-cli-flag-prewarm'
 
@@ -67,5 +71,24 @@ describe('prewarming the Claude version check at startup', () => {
     })
     await expect(done).resolves.toBeUndefined()
     expect(prewarm).not.toHaveBeenCalled()
+  })
+
+  it('never probes the original folder of a protected record, but still probes an ordinary one', async () => {
+    const protectedAnalysis = {
+      ...record('marker', { dir: '/scratch/marker' }),
+      schemaVersion: 3 as const,
+      protectedAnalysis: PROTECTED_ANALYSIS_MARKER
+    }
+    const protectedLaunch = {
+      ...record('launch', { dir: '/scratch/launch' }),
+      protectedClaudeLaunch: protectedClaudeLaunchFixture()
+    }
+    const { prewarm, done } = prewarmWith([
+      protectedAnalysis,
+      protectedLaunch,
+      record('plain', { dir: '/scratch/plain' })
+    ])
+    await done
+    expect(prewarm.mock.calls.map(([launch]) => launch.cwd)).toEqual([homedir(), '/scratch/plain'])
   })
 })

@@ -2,6 +2,7 @@
 // runtime/browser error allowlists define the contract the CLI relies on to
 // format human-facing messages. Centralizing this mapping keeps the allowlist
 // auditable in one place instead of spread across per-method branches.
+import { FORGE_INBOX_RPC_ERROR_CODES } from '../../../shared/forge-inbox-rpc-errors'
 import { AGENT_LAUNCH_SURFACE_UNAVAILABLE_CODE } from '../../../shared/agent-launch-surface'
 import {
   agentSessionRefusalReference,
@@ -79,6 +80,7 @@ const RUNTIME_PASSTHROUGH_CODES: ReadonlySet<string> = new Set([
   AGENT_LAUNCH_TARGET_FORBIDDEN_CODE,
   'agent_launch_replay_unsupported',
   'runtime_unavailable',
+  ...Object.values(FORGE_INBOX_RPC_ERROR_CODES),
   'chat_fork_source_unavailable',
   'chat_fork_runtime_incompatible',
   'chat_fork_anchor_changed',

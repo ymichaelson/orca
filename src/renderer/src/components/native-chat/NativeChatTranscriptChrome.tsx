@@ -20,6 +20,7 @@ import { copyableNativeChatImageSrc, keepPreviewOpenForChatMenu } from './native
 import { isNativeChatPastedImagePath } from './native-chat-image-paste'
 import { nativeChatImageLabel } from './native-chat-image-label'
 import { chatImageAccess } from '@/lib/local-file-access'
+import { useNativeChatProtectedContent } from './NativeChatProtectedContent'
 
 type VisibilityListener = (isVisible: boolean) => void
 
@@ -112,10 +113,12 @@ function TranscriptImagePreview({
   const [near, setNear] = useState(false)
   const [thumbnailErrorSrc, setThumbnailErrorSrc] = useState<string | null>(null)
   const ref = useRef<HTMLDivElement>(null)
+  const protectedContent = useNativeChatProtectedContent()
   const source = block.url?.trim() || block.path
   const filePath = block.path ?? source ?? ''
   const external = renderableImageSource(source)
-  const leaseActive = near || open
+  // Protected text may name any URL or path; leasing either one turns untrusted content into a fetch.
+  const leaseActive = !protectedContent && (near || open)
   const localSrc = useLocalImageSrc(
     leaseActive && !external && runtimeContext !== undefined ? source : undefined,
     filePath,

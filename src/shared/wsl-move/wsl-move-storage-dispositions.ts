@@ -107,6 +107,7 @@ export const SQLITE_SCHEMA_FILE_DATABASES: Record<string, string> = {
   'src/main/native-chat/agent-session-journal/journal-database-schema.ts': 'agent-session-journal',
   'src/main/native-chat/agent-session-journal/journal-pi-active-branch.ts': 'pi-branch-import',
   'src/main/native-chat/agent-session-journal/queued-message-schema.ts': 'agent-session-journal',
+  'src/main/forge-inbox/forge-inbox-schema.ts': 'forge-inbox',
   'src/main/persistence/profile-state/profile-state-database-schema.ts': 'profile-state',
   'src/main/runtime/orchestration/db/schema/create-core-tables-sql.ts': 'orchestration',
   'src/main/runtime/orchestration/db/schema/create-graph-tables-sql.ts': 'orchestration',
@@ -197,6 +198,28 @@ export const SQLITE_TABLE_DISPOSITIONS: Record<string, WslMoveFieldDisposition> 
         item: 53,
         note: 'History is rewritten in place; an active run or dispatch in scope blocks the move.'
       }
+    ),
+    ...tables(
+      'forge-inbox',
+      [
+        'meta',
+        'policies',
+        'instance_origins',
+        'credentials',
+        'changes',
+        'items',
+        'item_revisions',
+        'deliveries',
+        'project_invalidations',
+        'webhook_deliveries',
+        'events',
+        'runs',
+        'proposals',
+        'receipts',
+        'item_reads',
+        'client_cursors'
+      ],
+      notApplicableDisposition(62, 'Host-local profile ledger; host-owned, never moved.')
     ),
     ...tables('profile-state', ['profile_state_documents'], {
       disposition: 'per-field',

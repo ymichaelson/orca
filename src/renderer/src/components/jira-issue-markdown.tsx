@@ -25,7 +25,8 @@ function JiraMarkdownImage(props: React.ComponentProps<'img'>): React.JSX.Elemen
   }
   const BaseImage = selectCommentMarkdownComponents({
     variant: compact ? 'compact' : 'document',
-    expandImages: true
+    expandImages: true,
+    inertContent: false
   }).img
   return BaseImage ? <BaseImage src={props.src} alt={props.alt} /> : null
 }

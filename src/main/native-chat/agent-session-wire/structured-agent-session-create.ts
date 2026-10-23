@@ -30,7 +30,8 @@ import { observedReceipt } from './structured-agent-session-operation-settlement
 import { attachStructuredAgentSession } from './structured-agent-session-attach-orchestration'
 import { readAgentSessionHydrationPage } from './agent-session-history-page'
 import { resolveAgentSessionReplayOutcome } from './structured-agent-session-replay-outcome'
-import type { AgentSessionExecutionOptions } from '../../../shared/agent-session-execution-options'
+import type { AgentSessionProtectionFields } from '../../../shared/agent-session-protected-claude-launch'
+import { openingMessageOptions } from './structured-agent-session-opening-message-options'
 
 export type StructuredAgentSessionCreateOptions = {
   firstMessage?: { clientMessageId: string; body: AgentJournalMessageItem }
@@ -39,6 +40,8 @@ export type StructuredAgentSessionCreateOptions = {
   catalogModels?: Parameters<typeof reserveRequestFor>[0]['models']
   /** Called after the durable create, before delivery can start the agent. */
   publishTab?: () => Promise<void>
+  /** Host-owned sealed profile; its launch never inherits the user's pinned args or env. */
+  protection?: Required<AgentSessionProtectionFields>
 }
 
 /** Founds a chat and its opening message; only the delivery loop acquires the agent. */
@@ -121,11 +124,16 @@ async function foundConversation(
       claimKeyId: deps.claimKeyId,
       handoffOperationId: null,
       probe: { outcome: 'pid-absent' },
-      ...(await pinnedAgentSessionLaunchArgs(deps.resolveLaunchArgs, params)),
-      ...(await pinnedAgentSessionLaunchEnv(deps.resolveLaunchEnv, params))
+      ...(options.protection
+        ? {}
+        : {
+            ...(await pinnedAgentSessionLaunchArgs(deps.resolveLaunchArgs, params)),
+            ...(await pinnedAgentSessionLaunchEnv(deps.resolveLaunchEnv, params))
+          })
     }
   })
-  const candidate = store.founding.prepare(request)
+  const founding = options.protection ? { ...request, ...options.protection } : request
+  const candidate = store.founding.prepare(founding)
   if (!hostCanStartRecord(deps, candidate.record)) {
     return {
       ok: false,
@@ -207,7 +215,7 @@ async function foundConversation(
             persistedOptions: candidate.record.options,
             persistOptions: async () => {},
             publish: () => {},
-            operationReceipt: observedReceipt(store, store.founding.receipt(request)),
+            operationReceipt: observedReceipt(store, store.founding.receipt(founding)),
             now: context.now
           },
           {
@@ -226,7 +234,7 @@ async function foundConversation(
           return sent
         }
       } else {
-        await store.founding.commit(request)
+        await store.founding.commit(founding)
       }
       committed = true
     }
@@ -297,13 +305,4 @@ export function structuredAgentSessionEntryDelegates(
       options?: StructuredAgentSessionCreateOptions
     ) => createStructuredAgentSession(context(), caller.callerKey, params, options)
   }
-}
-
-/** The model and effort the chat was created with, which its opening message runs on as a send's
- *  carried ones do. */
-function openingMessageOptions(options: Readonly<Record<string, string>> | undefined): {
-  options?: AgentSessionExecutionOptions
-} {
-  const { model, effort } = options ?? {}
-  return model ? { options: { model, ...(effort ? { effort } : {}) } } : {}
 }

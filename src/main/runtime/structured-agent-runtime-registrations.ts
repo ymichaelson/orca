@@ -1,3 +1,6 @@
+import { requireProtectedClaudeLaunchSources } from '../claude/claude-protected-launch-sources'
+import { readProtectedClaudeAuth } from '../claude/claude-protected-auth'
+import { createProtectedClaudeLaunchResolver } from '../claude/claude-protected-launch-resolution'
 import { withSupportedCodexCli } from '../codex/codex-cli-installation-error'
 import { codexStructuredLaunchPart } from '../codex/codex-structured-launch-resolution'
 import { claudeStructuredLaunchPart } from '../claude/claude-structured-launch-resolution'
@@ -97,17 +100,27 @@ function createClaudeAdapter(
   return createStructuredClaudeRuntimeAdapter({
     store,
     resolveWorkspacePath: deps.resolveWorkspacePath,
-    resolveLaunch: composeStructuredLaunch(
-      CLAUDE_STRUCTURED_AGENT,
-      structuredAgentLaunchSources(context),
-      claudeStructuredLaunchPart({
-        resolveLaunchArgs: () => deps.resolveLaunchArgs('claude'),
-        ...(deps.resolveClaudeCommand ? { resolveCommand: deps.resolveClaudeCommand } : {}),
-        resolveAuthPolicy: deps.resolveClaudeAuthPolicy,
-        attachmentDirectory: agentSessionAttachmentStoreRoot(deps.stateDirectory),
-        ...(deps.claudeCliFlags ? { cliFlags: deps.claudeCliFlags } : {})
-      })
-    ),
+    resolveLaunch: createProtectedClaudeLaunchResolver({
+      store,
+      stateDirectory: deps.stateDirectory,
+      scanRoots: () => requireProtectedClaudeLaunchSources().scanRoots(),
+      readAuth: (reference) =>
+        readProtectedClaudeAuth(reference, {
+          stateDirectory: deps.stateDirectory,
+          getSettings: () => requireProtectedClaudeLaunchSources().getSettings()
+        }),
+      ordinary: composeStructuredLaunch(
+        CLAUDE_STRUCTURED_AGENT,
+        structuredAgentLaunchSources(context),
+        claudeStructuredLaunchPart({
+          resolveLaunchArgs: () => deps.resolveLaunchArgs('claude'),
+          ...(deps.resolveClaudeCommand ? { resolveCommand: deps.resolveClaudeCommand } : {}),
+          resolveAuthPolicy: deps.resolveClaudeAuthPolicy,
+          attachmentDirectory: agentSessionAttachmentStoreRoot(deps.stateDirectory),
+          ...(deps.claudeCliFlags ? { cliFlags: deps.claudeCliFlags } : {})
+        })
+      )
+    }),
     ...(deps.resolveClaudeCommand ? { resolveClaudeCommand: deps.resolveClaudeCommand } : {}),
     ...(deps.claudeCliFlags ? { claudeCliFlags: deps.claudeCliFlags } : {}),
     ...(overlay ? { resolveClaudeLaunchEnv: overlay } : {}),

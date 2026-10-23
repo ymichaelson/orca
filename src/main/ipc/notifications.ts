@@ -17,6 +17,7 @@ import { activeNotificationsById } from './native-notification-lifecycle'
 import { deliverNativeNotification } from './native-notification-delivery'
 import { removeReadMacosNotifications } from './macos-notification-center'
 import { createNotificationDeliveryService } from '../notifications/notification-delivery-service'
+import { createForgeInboxDesktopNotifier } from '../notifications/forge-inbox-desktop-notifier'
 import { createAnnouncedNotificationRegistry } from '../notifications/announced-notification-registry'
 import { registerNotificationSoundHandlers } from './notification-sound-ipc'
 import { openNotificationSystemSettings } from './notification-system-settings-link'
@@ -30,7 +31,12 @@ import {
   resetNotificationPermissionEvidence
 } from './notification-permission-probe'
 
+let stopForgeInboxDesktopNotifier: (() => void) | null = null
+
 export function registerNotificationHandlers(store: Store, runtime?: OrcaRuntimeService): void {
+  // Why: a window attached later re-registers these handlers; two live subscribers would double every Forge banner.
+  stopForgeInboxDesktopNotifier?.()
+  stopForgeInboxDesktopNotifier = null
   ipcMain.removeHandler('notifications:getDesktopAwayState')
   ipcMain.handle('notifications:getDesktopAwayState', () => readDesktopAwayState(powerMonitor))
   resetNotificationPermissionEvidence()
@@ -167,6 +173,13 @@ export function registerNotificationHandlers(store: Store, runtime?: OrcaRuntime
       }
     }
   })
+
+  // Why after the service: the receiver reuses its settings gating, burst dedupe and native delivery.
+  if (runtime) {
+    stopForgeInboxDesktopNotifier = runtime.onNotificationDispatched(
+      createForgeInboxDesktopNotifier((request) => deliveryService.dispatch(request))
+    )
+  }
 
   // A remote host reported no pending prompt: its alerts relayed to this desktop's phones are over.
   ipcMain.removeHandler('notifications:settleStructuredPrompts')

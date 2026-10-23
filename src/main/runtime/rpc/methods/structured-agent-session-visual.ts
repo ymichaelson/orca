@@ -27,6 +27,9 @@ export const STRUCTURED_AGENT_SESSION_VISUAL_METHODS = [
       if (!record) {
         return { ok: false, error: 'session_not_found' }
       }
+      if (record.protectedAnalysis) {
+        return { ok: false, error: 'protected_analysis' }
+      }
       // Structured chats run on their owning runtime's own filesystem; any other location has no
       // scratch folder this process can read.
       if (

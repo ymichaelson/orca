@@ -1,4 +1,10 @@
 import { isAgentSessionRewindRecord, type AgentSessionRewindRecord } from './agent-session-rewind'
+import {
+  isProtectedRecordShape,
+  type AgentSessionProtectionFields,
+  type AgentSessionRecordSchemaVersion
+} from './agent-session-protected-claude-launch'
+import { isAgentSessionDeathEvidence, isBoundedString } from './agent-session-death-evidence'
 import { isAgentSessionLaunchArgs } from './agent-session-launch-args'
 import { isAgentSessionConversationName } from './agent-session-conversation-name'
 import {
@@ -140,8 +146,9 @@ export type AgentSessionLease = {
   deathEvidence: AgentSessionDeathEvidence | null
 }
 
-export type AgentSessionRecord = {
-  schemaVersion: typeof AGENT_SESSION_RECORD_SCHEMA_VERSION
+/** Protection fields are present exactly on schema-3 records and immutable after founding. */
+export type AgentSessionRecord = AgentSessionProtectionFields & {
+  schemaVersion: AgentSessionRecordSchemaVersion
   sessionId: string
   location: AgentSessionExecutionLocation
   /** The agent this session names, whether this build can run it or not. */
@@ -177,15 +184,10 @@ export type AgentSessionOptionsReplacement = {
 } & ({ options: Readonly<Record<string, string>> } | { permissionMode: string })
 
 const MAX_ID_LENGTH = 512
-/** A death evidence's `detail` past this fails a load, so whoever writes one cuts it here. */
-export const MAX_AGENT_SESSION_DEATH_DETAIL_CHARS = MAX_ID_LENGTH
+export { MAX_AGENT_SESSION_DEATH_DETAIL_CHARS } from './agent-session-death-evidence'
 const MAX_LAUNCH_ENV_ENTRIES = 256
 const MAX_LAUNCH_ENV_VALUE_LENGTH = 65_536
 const SESSION_ID_PATTERN = /^[A-Za-z0-9_-]{8,128}$/
-
-function isBoundedString(value: unknown, max: number): value is string {
-  return typeof value === 'string' && value.length > 0 && value.length <= max
-}
 
 export function isAgentSessionId(value: unknown): value is string {
   return typeof value === 'string' && SESSION_ID_PATTERN.test(value)
@@ -278,29 +280,6 @@ export function isAgentSessionLaunchEnv(value: unknown): value is AgentSessionLa
   )
 }
 
-function isAgentSessionDeathEvidence(value: unknown): value is AgentSessionDeathEvidence {
-  if (typeof value !== 'object' || value === null) {
-    return false
-  }
-  const evidence = value as Partial<AgentSessionDeathEvidence>
-  const { observedAt, lastProvenAliveAt, ownerFence, runtimeEnd } = evidence
-  return (
-    (evidence.kind === 'exit-observed' ||
-      evidence.kind === 'pid-absent' ||
-      evidence.kind === 'identity-mismatch') &&
-    isBoundedString(evidence.detail, MAX_AGENT_SESSION_DEATH_DETAIL_CHARS) &&
-    typeof observedAt === 'number' &&
-    Number.isSafeInteger(observedAt) &&
-    observedAt >= 0 &&
-    (ownerFence === undefined || (Number.isSafeInteger(ownerFence) && ownerFence >= 0)) &&
-    (lastProvenAliveAt === undefined ||
-      (Number.isSafeInteger(lastProvenAliveAt) &&
-        lastProvenAliveAt >= 0 &&
-        lastProvenAliveAt <= observedAt)) &&
-    (runtimeEnd === undefined || isBoundedString(runtimeEnd, MAX_ID_LENGTH))
-  )
-}
-
 function isPersistedAgentSessionLease(value: unknown): value is PersistedAgentSessionLease {
   if (typeof value !== 'object' || value === null) {
     return false
@@ -339,7 +318,7 @@ export function isPersistedAgentSessionRecord(
   }
   const record = value as Partial<AgentSessionRecord>
   const fieldsValid =
-    record.schemaVersion === AGENT_SESSION_RECORD_SCHEMA_VERSION &&
+    isProtectedRecordShape(record, AGENT_SESSION_RECORD_SCHEMA_VERSION) &&
     isAgentSessionId(record.sessionId) &&
     isAgentSessionExecutionLocation(record.location) &&
     isStructuredAgentId(record.provider) &&

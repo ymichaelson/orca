@@ -33,6 +33,12 @@ export const OUT_OF_STORE_DISPOSITIONS: readonly (WslMoveFieldDisposition & {
   },
   { store: 'orchestration.db', disposition: 'rewrite-desktop', item: 53 },
   {
+    store: 'forge-inbox.db',
+    disposition: 'not-applicable',
+    item: 62,
+    note: 'Host-local profile ledger holding credentials; host-owned, never moved.'
+  },
+  {
     store: 'codex-pane-accounts.json',
     disposition: 'not-applicable',
     item: 54

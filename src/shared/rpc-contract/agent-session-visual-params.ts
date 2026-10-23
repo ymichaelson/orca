@@ -27,6 +27,9 @@ export type AgentSessionReadVisualParams = z.infer<typeof ReadVisualParams>
 export const AGENT_SESSION_VISUAL_READ_ERRORS = [
   'session_not_found',
   'unsupported_location',
+  // A protected analysis holds untrusted merge-request content, and a visual is active HTML no
+  // reader may draw without an inert renderer.
+  'protected_analysis',
   'not_found',
   'not_a_file',
   'outside_folder',

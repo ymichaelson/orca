@@ -89,7 +89,8 @@ export function createNotificationDeliveryService(
       const desktopAllowed =
         settings.enabled &&
         (request.source !== 'agent-task-complete' || settings.agentTaskComplete) &&
-        (request.source !== 'terminal-bell' || settings.terminalBell)
+        (request.source !== 'terminal-bell' || settings.terminalBell) &&
+        (request.source !== 'forge-inbox' || settings.forgeInbox)
 
       const notificationOptions = buildNotificationOptions(request, translateMain)
 
@@ -98,7 +99,8 @@ export function createNotificationDeliveryService(
       if (
         !request.mobileDeliveredByHost &&
         deps.dispatchMobileNotification &&
-        request.source !== 'test'
+        request.source !== 'test' &&
+        request.source !== 'forge-inbox'
       ) {
         if (
           reserveNotificationCooldown(

@@ -7,6 +7,7 @@ import type { RpcContext } from '../core'
 import {
   ensureStructuredHostInstalled as ensureHostInstalled,
   requireStructuredHost as requireHost,
+  requireProtectedOutputReader,
   requireStructuredAgentAudience,
   structuredCallerFor as callerFor
 } from './structured-agent-session-gate'
@@ -33,6 +34,9 @@ import {
 async function resolveClientSuppliedAttach(params: z.infer<typeof AttachParams>, ctx: RpcContext) {
   await ensureHostInstalled(ctx, params.agent)
   const host = requireHost(ctx, params.agent)
+  // A client-supplied location names an existing chat too: adopting a protected one into an
+  // ordinary launch would hand its transcript to a client that cannot render it inertly.
+  requireProtectedOutputReader(ctx, host, params.envelope.sessionId)
   if (!host.supportsCreate(params.location, params.agent)) {
     throw agentSessionRefusalError('structured_agent_session_unsupported', {
       reason: 'hostUnsupported'

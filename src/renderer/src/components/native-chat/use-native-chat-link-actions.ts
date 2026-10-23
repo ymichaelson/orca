@@ -10,6 +10,7 @@ import type { NativeChatFileLinkContext } from './native-chat-file-link'
 import { resolveNativeChatHttpLinkRouting } from './native-chat-link-target-actions'
 import { handleNativeChatWebLink } from './native-chat-web-link-actions'
 import { nativeChatPlainLinkClickBehavior } from './native-chat-link-click-behavior'
+import { useNativeChatProtectedContent } from './NativeChatProtectedContent'
 import { useNativeChatFileLinkClick } from './use-native-chat-file-link-click'
 
 export type NativeChatLinkActions = {
@@ -25,6 +26,7 @@ export function useNativeChatLinkActions(
   rootRef: RefObject<HTMLElement | null>,
   scope: { sessionId: string | null; isVisible: boolean }
 ): NativeChatLinkActions {
+  const protectedContent = useNativeChatProtectedContent()
   const [linkActionRequest, setLinkActionRequest] = useState<LinkActionRequest | null>(null)
   const openFileLink = useNativeChatFileLinkClick(context, setLinkActionRequest, rootRef)
   const scopeKey = JSON.stringify([
@@ -64,12 +66,13 @@ export function useNativeChatLinkActions(
         ...resolveNativeChatHttpLinkRouting(state, context.worktreeId),
         actionsEnabled: plainClickBehavior === 'actions',
         plainClickBehavior,
+        ...(protectedContent ? { confirmEveryActivation: true } : {}),
         restoreFocus: () =>
           (anchor.isConnected ? anchor : rootRef.current)?.focus({ preventScroll: true }),
         request: setLinkActionRequest
       })
     },
-    [context, openFileLink, rootRef]
+    [context, openFileLink, protectedContent, rootRef]
   )
 
   return {

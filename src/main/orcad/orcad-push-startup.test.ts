@@ -77,6 +77,8 @@ vi.mock('./orcad-daemon-supervision', () => ({
 }))
 vi.mock('./orcad-health', () => ({ collectOrcadHealth: async () => ({}) }))
 // The runtime stub has no automation surface; orcad-automations.test.ts covers that wiring.
+// The runtime stub has no forge inbox surface; orcad-forge-inbox.test.ts covers that wiring.
+vi.mock('./orcad-forge-inbox', () => ({ startOrcadForgeInbox: async () => {} }))
 vi.mock('./orcad-automations', () => ({
   startOrcadAutomations: () => {},
   stopOrcadAutomationScheduler: () => {},

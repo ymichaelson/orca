@@ -34,6 +34,7 @@ import {
   OPENS_EVERY_STRUCTURED_CHAT,
   searchWithStructuredOwners
 } from '../ai-vault/structured-session-ownership'
+import { DESKTOP_RENDERER_READS_PROTECTED_OUTPUT } from '../../shared/agent-session-protected-output-capability'
 
 export type RuntimeSessionSearchCall = (
   environmentId: string,
@@ -153,7 +154,8 @@ async function searchByExecutionHostScope(
 async function searchLocalSessions(request: AiVaultSearchRequest): Promise<AiVaultSearchResponse> {
   return searchWithStructuredOwners(searchSessionService(request, 'ipc'), {
     ensureHost: handlerOptions.ensureStructuredSessionOwnership,
-    opensChat: OPENS_EVERY_STRUCTURED_CHAT
+    opensChat: OPENS_EVERY_STRUCTURED_CHAT,
+    readsProtected: DESKTOP_RENDERER_READS_PROTECTED_OUTPUT
   })
 }
 

@@ -109,6 +109,20 @@ export function useStructuredAgentSessionHostStopping(
   )
 }
 
+/** The host's marker that this transcript is untrusted text, so the chat draws it inertly. */
+export function useStructuredAgentSessionProtectedAnalysis(
+  sessionId: string,
+  target: RuntimeClientTarget
+): boolean {
+  const feed = useMemo(() => getStructuredAgentSessionStatusFeed(target), [target])
+  useEffect(() => feed.activate(), [feed])
+  return useSyncExternalStore(
+    feed.subscribe,
+    () => feed.getSnapshot().get(sessionId)?.protectedAnalysis === true,
+    () => false
+  )
+}
+
 /** Startup phase, Stop and option stamp, each re-rendering the chat only on a change. */
 export function useStructuredAgentSessionHostExecution(
   sessionId: string,
