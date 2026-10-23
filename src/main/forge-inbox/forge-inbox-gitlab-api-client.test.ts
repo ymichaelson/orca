@@ -506,7 +506,7 @@ describe('forge inbox GitLab read client', () => {
 
     it.each([
       ['repeats the current page', ['2', '2']],
-      ['goes backwards', ['3', '2']],
+      ['goes backwards', ['2', '1']],
       ['is not an integer', ['abc']],
       ['is zero', ['0']],
       ['is fractional', ['1.5']],

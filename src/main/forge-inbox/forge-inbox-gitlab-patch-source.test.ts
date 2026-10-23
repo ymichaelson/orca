@@ -291,6 +291,63 @@ describe('forge patch gitlab source', () => {
     }
   )
 
+  it('refuses an approved create when the real reader skips a tree page', async () => {
+    const requests: URL[] = []
+    const script = [
+      new Response(JSON.stringify([entry({ path: 'visible.txt' })]), {
+        headers: { 'x-next-page': '3' }
+      }),
+      new Response('[]', { headers: { 'x-next-page': '' } })
+    ]
+    const reader = createGitlabApiReader(
+      {
+        http: {
+          fetch: async (url: string) => {
+            requests.push(new URL(url))
+            const response = script.shift()
+            if (response === undefined) {
+              throw new Error('unscripted request')
+            }
+            return response
+          }
+        },
+        readToken: () => 'read-token',
+        readConfigRevision: () => 1
+      },
+      { baseUrl: 'https://git.example.com', projectId: '42', expectedConfigRevision: 1 }
+    )
+    const source = createGitlabPatchSource({ reader, ref: REF })
+    const draft = buildForgePatchDraft({
+      target: { instanceId: 'gitlab-main', projectId: '42' },
+      baseSha: REF,
+      branch: 'main',
+      operations: [
+        {
+          op: 'create',
+          path: 'hidden.txt',
+          content: 'created\n',
+          resultSha256: sha256OfContent('created\n')
+        }
+      ]
+    })
+    if (!draft.ok) {
+      throw new Error(`draft rejected: ${draft.reason}`)
+    }
+    const parentDirectory = mkdtempSync(join(tmpdir(), 'forge-source-pagination-'))
+    try {
+      await expect.soft(source.readPath('hidden.txt')).resolves.toEqual({ kind: 'unavailable' })
+      const result = await applyForgePatchInIsolation({ source, parentDirectory }, draft.draft)
+
+      expect.soft(result).toEqual({ ok: false, reason: 'source-unavailable' })
+      expect.soft(readdirSync(parentDirectory)).toEqual([])
+      expect
+        .soft(requests.map((url) => [url.pathname, url.searchParams.get('page')]))
+        .toEqual([['/api/v4/projects/42/repository/tree', '1']])
+    } finally {
+      rmSync(parentDirectory, { recursive: true, force: true })
+    }
+  })
+
   it('treats an incomplete tree as unavailable rather than guessing absence', async () => {
     const source = createGitlabPatchSource({
       reader: readerWith([entry({ path: 'b.ts' })], {}, false),

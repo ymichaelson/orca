@@ -15,8 +15,8 @@ function nextPage(header: string | null, current: number, pageItems: number): Ne
   if (header === null) {
     return pageItems < GITLAB_PAGE_SIZE ? { kind: 'done' } : { kind: 'invalid' }
   }
-  // Why: a proxy or hostile server must not be able to loop or redirect the walk.
-  if (!/^[1-9]\d{0,6}$/.test(header) || Number(header) <= current) {
+  // Why: a proxy or hostile server must not be able to loop, skip, or redirect the walk.
+  if (!/^[1-9]\d{0,6}$/.test(header) || Number(header) !== current + 1) {
     return { kind: 'invalid' }
   }
   return { kind: 'next', page: Number(header) }
