@@ -76,6 +76,21 @@ describe('gitlab repository reads', () => {
     expect(result.ok && result.complete).toBe(true)
   })
 
+  it('reports a skipped page as incomplete without following the pointer', async () => {
+    const { reader, requests, script } = setup()
+    script.push(
+      json([entry('visible.ts')], { headers: { 'x-next-page': '3' } }),
+      json([], { headers: { 'x-next-page': '' } })
+    )
+
+    await expect(reader.listRepositoryTree(REF)).resolves.toEqual({
+      ok: true,
+      complete: false,
+      data: [entry('visible.ts')]
+    })
+    expect(requests).toHaveLength(1)
+  })
+
   it('reports an unusable page pointer as an incomplete tree', async () => {
     const { reader, script } = setup()
     script.push(json([entry('a.ts')], { headers: { 'x-next-page': 'nope' } }))
