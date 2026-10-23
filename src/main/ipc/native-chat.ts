@@ -16,6 +16,8 @@ import {
 import { abortWhenRendererGone } from './renderer-lifetime-abort'
 import { getStructuredAgentSessionHost } from '../native-chat/agent-session-wire/structured-agent-session-registry'
 import { openNativeChatTranscript } from '../native-chat/native-chat-open-wake'
+import { legacyTranscriptRowIsProtected } from '../ai-vault/structured-session-ownership'
+import { PROTECTED_TRANSCRIPT_REFUSAL } from '../../shared/agent-session-protected-output-capability'
 
 export { clearNativeChatTranscriptCache }
 
@@ -35,16 +37,13 @@ export type NativeChatReadSessionArgs = {
 async function readSession(args: NativeChatReadSessionArgs): Promise<ReadTranscriptResult> {
   const { agent, sessionId } = args
   const limit = args.limit && args.limit > 0 ? Math.floor(args.limit) : DESKTOP_READ_WINDOW
+  // Why: this reader hands raw transcript text to the renderer, which is not the inert
+  // rendering a protected analysis requires.
+  if (legacyTranscriptRowIsProtected({ agent: args.agent, sessionId: args.sessionId })) {
+    return { error: PROTECTED_TRANSCRIPT_REFUSAL }
+  }
   const wake = args.wakeWslDistro === true
   const { transcriptPath, waking } = openNativeChatTranscript(sessionId, args.transcriptPath, wake)
-  await waking
-  return readNativeChatTranscriptTail({
-    agent,
-    sessionId,
-    transcriptPath,
-    limit,
-    sourceOrder: true
-  })
 }
 
 export type NativeChatSubscribeArgs = {
@@ -183,8 +182,22 @@ async function handleSubscribe(event: IpcMainEvent, args: NativeChatSubscribeArg
   if (sender.isDestroyed()) {
     return
   }
-  const { subscriptionId, agent, sessionId, transcriptPath } = args
+  const { subscriptionId, agent, sessionId } = args
   const limit = args.limit && args.limit > 0 ? Math.floor(args.limit) : DESKTOP_READ_WINDOW
+  // Why: this reader hands raw transcript text to the renderer, which is not the inert
+  // rendering a protected analysis requires.
+  if (legacyTranscriptRowIsProtected({ agent: args.agent, sessionId: args.sessionId })) {
+    sender.send('nativeChat:appended', {
+      subscriptionId,
+      frame: {
+        type: 'snapshot',
+        messages: [],
+        hasMore: false,
+        error: PROTECTED_TRANSCRIPT_REFUSAL
+      }
+    } satisfies NativeChatAppendedPayload)
+    return
+  }
   const pending = beginPendingSubscription(sender.id, subscriptionId)
   const rendererSignal = registerSenderCleanup(sender)
   const canPublish = (): boolean =>

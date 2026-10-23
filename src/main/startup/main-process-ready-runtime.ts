@@ -26,6 +26,7 @@ import {
   configureRuntimeServices
 } from './main-process-runtime-service'
 import { initializeMainProcessAutomations } from './main-process-automations'
+import { initializeMainProcessForgeInbox } from './main-process-forge-inbox'
 import { initializeMainProcessPlugins } from './main-process-plugins'
 import { collectWorktreeTrashSweepRoots, sweepStaleWorktreeTrash } from '../worktree-trash'
 import { loadWorktreeRemovalRecordsForStore } from './worktree-removal-records-load'
@@ -52,6 +53,7 @@ export async function initializeReadyRuntimeServices(): Promise<void> {
   initializeMainProcessAccountServices()
   const runtime = initializeMainProcessRuntime()
   initializeMainProcessAutomations()
+  await initializeMainProcessForgeInbox()
   configureRuntimeServices(runtime)
   installFirstWorkRenameHookSubscription()
   await initializeMainProcessPlugins(runtime)

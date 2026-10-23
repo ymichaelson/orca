@@ -1,5 +1,6 @@
 import { formatTerminalStartFailure } from '../../../shared/terminal-start-failure'
 // Centralize the runtimeId envelope and error-code contracts that clients use for decisions and display.
+import { FORGE_INBOX_RPC_ERROR_CODES } from '../../../shared/forge-inbox-rpc-errors'
 import { AGENT_LAUNCH_SURFACE_UNAVAILABLE_CODE } from '../../../shared/agent-launch-surface'
 import {
   agentSessionRefusalReference,
@@ -80,6 +81,7 @@ const RUNTIME_PASSTHROUGH_CODES: ReadonlySet<string> = new Set([
   AGENT_LAUNCH_TARGET_FORBIDDEN_CODE,
   'agent_launch_replay_unsupported',
   'runtime_unavailable',
+  ...Object.values(FORGE_INBOX_RPC_ERROR_CODES),
   'chat_fork_source_unavailable',
   'chat_fork_runtime_incompatible',
   'chat_fork_anchor_changed',

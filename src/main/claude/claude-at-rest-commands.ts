@@ -41,6 +41,7 @@ export class ClaudeAtRestCommandCatalog extends AtRestCommandCatalog {
       label: 'claude',
       accepts: (record) =>
         record.provider === 'claude' &&
+        !record.protectedAnalysis &&
         supportsClaudeStructuredLocation(record.location) &&
         isLegacyAgentSessionAccountHome(record.accountHome),
       resolveWorkspacePath: deps.resolveWorkspacePath,

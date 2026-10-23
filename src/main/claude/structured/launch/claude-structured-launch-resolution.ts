@@ -2,6 +2,10 @@ import type { ClaudeAccountRecipe } from '../../../../shared/agent-session-acqui
 import { prepareClaudeReceivingAccount } from '../../claude-receiving-account'
 import { assertStructuredAgentResolutionCurrent } from '../../../native-chat/structured-agent-command-resolution'
 import { activeProviderContext } from '../../../../shared/agent-session/agent-session-provider-context'
+import {
+  refuseProtectedClaudeRecord,
+  type ClaudeProtectedLaunchField
+} from '../../claude-protected-launch-fields'
 import { getClaudeProfileRouter } from '../../../claude-accounts/claude-profile-installed-router'
 import { requireLegacyAgentSessionAccountHome } from '../../../../shared/agent-session/lifecycle/agent-session-account-home'
 import type {
@@ -93,7 +97,7 @@ export function claudeStructuredPermissionOptions(
     : { permissionMode: CLAUDE_PERMISSION_MODES[mode] }
 }
 
-export type ClaudeStructuredLaunch = {
+export type ClaudeStructuredLaunch = ClaudeProtectedLaunchField & {
   /** Always Orca's resolved user CLI: the SDK's bundled binaries are excluded from the install. */
   pathToClaudeCodeExecutable: string
   prefixArgs?: readonly string[]
@@ -168,6 +172,7 @@ export function claudeStructuredLaunchPart(
 ): StructuredAgentLaunchPartResolver<ClaudeStructuredLaunch> {
   return async (basis, identity) => {
     const { record } = basis
+    refuseProtectedClaudeRecord(record)
     const accountHome = requireLegacyAgentSessionAccountHome(record.accountHome)
     const router = getClaudeProfileRouter()
     const active = activeProviderContext(record)

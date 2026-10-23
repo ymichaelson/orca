@@ -2,17 +2,25 @@ import type { PipedChildProcess, PipedProcessSpawner } from '@orca/process-host/
 import type { SpawnOptions as ClaudeAgentSdkSpawnOptions } from '@anthropic-ai/claude-agent-sdk'
 import { spawnProcess } from '@orca/process-host'
 import {
+  sealProtectedClaudeSpawn,
+  type ProtectedClaudeProcessSeal
+} from './claude-protected-process-seal'
+import {
   spawnManagedProviderProcess,
   type ManagedProviderProcess
 } from '../provider-process/managed-provider-process'
 import { claudeChildClosePolicy, claudeChildCloseProven } from './claude-child-exit-proof-ladder'
 
 export type ClaudeCodeProcessSpawn = {
-  /** SDK spawn hook; Orca retains process ownership. */
+  /** Pass as the SDK's `spawnClaudeCodeProcess`; the SDK never learns the pid because it never owns it. */
   spawn: (options: ClaudeAgentSdkSpawnOptions) => PipedChildProcess
+  /** The retained child, so Orca keeps its own tree-kill and exit-proof ladder. Null until the SDK spawns. */
   readonly child: PipedChildProcess | null
   readonly managed: ManagedProviderProcess | null
-  /** Supervisor pid on POSIX; lease ownership also requires start time and spawn token. */
+  /**
+   * Ownership proof: the durable lease adjudicates on this pid plus start time plus the spawn
+   * token. On POSIX it is the provider supervisor's, which outlives Claude by construction.
+   */
   readonly pid: number | undefined
   /** The spawn spec's verdict, so the close ladder never re-decides it. False until the SDK spawns. */
   readonly supervised: boolean
@@ -28,12 +36,21 @@ function definedEnv(env: Record<string, string | undefined>): Record<string, str
   return next
 }
 
-// Orca owns the child for PID-based exit proof and Windows .cmd quoting.
-// POSIX supervisors stop Claude if Orca dies; Windows spawns Claude directly.
+/**
+ * Orca supplies the Claude Code child rather than letting the SDK spawn it.
+ *
+ * Two independent reasons: the SDK's `SpawnedProcess` has no pid, and Orca's
+ * spawner is the only path that encodes `.cmd` arguments safely on Windows.
+ *
+ * On POSIX Claude runs under the provider supervisor, so an Orca that dies stops
+ * it instead of leaving it to finish its turn, tools and edits included, with
+ * nobody watching. Windows has no supervisor and spawns Claude directly.
+ */
 export function createClaudeCodeProcessSpawn(
   spawnImpl: PipedProcessSpawner = spawnProcess,
   platform: NodeJS.Platform = process.platform,
-  launch?: { pathToClaudeCodeExecutable: string; prefixArgs?: readonly string[] }
+  launch?: { pathToClaudeCodeExecutable: string; prefixArgs?: readonly string[] },
+  protectedSeal?: ProtectedClaudeProcessSeal
 ): ClaudeCodeProcessSpawn {
   let managed: ManagedProviderProcess | null = null
   return {
@@ -52,7 +69,9 @@ export function createClaudeCodeProcessSpawn(
         {
           spawnImpl,
           platform,
-          inheritedEnv: definedEnv(options.env),
+          inheritedEnv: protectedSeal
+            ? sealProtectedClaudeSpawn(options, protectedSeal)
+            : definedEnv(options.env),
           site: 'claude-stream-json-teardown',
           policy: (supervised) => claudeChildClosePolicy(supervised, platform),
           acceptClose: claudeChildCloseProven

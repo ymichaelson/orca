@@ -6,6 +6,7 @@ import {
   type AiVaultSessionTitlesResult
 } from '../../shared/ai-vault-session-title'
 import { resolveAiVaultSessionTitlesInBackground } from './session-scanner-background'
+import { legacyTranscriptRowIsProtected } from './structured-session-ownership'
 
 const TRANSCRIPT_PATH_MAX_LENGTH = 32_768
 
@@ -33,7 +34,14 @@ export async function resolveLocalAiVaultSessionTitles(
   const deduped = new Map<string, AiVaultSessionTitleRequest>()
   for (const request of requests.slice(0, AI_VAULT_SESSION_TITLE_REQUEST_MAX_COUNT)) {
     const normalized = normalizeRequest(request)
-    if (!normalized) {
+    if (
+      !normalized ||
+      legacyTranscriptRowIsProtected({
+        agent: normalized.agent,
+        sessionId: normalized.sessionId,
+        filePath: normalized.transcriptPath ?? ''
+      })
+    ) {
       continue
     }
     const key = `${normalized.agent}\0${normalized.sessionId}`

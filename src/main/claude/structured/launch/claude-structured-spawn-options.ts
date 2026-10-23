@@ -38,13 +38,35 @@ export type ClaudeStructuredSpawnOptions = {
   fastModeAtStart: boolean
 } & Partial<Pick<ClaudeSession, 'cliFlag' | 'flagSettingsControl'>>
 
+/** A protected profile is fixed at founding: only its own pinned model may be restated. */
+function protectedClaudeSpawnOptions(
+  pinned: ClaudeStructuredSdkOptions,
+  saved: Readonly<Record<string, string>> | undefined
+): ClaudeStructuredSpawnOptions {
+  const entries = Object.entries(saved ?? {})
+  if (entries.some(([key, value]) => key !== 'model' || value !== pinned.model)) {
+    throw new Error('protected_claude_option_override_refused')
+  }
+  const options = new Map<string, string>()
+  if (pinned.model !== undefined) {
+    options.set('model', pinned.model)
+  }
+  return { sdkOptions: { ...pinned }, options, fastModeAtStart: false }
+}
+
 /** Pass SDK-valid saved choices through; let the installed CLI reject unsupported values. */
 export function claudeStructuredSpawnOptions(input: {
-  launch: Pick<ClaudeStructuredLaunch, 'options' | 'resumesTranscript'>
+  launch: Pick<
+    ClaudeStructuredLaunch,
+    'options' | 'resumesTranscript' | 'protectedClaudeLaunch'
+  >
   saved: Readonly<Record<string, string>> | undefined
   effortFlag: ClaudeCliFlagFact
   flagSettingsControl: ClaudeCliFlagFact
 }): ClaudeStructuredSpawnOptions {
+  if (input.launch.protectedClaudeLaunch) {
+    return protectedClaudeSpawnOptions(input.launch.options, input.saved)
+  }
   const saved = restoredClaudeStructuredSessionOptions(input.saved)
   const options = new Map<string, string>()
   let sdkOptions: ClaudeStructuredSdkOptions = { ...input.launch.options }

@@ -38,7 +38,8 @@ type OrcadIdleExitRuntimePorts = {
   hasStagedMigration: () => boolean
   automationsBusy: () => boolean
   emulatorsBusy: () => Promise<boolean>
-  /** Stop the monitor before recording signal-driven shutdown. */
+  forgeInboxBusy: () => boolean
+  /** Shutdown stops the monitor first, so a signal stop is never recorded as an idle one. */
   registerCleanup: (cleanup: () => void) => void
 }
 
@@ -88,6 +89,7 @@ async function startOrcadManagedIdleExit(
     hasStagedMigration: input.hasStagedMigration,
     automationsBusy: input.automationsBusy,
     emulatorsBusy: input.emulatorsBusy,
+    forgeInboxBusy: input.forgeInboxBusy,
     activationFenceExists
   }
   // Client/terminal evidence is already checked; recheck other work exit would destroy.

@@ -4,6 +4,15 @@ import {
 } from '../../../../shared/agent-session-conversation-view'
 import { AGENT_CHAT_PERMISSION_MODE_OPTION_ID } from '../../../../shared/agent-chat-permission-mode'
 import {
+  isProtectedClaudeRecordBinding,
+  type ProtectedClaudeLaunchV1
+} from '../../shared/agent-session-protected-claude-launch'
+import {
+  AGENT_SESSION_PROTECTED_RECORD_SCHEMA_VERSION,
+  PROTECTED_ANALYSIS_CONVERSATION_NAME,
+  type AgentSessionProtectedAnalysis
+} from '../../shared/agent-session-protected-analysis'
+import {
   AGENT_SESSION_RECORD_SCHEMA_VERSION,
   type AgentSessionRecord
 } from '../../../../shared/agent-session/lifecycle/agent-session-record'
@@ -18,6 +27,12 @@ export type AgentSessionRecordIdentity = Pick<
   | 'launchArgs'
   | 'launchDirectory'
 >
+
+/** What a host founding may add; a reservation never carries it. */
+export type AgentSessionFoundingIdentity = AgentSessionRecordIdentity & {
+  protectedAnalysis?: AgentSessionProtectedAnalysis
+  protectedClaudeLaunch?: ProtectedClaudeLaunchV1
+}
 
 export function agentSessionRecordIdentityFields(
   identity: AgentSessionRecordIdentity,
@@ -47,11 +62,29 @@ export const structuredSessionNeverStarted = agentSessionNeverStarted
 
 /** An empty handle chain starts a fresh conversation on first send rather than resuming one. */
 export function foundAgentSessionRecord(
-  identity: AgentSessionRecordIdentity,
+  identity: AgentSessionFoundingIdentity,
   lease: { claimKeyId: string; now: number }
 ): AgentSessionRecord {
+  if (
+    !isProtectedClaudeRecordBinding({
+      ...identity,
+      schemaVersion: identity.protectedAnalysis ? 3 : 2
+    })
+  ) {
+    throw new Error('agent_session_store_write_invalid')
+  }
   return {
     ...agentSessionRecordIdentityFields(identity, lease.now),
+    ...(identity.protectedClaudeLaunch
+      ? { protectedClaudeLaunch: structuredClone(identity.protectedClaudeLaunch) }
+      : {}),
+    ...(identity.protectedAnalysis
+      ? {
+          schemaVersion: AGENT_SESSION_PROTECTED_RECORD_SCHEMA_VERSION,
+          conversationName: PROTECTED_ANALYSIS_CONVERSATION_NAME,
+          protectedAnalysis: { ...identity.protectedAnalysis }
+        }
+      : {}),
     providerHandleChain: [],
     lease: {
       sessionId: identity.sessionId,

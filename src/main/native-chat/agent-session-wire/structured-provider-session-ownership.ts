@@ -22,6 +22,8 @@ export type StructuredProviderSessionOwnership = {
   /** `head`: the conversation the chat continues now; `earlier`: one its chain held before. */
   role: 'head' | 'earlier'
   key: ConversationKey
+  /** Forge analysis, whose transcript no reader may be handed unless it renders inertly. */
+  protected: boolean
 }
 
 /** Use registration-defined History row IDs for both ownership display and duplicate-adoption checks. */
@@ -47,7 +49,8 @@ export function listStructuredProviderSessionOwnership(
                   ownerObservation: record.ownerObservation,
                   // A repeat resume link of the head's id is the head too.
                   role: keysMayMatch(key, headKey) ? ('head' as const) : ('earlier' as const),
-                  key
+                  key,
+                  protected: record.protectedAnalysis !== undefined
                 }
               ]
             : []

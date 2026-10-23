@@ -93,6 +93,7 @@ export function createStructuredChatNamingHandler(deps: StructuredChatNamingDeps
     const store = deps.getStore()
     return (
       !!store &&
+      !request.record.protectedAnalysis &&
       generationStillCurrent(store, request.record) &&
       (!request.automatic || deps.getSettings().nativeChatAutoName !== false)
     )
@@ -291,7 +292,7 @@ export function createStructuredChatNamingHandler(deps: StructuredChatNamingDeps
     regenerate: (sessionId) => {
       const store = deps.getStore()
       const record = store?.getRecord(sessionId)
-      if (!store || !record) {
+      if (!store || !record || record.protectedAnalysis) {
         return false
       }
       work.run(record, false)

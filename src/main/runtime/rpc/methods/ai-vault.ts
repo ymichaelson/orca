@@ -29,6 +29,7 @@ import {
   clientOpensStructuredChatFromHistory,
   supportsStructuredAgentSessions
 } from './structured-agent-session-policy'
+import { clientReadsProtectedOutput } from './structured-agent-session-gate'
 import {
   AiVaultDeleteSessionParams,
   AiVaultListSessionsParams,
@@ -56,7 +57,8 @@ export const AI_VAULT_METHODS = [
         ? searchWithStructuredOwners(response, {
             ensureHost: () => context.runtime.ensureStructuredAgentSessionHost(),
             transport,
-            opensChat: (agent) => clientOpensStructuredChatFromHistory(context, agent)
+            opensChat: (agent) => clientOpensStructuredChatFromHistory(context, agent),
+            readsProtected: clientReadsProtectedOutput(context)
           })
         : response
     }
@@ -124,8 +126,10 @@ export const AI_VAULT_METHODS = [
         throw new Error(describeAiVaultScanError(String(error)))
       }
       // Web clients have no parent retagging, so stamp sessions with the runtime host they addressed.
-      const projected = projectStructuredAiVaultSessions(result, (agent) =>
-        clientOpensStructuredChatFromHistory({ clientKind, clientCapabilities }, agent)
+      const projected = projectStructuredAiVaultSessions(
+        result,
+        (agent) => clientOpensStructuredChatFromHistory({ clientKind, clientCapabilities }, agent),
+        clientReadsProtectedOutput({ clientKind, clientCapabilities })
       )
       return conditionalAiVaultListResult(
         params.executionHostId

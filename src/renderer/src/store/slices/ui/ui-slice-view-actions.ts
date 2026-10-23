@@ -96,6 +96,29 @@ export function createUiViewActions(set: UISliceSet, get: UISliceGet): Partial<U
         activeView: state.previousViewBeforeArtifacts,
         worktreeNavHistoryIndex: rewindHistoryIndexPastView(state, 'artifacts')
       })),
+    openInboxPage: () => {
+      get().recordViewVisit('inbox')
+      set((state) => ({
+        activeView: 'inbox',
+        previousViewBeforeInbox:
+          state.activeView === 'inbox' ? state.previousViewBeforeInbox : state.activeView
+      }))
+    },
+    closeInboxPage: () =>
+      set((state) => ({
+        activeView: state.previousViewBeforeInbox,
+        worktreeNavHistoryIndex: rewindHistoryIndexPastView(state, 'inbox')
+      })),
+    openInboxItem: (target) => {
+      get().recordViewVisit('inbox')
+      set((state) => ({
+        activeView: 'inbox',
+        previousViewBeforeInbox:
+          state.activeView === 'inbox' ? state.previousViewBeforeInbox : state.activeView,
+        pendingInboxItem: target
+      }))
+    },
+    clearPendingInboxItem: () => set({ pendingInboxItem: null }),
     openMobilePage: () =>
       set((state) => ({
         activeView: 'mobile',

@@ -98,6 +98,13 @@
     "count": 1
   },
   {
+    "filePath": "src/renderer/src/components/forge-inbox/ForgeInboxInstanceEditor.tsx",
+    "kind": "jsx-attribute:placeholder",
+    "text": "alice, alice.smith",
+    "dynamic": false,
+    "count": 1
+  },
+  {
     "filePath": "src/renderer/src/component-fixtures/component-fixture-explorer.tsx",
     "kind": "jsx-text",
     "text": "Component fixtures",
@@ -105,9 +112,23 @@
     "count": 1
   },
   {
+    "filePath": "src/renderer/src/components/forge-inbox/ForgeInboxProjectPolicyEditor.tsx",
+    "kind": "jsx-attribute:placeholder",
+    "text": "claude",
+    "dynamic": false,
+    "count": 1
+  },
+  {
     "filePath": "src/renderer/src/component-fixtures/component-fixture-explorer.tsx",
     "kind": "jsx-text",
     "text": "fixtures · files named *.fixture.tsx under src/renderer/src",
+    "dynamic": false,
+    "count": 1
+  },
+  {
+    "filePath": "src/renderer/src/components/forge-inbox/ForgeInboxSettingsPanel.tsx",
+    "kind": "jsx-attribute:placeholder",
+    "text": "gitlab",
     "dynamic": false,
     "count": 1
   },
@@ -208,5 +229,12 @@
     "dynamic": false,
     "count": 1,
     "reason": "Actual Claude CLI tool-result line in the terminal still; preserve the illustrative output and line count."
+  },
+  {
+    "filePath": "src/renderer/src/components/forge-inbox/ForgeInboxSettingsPanel.tsx",
+    "kind": "jsx-attribute:placeholder",
+    "text": "https://gitlab.example.com",
+    "dynamic": false,
+    "count": 1
   }
 ]

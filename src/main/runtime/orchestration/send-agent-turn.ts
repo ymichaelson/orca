@@ -45,6 +45,8 @@ export type StructuredSessionTurnSend = {
   /** The caller's own readiness budget for the agent to take the message, its start included;
    *  the orchestration readiness timeout by default. */
   budgetMs?: number
+  /** Ends the readiness wait; the send itself stays handed to the host. */
+  signal?: AbortSignal
 }
 
 /** Only Dispatch preambles lead with coordinator task text; external messages use the user-input route. */
@@ -155,7 +157,8 @@ async function sendStructuredSessionTurn(
   // Wait on the answered id: replayed queued drafts may have dispatched under a new id.
   const settled = await send.host
     .waitForSendSettlement(send.sessionId, answered.clientMessageId, {
-      budgetMs: send.budgetMs ?? ORCHESTRATION_READINESS_TIMEOUT_MS
+      budgetMs: send.budgetMs ?? ORCHESTRATION_READINESS_TIMEOUT_MS,
+      ...(send.signal ? { signal: send.signal } : {})
     })
     .catch(() => undefined)
   return {

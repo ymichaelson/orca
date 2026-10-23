@@ -7,6 +7,7 @@ import { NativeChatPaneFileDropSurface } from './NativeChatPaneFileDropSurface'
 import { NativeChatVisualOwnerProvider } from './native-chat-visual-owner'
 import { NativeChatFileLinkExistenceProvider } from './use-native-chat-file-link-existence'
 import { NativeChatMarkdownImageOwnerProvider } from './native-chat-markdown-image-owner'
+import { NativeChatProtectedContentBoundary } from './NativeChatProtectedContent'
 
 export type { NativeChatViewProps } from './native-chat-view-types'
 
@@ -26,7 +27,9 @@ export default function NativeChatView(props: NativeChatViewProps): React.JSX.El
               isVisible={props.isVisible}
               sessionId={props.sessionId}
             >
-              <NativeChatStructuredSession {...props} />
+              <NativeChatProtectedContentBoundary sessionId={props.sessionId} target={props.target}>
+                <NativeChatStructuredSession {...props} />
+              </NativeChatProtectedContentBoundary>
             </NativeChatMarkdownImageOwnerProvider>
           </NativeChatFileLinkExistenceProvider>
         </NativeChatVisualOwnerProvider>

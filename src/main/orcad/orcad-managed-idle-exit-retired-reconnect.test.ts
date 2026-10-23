@@ -74,6 +74,7 @@ async function stopWithReturningClient(
     hasStagedMigration: () => false,
     automationsBusy: () => automationsBusy,
     emulatorsBusy: async () => false,
+    forgeInboxBusy: () => false,
     registerCleanup: () => {}
   })
   const installed = vi.mocked(installOrcadManagedIdleExit).mock.calls.at(-1)?.[0]

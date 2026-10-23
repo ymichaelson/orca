@@ -1,6 +1,7 @@
 // Require structured.v1 across every agentSession method before exposing journals or mutations.
 // Legacy tab restore may still install the host for fallback rows; that never admits agentSession calls.
 
+import { AGENT_SESSION_PROTECTED_OUTPUT_CLIENT_CAPABILITY } from '../../../../shared/agent-session-protected-output-capability'
 import { agentSessionRefusalError } from '../../../../shared/agent-session/failures/agent-session-wire-refusals'
 import { getStructuredAgentSessionHost } from '../../../native-chat/agent-session-wire/structured-agent-session-registry'
 import type { StructuredAgentSessionHost } from '../../../native-chat/agent-session-wire/structured-agent-session-host'
@@ -61,10 +62,56 @@ export function requireStructuredSessionHost(
 ): StructuredAgentSessionHost {
   const host = requireStructuredHost(ctx)
   requireStructuredAgentAudience(ctx, host.sessionAgent(sessionId) ?? '')
+  requireProtectedOutputReader(ctx, host, sessionId)
   return host
 }
 
-/** Close/cancel/unsubscribe/release check wire capability and host only; new-work admission conditions must never strand already-owned children. */
+/**
+ * Forge analysis of an MR is untrusted text a client may only be shown by a renderer that blocks
+ * remote media, raw HTML and silent navigation. A client that has not said it does that is not
+ * given the session at all — a gate on the transcript alone would leave the send, the item read and
+ * the live streams open.
+ */
+export function clientReadsProtectedOutput(
+  ctx: Pick<RpcContext, 'clientKind' | 'clientCapabilities'>
+): boolean {
+  return (
+    ctx.clientKind === undefined ||
+    ctx.clientCapabilities?.includes(AGENT_SESSION_PROTECTED_OUTPUT_CLIENT_CAPABILITY) === true
+  )
+}
+
+/** True for an ordinary session, or a protected one whose reader claims inert rendering. */
+export function clientReadsProtectedSession(
+  ctx: Pick<RpcContext, 'clientKind' | 'clientCapabilities'>,
+  host: Pick<StructuredAgentSessionHost, 'deps'>,
+  sessionId: string
+): boolean {
+  if (host.deps.store.getRecord(sessionId)?.protectedAnalysis === undefined) {
+    return true
+  }
+  return clientReadsProtectedOutput(ctx)
+}
+
+export function requireProtectedOutputReader(
+  ctx: Pick<RpcContext, 'clientKind' | 'clientCapabilities'>,
+  host: Pick<StructuredAgentSessionHost, 'deps'>,
+  sessionId: string
+): void {
+  if (!clientReadsProtectedSession(ctx, host, sessionId)) {
+    throw agentSessionRefusalError('structured_agent_session_unsupported', {
+      reason: 'clientCapabilityMissing'
+    })
+  }
+}
+
+/**
+ * The gate for methods that stop or retire work the caller already owns: close, cancel,
+ * unsubscribe and release. It asks only what no caller can do without (the wire capability and a
+ * host), never an admission condition: refusing a close strands a live provider child its own
+ * owner can no longer shut down. It is `requireStructuredHost` today; keep it apart so a condition
+ * added there for new work never reaches these.
+ */
 export function requireStructuredCleanupHost(ctx: RpcContext): StructuredAgentSessionHost {
   requireStructuredCapability(ctx)
   return requireHostOrRefusal()

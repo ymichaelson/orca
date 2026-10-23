@@ -2,6 +2,7 @@
 
 import { defineMethod, defineStreamingMethod } from '../core'
 import {
+  clientReadsProtectedSession,
   requireStructuredCapability,
   requireStructuredHost as requireHost
 } from './structured-agent-session-gate'
@@ -52,7 +53,8 @@ export const STRUCTURED_AGENT_SESSION_TURN_COMPLETION_METHODS = [
                 : undefined
           if (
             sessionId === undefined ||
-            clientReadsStructuredSessionAgent(ctx, host.sessionAgent(sessionId) ?? '')
+            (clientReadsStructuredSessionAgent(ctx, host.sessionAgent(sessionId) ?? '') &&
+              clientReadsProtectedSession(ctx, host, sessionId))
           ) {
             emit(event)
           }

@@ -29,6 +29,7 @@ function idlePorts(): OrcadManagedIdleExitPorts {
     hasStagedMigration: () => false,
     automationsBusy: () => false,
     emulatorsBusy: async () => false,
+    forgeInboxBusy: () => false,
     activationFenceExists: async () => false
   }
 }
@@ -110,6 +111,7 @@ describe('createOrcadIdleProbes', () => {
       migration: 'idle',
       automations: 'idle',
       emulators: 'idle',
+      'forge-inbox': 'idle',
       activation: 'idle'
     })
   })
@@ -136,6 +138,11 @@ describe('createOrcadIdleProbes', () => {
     ['a staged migration', { hasStagedMigration: () => true }, 'migration'],
     ['an enabled or running automation', { automationsBusy: () => true }, 'automations'],
     ['an Orca-started emulator', { emulatorsBusy: async () => true }, 'emulators'],
+    [
+      'an enabled forge inbox listener or unfinished webhook work',
+      { forgeInboxBusy: () => true },
+      'forge-inbox'
+    ],
     ['a held activation fence', { activationFenceExists: async () => true }, 'activation']
   ])('reads %s as busy', async (_label, override, probe) => {
     expect((await verdicts({ ...idlePorts(), ...override }))[probe]).toBe('busy')

@@ -39,6 +39,7 @@ beforeEach(() => {
   ensureActiveOrcaProfileMock.mockReturnValue({
     dataFile: '/tmp/profile/orca-data.json',
     stateDatabaseFile: '/tmp/profile/profile-state.db',
+    profileDirectory: '/tmp/profile',
     profile: { id: 'profile-1' }
   })
 })
@@ -69,6 +70,7 @@ describe('orcad profile-state startup', () => {
       storageAuthority: 'runtime'
     })
     expect(result.store).toBe(store)
+    expect(result.profileDirectory).toBe('/tmp/profile')
     expect(result.authority).toEqual({
       backend: 'sqlite',
       classification: 'json-only',

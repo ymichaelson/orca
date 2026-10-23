@@ -1,5 +1,10 @@
 import type { AgentSessionDeathEvidence } from '../../agent-session-death-evidence'
 import { isAgentSessionRewindRecord, type AgentSessionRewindRecord } from './agent-session-rewind'
+import {
+  isProtectedRecordShape,
+  type AgentSessionProtectionFields,
+  type AgentSessionRecordSchemaVersion
+} from '../../agent-session-protected-claude-launch'
 import { isAgentSessionLaunchArgs } from './agent-session-launch-args'
 import { isAgentSessionConversationName } from '../agent-session-conversation-name'
 import {
@@ -101,8 +106,9 @@ export type AgentSessionLease = {
   deathEvidence: AgentSessionDeathEvidence | null
 }
 
-export type AgentSessionRecord = {
-  schemaVersion: typeof AGENT_SESSION_RECORD_SCHEMA_VERSION
+/** Protection fields are present exactly on schema-3 records and immutable after founding. */
+export type AgentSessionRecord = AgentSessionProtectionFields & {
+  schemaVersion: AgentSessionRecordSchemaVersion
   sessionId: string
   location: AgentSessionExecutionLocation
   /** The agent this session names, whether this build can run it or not. */
@@ -298,7 +304,7 @@ export function isPersistedAgentSessionObservationRecord(
   const record = value
   if (
     !(
-      record.schemaVersion === AGENT_SESSION_RECORD_SCHEMA_VERSION &&
+      isProtectedRecordShape(record, AGENT_SESSION_RECORD_SCHEMA_VERSION) &&
       isAgentSessionId(record.sessionId) &&
       isAgentSessionExecutionLocation(record.location) &&
       isStructuredAgentId(record.provider) &&

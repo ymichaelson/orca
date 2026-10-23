@@ -84,7 +84,7 @@ export async function modelCatalogHostDeps(input: {
     store: agentModelCatalogStore,
     getConversation: (id) => input.store.getConversation(id) ?? undefined,
     getRecord: (sessionId) => input.store.getRecord(sessionId) ?? undefined,
-    drivesRecord: (record) => agentDrivesSession(input.agents, record),
+    drivesRecord: (record) => !record.protectedAnalysis && agentDrivesSession(input.agents, record),
     resolveAccountHome: deps.resolveAgentAccountHome,
     ...structuredAgentModelCatalogAccountReads(input.host),
     recordWorkspacePath: async (record) =>

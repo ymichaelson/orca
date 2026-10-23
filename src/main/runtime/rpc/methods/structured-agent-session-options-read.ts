@@ -88,7 +88,7 @@ export const STRUCTURED_AGENT_SESSION_OPTIONS_READ_METHODS = [
       const scope = coherent ? {} : { legacy: true }
       const read = async (): Promise<AgentSessionModelCatalogResult> => {
         const catalog = host.deps.modelCatalog
-        if (!catalog) {
+        if (!catalog || record?.protectedAnalysis) {
           return { origin: 'unknown' }
         }
         // A floating chat runs in the folder it was created in, not the floating setting's current one.

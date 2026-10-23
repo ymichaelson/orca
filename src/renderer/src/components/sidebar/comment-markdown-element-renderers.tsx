@@ -42,7 +42,7 @@ export function isTrustedCompactImageSrc(src: string | undefined): src is string
 }
 
 function handleMarkdownAnchorClick(
-  event: React.MouseEvent<HTMLAnchorElement>,
+  event: React.MouseEvent<HTMLElement>,
   href: string | undefined,
   onLinkClick: CommentMarkdownLinkClickHandler | undefined
 ): void {
@@ -68,6 +68,30 @@ function handleMarkdownAnchorAuxClick(
   }
 }
 
+/** Untrusted text: a link names itself but carries no destination, so nothing can open it before
+ *  the click handler asks where it should go — not a modifier click, not a middle click. */
+function inertMarkdownAnchor(
+  href: string | undefined,
+  children: React.ReactNode,
+  className: string,
+  onLinkClick: CommentMarkdownLinkClickHandler | undefined
+): React.JSX.Element {
+  return (
+    <button
+      type="button"
+      className={className}
+      onClick={(event) => handleMarkdownAnchorClick(event, href, onLinkClick)}
+    >
+      {children}
+    </button>
+  )
+}
+
+/** Untrusted text: a remote image would fetch itself on render, so only its name is drawn. */
+function inertMarkdownImage(alt: string | undefined): React.JSX.Element | null {
+  return alt ? <span>{alt}</span> : null
+}
+
 function handleMarkdownImageClick(
   event: React.MouseEvent<HTMLImageElement>,
   src: string | undefined,
@@ -82,23 +106,28 @@ function handleMarkdownImageClick(
 
 export function createCompactCommentMarkdownComponents(
   onLinkClick?: CommentMarkdownLinkClickHandler,
-  expandImages = false
+  expandImages = false,
+  inertContent = false
 ): Components {
+  const linkClassName = 'underline underline-offset-2 text-foreground/80 hover:text-foreground'
   return {
     // Avoid paragraph margins in dense cards.
     p: ({ children }) => <span className="comment-md-p">{children}</span>,
-    a: ({ href, children }) => (
-      <a
-        href={href || undefined}
-        target="_blank"
-        rel="noreferrer"
-        className="underline underline-offset-2 text-foreground/80 hover:text-foreground"
-        onClick={(e) => handleMarkdownAnchorClick(e, href, onLinkClick)}
-        onAuxClick={(e) => handleMarkdownAnchorAuxClick(e, href, onLinkClick)}
-      >
-        {children}
-      </a>
-    ),
+    a: ({ href, children }) =>
+      inertContent ? (
+        inertMarkdownAnchor(href, children, linkClassName, onLinkClick)
+      ) : (
+        <a
+          href={href || undefined}
+          target="_blank"
+          rel="noreferrer"
+          className={linkClassName}
+          onClick={(e) => handleMarkdownAnchorClick(e, href, onLinkClick)}
+          onAuxClick={(e) => handleMarkdownAnchorAuxClick(e, href, onLinkClick)}
+        >
+          {children}
+        </a>
+      ),
     // Bare fences have no language class; style all code inline, then use higher-specificity pre/code overrides for blocks.
     // Keep compact diagrams as bounded source so async SVG cannot reshape sidebar lists.
     code: ({ children }) => (
@@ -167,6 +196,9 @@ export function createCompactCommentMarkdownComponents(
     },
     // Inline only app-managed screenshots; avoid fetching arbitrary remote images in compact cards.
     img: ({ alt, src }) => {
+      if (inertContent) {
+        return inertMarkdownImage(alt)
+      }
       if (!isTrustedCompactImageSrc(src)) {
         if (!src) {
           return alt ? <span>{alt}</span> : null
@@ -230,12 +262,16 @@ export function createCompactCommentMarkdownComponents(
 
 export function createDocumentCommentMarkdownComponents(
   onLinkClick?: CommentMarkdownLinkClickHandler,
-  renderCodeBlock?: DocumentCodeBlockRenderer
+  renderCodeBlock?: DocumentCodeBlockRenderer,
+  inertContent = false
 ): Components {
+  const linkClassName = 'break-all text-primary underline underline-offset-2 hover:text-primary/80'
   return {
     p: ({ children }) => <p className="my-2 first:mt-0 last:mb-0">{children}</p>,
     a: ({ href, children }) =>
-      isGitHubUserAttachmentVideoLink(href, children) ? (
+      inertContent ? (
+        inertMarkdownAnchor(href, children, linkClassName, onLinkClick)
+      ) : isGitHubUserAttachmentVideoLink(href, children) ? (
         // GitHub APIs return uploaded videos as links; embed them as GitHub’s renderer does.
         <GitHubUserAttachmentVideo href={href}>{children}</GitHubUserAttachmentVideo>
       ) : (
@@ -243,7 +279,7 @@ export function createDocumentCommentMarkdownComponents(
           href={href || undefined}
           target="_blank"
           rel="noreferrer"
-          className="break-all text-primary underline underline-offset-2 hover:text-primary/80"
+          className={linkClassName}
           onClick={(e) => handleMarkdownAnchorClick(e, href, onLinkClick)}
           onAuxClick={(e) => handleMarkdownAnchorAuxClick(e, href, onLinkClick)}
         >
@@ -294,6 +330,9 @@ export function createDocumentCommentMarkdownComponents(
       )
     },
     img: ({ alt, src }) => {
+      if (inertContent) {
+        return inertMarkdownImage(alt)
+      }
       if (isGitHubUserAttachmentUrl(src)) {
         // Private attachments need GitHub session cookies; top-level links reach authenticated tabs when inline loads fail.
         return <GitHubUserAttachmentImage src={src} alt={alt} />
@@ -344,19 +383,21 @@ export function selectCommentMarkdownComponents({
   variant,
   onLinkClick,
   renderCodeBlock,
-  expandImages
+  expandImages,
+  inertContent
 }: {
   variant: 'compact' | 'document'
   onLinkClick?: CommentMarkdownLinkClickHandler
   renderCodeBlock?: DocumentCodeBlockRenderer
   expandImages: boolean
+  inertContent: boolean
 }): Components {
   if (variant === 'document') {
-    return onLinkClick || renderCodeBlock
-      ? createDocumentCommentMarkdownComponents(onLinkClick, renderCodeBlock)
+    return onLinkClick || renderCodeBlock || inertContent
+      ? createDocumentCommentMarkdownComponents(onLinkClick, renderCodeBlock, inertContent)
       : documentCommentMarkdownComponents
   }
-  return onLinkClick || expandImages
-    ? createCompactCommentMarkdownComponents(onLinkClick, expandImages)
+  return onLinkClick || expandImages || inertContent
+    ? createCompactCommentMarkdownComponents(onLinkClick, expandImages, inertContent)
     : compactCommentMarkdownComponents
 }

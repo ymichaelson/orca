@@ -3,6 +3,7 @@ import {
   type RuntimeCapability
 } from '../../shared/protocol-version'
 import { STRUCTURED_AGENT_SESSION_RENDERER_CLIENT_CAPABILITIES } from '../../shared/structured-agent-session-renderer-client-capabilities'
+import { AGENT_SESSION_PROTECTED_OUTPUT_CLIENT_CAPABILITY } from '../../shared/agent-session-protected-output-capability'
 import {
   AGENT_LAUNCH_PROMPT_UNCONFIRMED_RUNTIME_CAPABILITY,
   AGENT_LAUNCH_RUNTIME_CAPABILITY,
@@ -24,5 +25,7 @@ export const DESKTOP_RENDERER_RUNTIME_CLIENT_CAPABILITIES: readonly RuntimeCapab
   // Treat closed launch tabs as silent cancellation instead of unknown failure.
   AGENT_LAUNCH_TAB_CLOSED_CLIENT_CAPABILITY,
   TERMINAL_QUICK_COMMAND_LONG_PROMPTS_RUNTIME_CAPABILITY,
-  TERMINAL_QUICK_COMMAND_LARGE_LISTS_RUNTIME_CAPABILITY
+  TERMINAL_QUICK_COMMAND_LARGE_LISTS_RUNTIME_CAPABILITY,
+  // Its transcript and the Inbox draw a protected analysis inertly, so it may read one.
+  AGENT_SESSION_PROTECTED_OUTPUT_CLIENT_CAPABILITY
 ] as const

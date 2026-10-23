@@ -3,6 +3,7 @@ import { getAiVaultWslHomeDirs } from '../ai-vault/cached-session-list'
 import { listAiVaultSubagentSessionsInBackground } from '../ai-vault/session-scanner-background'
 import { claudeProjectsRootDirs } from '../ai-vault/session-scanner-roots'
 import { sessionRowRootDirs } from '../ai-vault/session-scanner-agent-sources'
+import { legacyTranscriptRowIsProtected } from '../ai-vault/structured-session-ownership'
 import { isPathInsideOrEqual } from '../../shared/cross-platform-path'
 import { LOCAL_EXECUTION_HOST_ID } from '../../shared/execution-host'
 import type {
@@ -35,6 +36,10 @@ export async function listAiVaultSubagentSessions(
       ? claudeProjectsRootDirs({ wslHomeDirs })
       : sessionRowRootDirs('omp', {}, wslHomeDirs)
   if (!roots.some((root) => isPathInsideOrEqual(resolve(root), parentFilePath))) {
+    return { sessions: [], issues: [] }
+  }
+  // Why: a protected analysis's subagent transcripts are more of its untrusted MR text.
+  if (legacyTranscriptRowIsProtected({ agent: args.agent, filePath: parentFilePath })) {
     return { sessions: [], issues: [] }
   }
   return listAiVaultSubagentSessionsInBackground({ agent: args.agent, parentFilePath })

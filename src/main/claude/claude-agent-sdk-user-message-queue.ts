@@ -1,5 +1,10 @@
 import type { SDKUserMessage } from '@anthropic-ai/claude-agent-sdk'
 
+export function claudeSdkUserMessage(message: Record<string, unknown>): SDKUserMessage {
+  // oxlint-disable-next-line typescript/consistent-type-assertions -- SAFETY: dispatch constructs the SDK user envelope after mapping every content block.
+  return message as unknown as SDKUserMessage
+}
+
 type QueuedMessage = {
   message: SDKUserMessage
   beforeDispatch?: () => Promise<void>

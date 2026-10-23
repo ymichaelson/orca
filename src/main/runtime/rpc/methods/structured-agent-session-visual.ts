@@ -23,6 +23,9 @@ export const STRUCTURED_AGENT_SESSION_VISUAL_METHODS = [
       if (!record) {
         return { ok: false, error: 'session_not_found' }
       }
+      if (record.protectedAnalysis) {
+        return { ok: false, error: 'protected_analysis' }
+      }
       // Only host-local structured sessions have scratch folders this process can read.
       if (
         record.location.executionHostId !== LOCAL_EXECUTION_HOST_ID ||

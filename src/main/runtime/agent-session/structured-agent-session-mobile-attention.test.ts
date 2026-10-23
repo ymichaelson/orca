@@ -63,6 +63,7 @@ function settings(overrides: Partial<NotificationSettings> = {}): NotificationSe
     agentTaskComplete: true,
     agentNeedsInput: true,
     terminalBell: true,
+    forgeInbox: true,
     suppressWhenFocused: false,
     customSoundId: 'system',
     customSoundPath: null,

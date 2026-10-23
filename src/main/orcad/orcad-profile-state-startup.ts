@@ -16,7 +16,15 @@ export function orcadProfileWriterIdleStopMs(
   return isWslHost() ? WSL_HOST_PROFILE_WRITER_IDLE_STOP_MS : undefined
 }
 
-type OrcadProfileStateStartup = {
+export type OrcadProfileStateProfile = {
+  dataFile: string
+  stateDatabaseFile: string
+  profileDirectory: string
+  profile: { id: string }
+}
+
+export type OrcadProfileStateStartup = {
+  profileDirectory: string
   store: ProfileStateStoreFactoryResult['store']
   authority: {
     backend: ProfileStateStoreFactoryResult['backend']
@@ -53,7 +61,7 @@ export async function createOrcadProfileStateStartup(
     initSshHostKeyStoreFile(profile.dataFile)
     initOrcadHeldFenceTokenFile(profile.dataFile)
     emitOrcadProfileStateAuthoritySelected(authority)
-    return { store: result.store, authority }
+    return { store: result.store, authority, profileDirectory: profile.profileDirectory }
   } catch (error) {
     try {
       await result.store.freezeWritesAsync()

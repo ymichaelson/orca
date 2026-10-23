@@ -79,7 +79,26 @@ export function deliverNativeNotification(
   const chatTarget = args.surface === 'agent-session' ? paneTarget : null
   // Repo-less folder/floating workspaces still bind clicks through their pane target.
   const repoId = worktreeId?.includes('::') ? getRepoIdFromWorktreeId(worktreeId) : null
-  if (worktreeId && (repoId !== null || paneTarget)) {
+  if (args.forgeInbox) {
+    // Why a named item: the owner UUID is not a workspace, so the Inbox page is the only surface that can reveal it.
+    const forgeTarget = args.forgeInbox
+    clickHandler = () => {
+      release()
+      const win = getTrustedUIRendererWindow()
+      if (!win || win.isDestroyed()) {
+        return
+      }
+      if (process.platform === 'darwin' && !isBackgroundLaunch()) {
+        app.focus({ steal: true })
+      }
+      safelyRevealWindow(win)
+      win.webContents.send('ui:openForgeInboxItem', {
+        subject: forgeTarget.subject,
+        executionHostId: forgeTarget.executionHostId
+      })
+    }
+    notification.on('click', clickHandler)
+  } else if (worktreeId && (repoId !== null || paneTarget)) {
     clickHandler = () => {
       release()
       const win = getTrustedUIRendererWindow()

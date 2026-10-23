@@ -14,6 +14,7 @@ import { defineMethod } from '../core'
 import {
   ensureStructuredHostInstalled,
   requireStructuredCapability,
+  requireProtectedOutputReader,
   requireStructuredAgentAudience,
   requireStructuredHost
 } from './structured-agent-session-gate'
@@ -40,6 +41,7 @@ export const STRUCTURED_AGENT_SESSION_REVEAL_METHODS = [
       try {
         const host = requireStructuredHost(ctx)
         requireStructuredAgentAudience(ctx, host.sessionAgent(params.sessionId) ?? '')
+        requireProtectedOutputReader(ctx, host, params.sessionId)
         revealed = await host.revealSession(params.sessionId)
       } catch (error) {
         // Translate only typed host refusal codes; genuine faults must not masquerade as missing chats.

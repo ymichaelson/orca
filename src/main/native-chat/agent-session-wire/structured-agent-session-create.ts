@@ -33,6 +33,7 @@ import { observedReceipt } from './structured-agent-session-operation-settlement
 import { attachStructuredAgentSession } from './structured-agent-session-attach-orchestration'
 import { readAgentSessionHydrationPage } from './agent-session-history-page'
 import { resolveAgentSessionReplayOutcome } from './structured-agent-session-replay-outcome'
+import type { AgentSessionProtectionFields } from '../../../shared/agent-session-protected-claude-launch'
 import { openingMessageOptions } from './structured-agent-session-execution-options'
 
 export type StructuredAgentSessionCreateOptions = {
@@ -41,6 +42,8 @@ export type StructuredAgentSessionCreateOptions = {
   catalogModels?: Parameters<typeof reserveRequestFor>[0]['models']
   /** Publish after durable creation, before agent delivery starts. */
   publishTab?: () => Promise<void>
+  /** Host-owned sealed profile; its launch never inherits the user's pinned args or env. */
+  protection?: Required<AgentSessionProtectionFields>
 }
 
 export function createStructuredAgentSession(
@@ -122,11 +125,16 @@ async function foundConversation(
       claimKeyId: deps.claimKeyId,
       handoffOperationId: null,
       probe: { outcome: 'pid-absent' },
-      ...(await pinnedAgentSessionLaunchArgs(deps.resolveLaunchArgs, params)),
-      ...(await pinnedAgentSessionLaunchEnv(deps.resolveLaunchEnv, params))
+      ...(options.protection
+        ? {}
+        : {
+            ...(await pinnedAgentSessionLaunchArgs(deps.resolveLaunchArgs, params)),
+            ...(await pinnedAgentSessionLaunchEnv(deps.resolveLaunchEnv, params))
+          })
     }
   })
-  const candidate = store.founding.prepare(request)
+  const founding = options.protection ? { ...request, ...options.protection } : request
+  const candidate = store.founding.prepare(founding)
   if (!hostCanStartRecord(deps, candidate.record)) {
     return {
       ok: false,
@@ -209,7 +217,7 @@ async function foundConversation(
             persistedOptions: candidate.record.options,
             persistOptions: async () => {},
             publish: () => {},
-            operationReceipt: observedReceipt(store, store.founding.receipt(request)),
+            operationReceipt: observedReceipt(store, store.founding.receipt(founding)),
             now: context.now
           },
           {
@@ -226,7 +234,7 @@ async function foundConversation(
           return sent
         }
       } else {
-        await store.founding.commit(request)
+        await store.founding.commit(founding)
       }
       committed = true
     }

@@ -231,7 +231,14 @@ const unknownHtmlAsTextRemarkPlugins = [
 // GitHub comments use raw HTML; parse it then sanitize before rendering.
 const rehypePlugins: MarkdownPlugins = [rehypeRaw, [rehypeSanitize, commentMarkdownSanitizeSchema]]
 
-/** Keep extensions stable per surface; new objects rebuild components and remount their contents. */
+/** Untrusted text: raw HTML is not parsed at all, so no tag of its choosing ever reaches the DOM. */
+const inertRehypePlugins: MarkdownPlugins = [[rehypeSanitize, commentMarkdownSanitizeSchema]]
+
+/**
+ * A surface-specific markdown addition: its own remark plugins, the element attributes those
+ * plugins need to survive sanitize, and the components that render them. Keep the object stable
+ * per surface; a new one rebuilds the components and remounts what they rendered.
+ */
 export type CommentMarkdownExtension = {
   remarkPlugins: RemarkPlugins
   /** Extra flow syntax requires one of these markers; omitted means unknown grammar. */
@@ -263,6 +270,8 @@ type CommentMarkdownProps = React.ComponentPropsWithoutRef<'div'> & {
   renderCodeBlock?: DocumentCodeBlockRenderer
   renderMermaid?: boolean
   keepMermaidSourceWhilePending?: boolean
+  /** Untrusted text: draws no remote media and no raw HTML, and every link asks before it opens. */
+  inertContent?: boolean
   /** The content is still being appended to: render it block by block, so each
    *  append re-renders only the last block, and close markup its end leaves open.
    *  The block-by-block render stays on once seen. */
@@ -292,6 +301,7 @@ const CommentMarkdown = React.memo(
       renderCodeBlock,
       renderMermaid = true,
       keepMermaidSourceWhilePending = false,
+      inertContent = false,
       growing = false,
       fadeWords = false,
       extension,
@@ -301,27 +311,36 @@ const CommentMarkdown = React.memo(
     },
     ref
   ) {
+    // A surface extension draws its own elements, which inert text cannot vouch for.
+    const activeExtension = inertContent ? undefined : extension
     const baseComponents = React.useMemo(
       () =>
         selectCommentMarkdownComponents({
           variant,
           onLinkClick,
           renderCodeBlock,
-          expandImages
+          expandImages,
+          inertContent
         }),
-      [expandImages, renderCodeBlock, variant, onLinkClick]
+      [expandImages, inertContent, renderCodeBlock, variant, onLinkClick]
     )
     const components = React.useMemo(
-      () => (extension ? { ...baseComponents, ...extension.components } : baseComponents),
-      [baseComponents, extension]
+      () =>
+        activeExtension ? { ...baseComponents, ...activeExtension.components } : baseComponents,
+      [activeExtension, baseComponents]
     )
     const fadingComponents = React.useMemo(
       () => ({ ...components, span: CommentMarkdownWords }),
       [components]
     )
     const activeRehypePlugins = React.useMemo<MarkdownPlugins>(
-      () => (extension ? extensionRehypePlugins(extension) : rehypePlugins),
-      [extension]
+      () =>
+        inertContent
+          ? inertRehypePlugins
+          : activeExtension
+            ? extensionRehypePlugins(activeExtension)
+            : rehypePlugins,
+      [activeExtension, inertContent]
     )
     const activeRemarkPlugins = React.useMemo(() => {
       const basePlugins = unknownHtmlAsText ? unknownHtmlAsTextRemarkPlugins : remarkPlugins
@@ -329,10 +348,12 @@ const CommentMarkdown = React.memo(
         ? [...basePlugins, remarkNativeChatFileLinks(fileLinkExists)]
         : basePlugins
       const withMath: RemarkPlugins = math ? [...plugins, remarkChatMath] : plugins
-      const withExtension = extension ? [...withMath, ...extension.remarkPlugins] : withMath
+      const withExtension = activeExtension
+        ? [...withMath, ...activeExtension.remarkPlugins]
+        : withMath
       return githubRepo ? [...withExtension, remarkGitHubReferences(githubRepo)] : withExtension
-    }, [extension, fileLinkExists, githubRepo, math, unknownHtmlAsText])
-    const blocks = useMarkdownBlocks(content, growing, math, activeRemarkPlugins, extension)
+    }, [activeExtension, fileLinkExists, githubRepo, math, unknownHtmlAsText])
+    const blocks = useMarkdownBlocks(content, growing, math, activeRemarkPlugins, activeExtension)
     const [hadWordFade, setHadWordFade] = React.useState(fadeWords)
     if (fadeWords && !hadWordFade) {
       setHadWordFade(true)
@@ -340,7 +361,7 @@ const CommentMarkdown = React.memo(
     const wrapsWords = fadeWords || hadWordFade
 
     return (
-      <CommentMarkdownMermaidContext.Provider value={renderMermaid}>
+      <CommentMarkdownMermaidContext.Provider value={renderMermaid && !inertContent}>
         <CommentMarkdownMermaidSourceContext.Provider value={keepMermaidSourceWhilePending}>
           <div
             ref={ref}

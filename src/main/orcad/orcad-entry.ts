@@ -20,6 +20,8 @@ import { prepareOrcadManagedStop } from './orcad-managed-stop-admission'
 import { bindOrcadStopTerminalAdmission } from './orcad-stop-terminal-admission'
 import type { OrcadHandle, OrcadOptions } from './orcad-start-contract'
 import { beginOrcadIdleExit, bindOrcadIdleShutdown } from './orcad-managed-idle-exit-host'
+import { startOrcadForgeInbox } from './orcad-forge-inbox'
+import { getMainHttpClient } from '../network/http-client'
 import { orcadAutomationsKeepHostBusy, startOrcadAutomations } from './orcad-automations'
 import { changedAiVaultSearchSettings } from '../../shared/ai-vault-search-settings'
 import type { AiVaultSearchSettings } from '../../shared/ai-vault-search-settings'
@@ -143,9 +145,11 @@ async function startOrcadRuntime(
   }
   // Initialize sealing before Store load unseals protected settings.
   await timed('secret-store', () => prepareOrcadSecretStoreAndMigrate(runtimeUserDataPath))
-  const { store: profileStore, authority: profileStateAuthority } = await timed('profile', () =>
-    createOrcadProfileStateStartup(runtimeUserDataPath)
-  )
+  const {
+    store: profileStore,
+    authority: profileStateAuthority,
+    profileDirectory
+  } = await timed('profile', () => createOrcadProfileStateStartup(runtimeUserDataPath))
   const observedPaneIdentities = new AgentStatusObservedPaneIdentities()
   const observedStatusCapture = new AgentStatusObservedPaneIdentityCapture(observedPaneIdentities)
   profileStoreForShutdown = profileStore
@@ -295,6 +299,14 @@ async function startOrcadRuntime(
     console.error('[orcad-migration] installing pending shell history failed:', error)
   })
 
+  // Registered before the RPC server so reverse cleanup stops RPC first; a failed start never blocks serving.
+  await startOrcadForgeInbox({
+    runtime,
+    profileDirectory,
+    http: getMainHttpClient(),
+    registerCleanup
+  })
+
   const bindHost = resolveOrcadBindHost(options.bind)
   bindOrcadStopTerminalAdmission(runtime.terminalUpdateAdmission)
   const rpc = new OrcaRuntimeRpcServer({
@@ -342,6 +354,7 @@ async function startOrcadRuntime(
     automationsBusy: () => orcadAutomationsKeepHostBusy(profileStore),
     emulatorsBusy: async () =>
       (await runtime.getEmulatorBridge()?.hasLiveManagedSessions()) ?? false,
+    forgeInboxBusy: () => runtime.forgeInboxKeepsHostBusy(),
     registerCleanup
   })
   return { readiness }

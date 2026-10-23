@@ -33,7 +33,8 @@ export {
   useStructuredAgentSessionHostExecutionPhase,
   useStructuredAgentSessionHostStopping,
   useStructuredAgentSessionHostExecution,
-  useStructuredAgentSessionRewindBlockedReason
+  useStructuredAgentSessionRewindBlockedReason,
+  useStructuredAgentSessionProtectedAnalysis
 } from './structured-agent-session-status-hooks'
 
 type HostGroup = {

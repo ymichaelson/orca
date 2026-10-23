@@ -46,6 +46,22 @@ export function opencodeDiscoveries(
   })
 }
 
+export function opencodeStorageDirs(
+  options: AiVaultScanOptions,
+  wslHomeDirs: readonly string[]
+): string[] {
+  const storageDir = options.opencodeStorageDir ?? resolveOpenCodeStorageDirectory()
+  // Orca-managed accounts relocate XDG_DATA_HOME, so their stores are invisible to the default lookup.
+  const accountStorageDirs = (options.opencodeAccountDataDirs ?? [])
+    .filter((dataDirectory) => dataDirectory !== dirname(storageDir))
+    .map((dataDirectory) => join(dataDirectory, 'storage'))
+  return [
+    storageDir,
+    ...accountStorageDirs,
+    ...wslHomeDirs.map((homeDir) => join(homeDir, '.local', 'share', 'opencode', 'storage'))
+  ]
+}
+
 function opencodeSources(
   options: AiVaultScanOptions,
   wslHomeDirs: readonly string[],

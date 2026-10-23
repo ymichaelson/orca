@@ -41,6 +41,7 @@ function deps(
   overrides: {
     destinations?: HttpLinkActionDestinations
     actionsEnabled?: boolean
+    confirmEveryActivation?: boolean
   } = {}
 ) {
   const requests: LinkActionRequest[] = []
@@ -51,6 +52,7 @@ function deps(
       sourceOwner: { kind: 'local' } as const,
       destinations: overrides.destinations ?? { primary: 'system', alternate: 'orca' },
       actionsEnabled: overrides.actionsEnabled ?? true,
+      ...(overrides.confirmEveryActivation ? { confirmEveryActivation: true } : {}),
       restoreFocus: vi.fn(),
       request: (request: LinkActionRequest) => requests.push(request)
     }
@@ -178,5 +180,32 @@ describe('handleNativeChatWebLink', () => {
     expect(event.preventDefault).not.toHaveBeenCalled()
     expect(requests).toHaveLength(0)
     expect(mocks.openRoutedHttpLink).not.toHaveBeenCalled()
+  })
+
+  it.each([
+    ['a plain click', {}],
+    ['a modifier click', { metaKey: true }],
+    ['a shift+modifier click', { metaKey: true, shiftKey: true }]
+  ])('names the destination first for %s in untrusted text', (_label, init) => {
+    stubPlatform(true)
+    const { deps: d, requests } = deps({ confirmEveryActivation: true })
+    const event = click(init)
+
+    expect(handleNativeChatWebLink(event, 'https://untrusted.example/', d)).toBe(true)
+    expect(event.preventDefault).toHaveBeenCalledOnce()
+    expect(mocks.openRoutedHttpLink).not.toHaveBeenCalled()
+    expect(requests).toHaveLength(1)
+    expect(requests[0]).toMatchObject({ destination: 'https://untrusted.example/', kind: 'url' })
+  })
+
+  it('still asks in untrusted text when link actions are turned off', () => {
+    stubPlatform(true)
+    const { deps: d, requests } = deps({ actionsEnabled: false, confirmEveryActivation: true })
+    const event = click()
+
+    expect(handleNativeChatWebLink(event, 'https://untrusted.example/', d)).toBe(true)
+    expect(event.preventDefault).toHaveBeenCalledOnce()
+    expect(mocks.openRoutedHttpLink).not.toHaveBeenCalled()
+    expect(requests).toHaveLength(1)
   })
 })

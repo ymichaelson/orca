@@ -47,6 +47,9 @@ export type OrcadManagedIdleExitPorts = {
   automationsBusy: () => boolean
   /** Exit would shut down the emulators Orca started for a workspace. */
   emulatorsBusy: () => Promise<boolean>
+  /** An enabled webhook listener or unfinished delivery work; parked and finished rows do not count. */
+  forgeInboxBusy: () => boolean
+  /** Exists while a client holds the host's activation fence (update, rollback, decommission). */
   activationFenceExists: (root: string) => Promise<boolean>
 }
 
@@ -85,6 +88,7 @@ export function createOrcadIdleProbes(
     { name: 'migration', read: () => verdict(ports.hasStagedMigration()) },
     { name: 'automations', read: () => verdict(ports.automationsBusy()) },
     { name: 'emulators', read: async () => verdict(await ports.emulatorsBusy()) },
+    { name: 'forge-inbox', read: () => verdict(ports.forgeInboxBusy()) },
     {
       name: 'activation',
       read: async () => verdict(await ports.activationFenceExists(config.activationRoot))

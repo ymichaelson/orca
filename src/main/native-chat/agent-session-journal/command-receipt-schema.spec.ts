@@ -7,7 +7,8 @@ import { journalPragmaNumber, openJournalDatabase, runJournalTransaction } from 
 import {
   createAgentSessionRecordTablesSql,
   createJournalTablesSql,
-  JOURNAL_DB_SCHEMA_VERSION
+  JOURNAL_DB_SCHEMA_VERSION,
+  JOURNAL_DB_SUPPORTED_VERSION
 } from './journal-database-schema'
 import { journalDatabasePath } from './journal-host-database'
 import {
@@ -127,7 +128,7 @@ export function registerCommandReceiptSchemaTests(): void {
         writeCommandReceiptTestRecord(db)
         insertCommandReceiptIfAbsent(db, scope, receipt)
       })
-      seeded.pragma(`user_version = ${JOURNAL_DB_SCHEMA_VERSION + 1}`)
+      seeded.pragma(`user_version = ${JOURNAL_DB_SUPPORTED_VERSION + 1}`)
       seeded.close()
       const before = await readFile(dbPath)
 
@@ -156,7 +157,7 @@ export function registerCommandReceiptSchemaTests(): void {
       const seeded = new Database(dbPath)
       seeded.exec(createJournalTablesSql())
       seeded.exec(createAgentSessionRecordTablesSql())
-      seeded.pragma(`user_version = ${JOURNAL_DB_SCHEMA_VERSION + 1}`)
+      seeded.pragma(`user_version = ${JOURNAL_DB_SUPPORTED_VERSION + 1}`)
       seeded.close()
       const before = await readFile(dbPath)
 

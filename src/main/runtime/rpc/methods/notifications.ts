@@ -37,8 +37,11 @@ export const NOTIFICATION_METHODS = [
     name: 'notifications.subscribe',
     permission: 'workspace',
     params: NotificationsSubscribeParams,
-    handler: async (params, { runtime, connectionId }, emit) => {
-      const shouldEmit = createNotificationStreamFilter(params?.includeDesktopSuppressed)
+    handler: async (params, { runtime, connectionId, clientCapabilities }, emit) => {
+      const shouldEmit = createNotificationStreamFilter(
+        params?.includeDesktopSuppressed,
+        clientCapabilities
+      )
       await new Promise<void>((resolve) => {
         const unsubscribe = runtime.onNotificationDispatched((event) => {
           if (shouldEmit(event)) {
@@ -78,11 +81,11 @@ export const NOTIFICATION_METHODS = [
     permission: 'workspace',
     params: NotificationGetMissedSinceParams,
     // Runtime sequence/epoch is authoritative for notifications missed while the socket was reaped.
-    handler: async (params, { runtime }) => {
+    handler: async (params, { runtime, clientCapabilities }) => {
       const missed = runtime.getMissedNotificationsSince(params.lastSeenSeq, params.epoch)
       return {
         notifications: missed.filter(
-          createNotificationStreamFilter(params.includeDesktopSuppressed)
+          createNotificationStreamFilter(params.includeDesktopSuppressed, clientCapabilities)
         ),
         epoch: runtime.getMobileNotificationEpoch(),
         ...(params.deliveredPushes

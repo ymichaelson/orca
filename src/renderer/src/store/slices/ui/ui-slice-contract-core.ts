@@ -123,6 +123,7 @@ export type UiViewHistory =
   | 'skills'
   | 'artifacts'
   | 'mobile'
+  | 'inbox'
 
 export type UISliceCore = {
   sidebarOpen: boolean
@@ -163,6 +164,7 @@ export type UISliceCore = {
   previousViewBeforeSkills: Exclude<UiViewHistory, 'skills'>
   previousViewBeforeMobile: Exclude<UiViewHistory, 'mobile'>
   previousViewBeforeArtifacts: Exclude<UiViewHistory, 'artifacts'>
+  previousViewBeforeInbox: Exclude<UiViewHistory, 'inbox'>
   setActiveView: (view: UISliceCore['activeView']) => void
   taskPageData: TaskPageData
   taskResumeState: TaskResumeState | undefined
@@ -204,6 +206,12 @@ export type UISliceCore = {
   clearPendingSkillsSharedView: () => void
   openArtifactsPage: () => void
   closeArtifactsPage: () => void
+  openInboxPage: () => void
+  closeInboxPage: () => void
+  /** A Forge banner click names one item; the Inbox page selects it, then clears the request. */
+  pendingInboxItem: { ownerHostId: string; itemId: number } | null
+  openInboxItem: (target: { ownerHostId: string; itemId: number }) => void
+  clearPendingInboxItem: () => void
   openMobilePage: () => void
   closeMobilePage: () => void
   setNewWorkspaceDraft: (draft: NonNullable<UISliceCore['newWorkspaceDraft']>) => void

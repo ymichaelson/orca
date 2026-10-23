@@ -155,6 +155,8 @@ export class StructuredAgentSessionHost {
   readModelCatalog = this.reads.readModelCatalog
   childAccountHome = this.reads.childAccountHome
   prospectiveAccountHome = this.reads.prospectiveAccountHome
+  /** The durable record as this host's store has it: the proof Discuss checks before resuming. */
+  sessionRecord = (sessionId: string) => this.deps.store.getRecord(sessionId)
 
   handleAdapterEvent = (event: Parameters<StructuredAgentSessionEventRecovery['handle']>[0]) =>
     this.eventRecovery.handle(event)

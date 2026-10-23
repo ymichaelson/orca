@@ -5,6 +5,7 @@ import type {
 import type { AgentStatusState, AgentType } from './agent-status-types'
 import type { AgentTurnOutcome } from './agent-turn-outcome'
 import type { NotificationSourceId } from './notification-source'
+import type { ForgeInboxDesktopNotification } from './forge-inbox-notification-subject'
 
 export type NotificationSettings = {
   enabled: boolean
@@ -12,6 +13,10 @@ export type NotificationSettings = {
   agentTaskComplete: boolean
   agentNeedsInput: boolean
   terminalBell: boolean
+  /** Forge Inbox attention; the feature itself stays off until it is configured. */
+  forgeInbox: boolean
+  /** Forge Inbox: also announce an ordinary successful run; failures and needs-attention always follow `forgeInbox`. Absent reads as off. */
+  forgeInboxCompletedRuns?: boolean
   suppressWhenFocused: boolean
   customSoundId:
     | 'system'
@@ -33,7 +38,11 @@ export type NotificationSettings = {
   notifyHiddenWorkspaces: boolean
 }
 
-export type NotificationEventSource = 'agent-task-complete' | 'terminal-bell' | 'test'
+export type NotificationEventSource =
+  | 'agent-task-complete'
+  | 'terminal-bell'
+  | 'forge-inbox'
+  | 'test'
 
 export type StructuredNotificationRead = StructuredAttentionRead & {
   paneKey: string
@@ -70,6 +79,8 @@ export type NotificationDispatchRequest = {
   /** Producer-owned once-only news identity bypasses workspace burst dedupe so distinct events survive. */
   attentionKey?: string
   structuredOrigin?: StructuredAttentionOrigin
+  /** Forge Inbox lane only: fixed host copy plus the item a click opens. */
+  forgeInbox?: ForgeInboxDesktopNotification
   /** The execution host already pushed this to its paired phones, so main must not fan it out again. */
   mobileDeliveredByHost?: boolean
 }

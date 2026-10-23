@@ -15,6 +15,7 @@ import {
 } from './browser-request-ipc-bridge'
 import { registerBrowserTabActivateIpcBridge } from './browser-tab-activate-ipc-bridge'
 import { registerBrowserStateIpcBridge } from './browser-state-ipc-bridge'
+import { registerForgeInboxNotificationIpcBridge } from './forge-inbox-notification-ipc-bridge'
 import { registerContentCreationIpcBridge } from './content-creation-ipc-bridge'
 import { registerDirectSshStateIpcBridge } from './direct-ssh-state-ipc-bridge'
 import { registerMobileAndTerminalCloseIpcBridge } from './mobile-terminal-close-ipc-bridge'
@@ -132,6 +133,7 @@ export function installAppLifetimeIpcEvents(): () => void {
   registerMobileAndTerminalCloseIpcBridge(unsubs, backgroundWakeDispatcher.request)
   registerUpdaterStatusIpcBridge(unsubs)
   registerBrowserStateIpcBridge(unsubs, isRuntimeEnvironmentActive)
+  registerForgeInboxNotificationIpcBridge(unsubs)
   registerContentCreationIpcBridge(unsubs, isRuntimeEnvironmentActive)
   registerBrowserRequestIpcBridge(unsubs)
   signalBrowserTabRequestsReadyAfterRestore(unsubs)

@@ -9,6 +9,7 @@ import type {
 } from '../../shared/jira/jira-saved-filters'
 import type { BrowserTabCreateRequest } from '../../shared/browser-tab-create-request'
 import type { MarkdownDocument } from '../../shared/filesystem-entry-types'
+import type { ForgeInboxNotificationClickTarget } from '../../shared/forge-inbox-notification-subject'
 import type { PersistedUIState } from '../../shared/persisted-ui-state-types'
 import type { TuiAgent } from '../../shared/tui-agent'
 import type {
@@ -93,6 +94,10 @@ export type UiCommandEventApi = {
   /** Raw `orca://plugins/...` link; the renderer validates it. */
   onOpenPluginInstallLink: (callback: (link: string) => void) => () => void
   consumePendingPluginInstallLink: () => Promise<string | null>
+  /** A Forge Inbox banner click names the item to open; the subject's owner ids the Inbox, not a host path. */
+  onOpenForgeInboxItem: (
+    callback: (target: ForgeInboxNotificationClickTarget) => void
+  ) => () => void
   /** OS "Open With" Markdown/CSV/TSV documents; the local IPC name is retained. */
   onOpenMarkdownFiles: (callback: (documents: MarkdownDocument[]) => void) => () => void
   consumePendingMarkdownFileOpens: () => Promise<MarkdownDocument[]>

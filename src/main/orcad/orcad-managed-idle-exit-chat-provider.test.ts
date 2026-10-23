@@ -45,6 +45,7 @@ function idleMonitor() {
         hasStagedMigration: () => false,
         automationsBusy: () => false,
         emulatorsBusy: async () => false,
+        forgeInboxBusy: () => false,
         activationFenceExists: async () => false
       }
     )

@@ -1,4 +1,5 @@
 import { initializeMainProcessI18nAndMenu } from './main-process-i18n-menu'
+import { stopMainProcessForgeInbox } from './main-process-forge-inbox-stop'
 import { mainProcessState as state } from './main-process-state'
 import { initializeReadyFoundation } from './main-process-ready-foundation'
 import { initializeReadyRuntimeServices } from './main-process-ready-runtime'
@@ -38,6 +39,7 @@ export async function initializeMainProcessReady(
   } catch (error) {
     // Startup now exits after failure; reopening would use a closing profile writer.
     state.desktopActivationGate = null
+    await stopMainProcessForgeInbox()
     try {
       await state.store?.freezeWritesAsync()
       state.profileStateAdmission?.release()

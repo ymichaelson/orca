@@ -17,6 +17,7 @@ import { createDocumentCommentMarkdownComponents } from '@/components/sidebar/co
 import { cn } from '@/lib/utils'
 import { withoutPendingNativeChatVisualDirectiveTail } from '../../../../shared/native-chat/native-chat-visual-directive'
 import { NativeChatMarkdownRowKeyContext } from './native-chat-disclosure-store'
+import { useNativeChatProtectedContent } from './NativeChatProtectedContent'
 import { useNativeChatVisualMarkdownExtension } from './native-chat-visual-markdown-extension'
 import { useNativeChatFileLinkExists } from './use-native-chat-file-link-existence'
 import {
@@ -129,8 +130,10 @@ export function NativeChatMarkdown({
   content,
   variant,
   onLinkClick,
+  inertContent = false,
   ...props
 }: NativeChatMarkdownProps): React.JSX.Element {
+  const protectedContent = useNativeChatProtectedContent()
   const wordFadeArmed = useWordFadeArmed(fadeWords)
   const visualExtension = useNativeChatVisualMarkdownExtension(visualMessageId)
   const extension = useMemo(
@@ -158,6 +161,7 @@ export function NativeChatMarkdown({
         math
         extension={extension}
         fileLinkExists={fileLinkExists}
+        inertContent={protectedContent || inertContent}
         fadeWords={fadeWords}
         renderMermaid={!streaming}
         keepMermaidSourceWhilePending

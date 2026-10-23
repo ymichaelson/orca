@@ -170,7 +170,6 @@ export async function acquireClaudeSession({
   const emit = (event: Parameters<typeof callbacks.emit>[2]): void =>
     callbacks.deliver(attempt, sessionId, () => callbacks.emit(liveSession, input.events, event))
   const { canUseTool, onUserDialog } = buildClaudePermissionCallbacks({ sessionId, prompts, emit })
-
   try {
     const launch = await resolveClaudeAcquisitionLaunch({
       input,
@@ -190,6 +189,7 @@ export async function acquireClaudeSession({
     const connection = await withAgentSessionCreatePhase('spawn', input.recordPhase, () =>
       open(
         {
+          protectedClaudeLaunch: launch.protectedClaudeLaunch,
           pathToClaudeCodeExecutable: launch.pathToClaudeCodeExecutable,
           prefixArgs: launch.prefixArgs,
           options: launch.options,

@@ -3,6 +3,9 @@ import { resolveNativeChatVisualsSkillLocation } from '../native-chat/native-cha
 import { withSupportedCodexCli } from '../codex/codex-cli-installation-error'
 import { codexStructuredLaunchPart } from '../codex/codex-structured-launch-resolution'
 import { claudeStructuredLaunchPart } from '../claude/structured/launch/claude-structured-launch-resolution'
+import { createProtectedClaudeLaunchResolver } from '../claude/claude-protected-launch-resolution'
+import { requireProtectedClaudeLaunchSources } from '../claude/claude-protected-launch-sources'
+import { readProtectedClaudeAuth } from '../claude/claude-protected-auth'
 import { claudeNamingInvocation } from '../claude/claude-naming-invocation'
 import { createClaudeCommandCatalogProbe } from '../claude/claude-command-catalog-probe'
 import { CodexStructuredSessionAdapter } from '../codex/codex-structured-session-adapter'
@@ -120,17 +123,27 @@ function createClaudeAdapter(
     ),
     resolveWorkspacePath: deps.resolveWorkspacePath,
     ...(resolveAccountHome ? { resolveAccountHome: () => resolveAccountHome('claude') } : {}),
-    resolveLaunch: composeStructuredLaunch(
-      CLAUDE_STRUCTURED_AGENT,
-      structuredAgentLaunchSources(context),
-      claudeStructuredLaunchPart({
-        resolveLaunchArgs: () => deps.resolveLaunchArgs('claude'),
-        ...(deps.resolveClaudeCommand ? { resolveCommand: deps.resolveClaudeCommand } : {}),
-        resolveAuthPolicy: deps.resolveClaudeAuthPolicy,
-        attachmentDirectory: agentSessionAttachmentStoreRoot(deps.stateDirectory),
-        ...(deps.claudeCliFlags ? { cliFlags: deps.claudeCliFlags } : {})
-      })
-    ),
+    resolveLaunch: createProtectedClaudeLaunchResolver({
+      store,
+      stateDirectory: deps.stateDirectory,
+      scanRoots: () => requireProtectedClaudeLaunchSources().scanRoots(),
+      readAuth: (reference) =>
+        readProtectedClaudeAuth(reference, {
+          stateDirectory: deps.stateDirectory,
+          getSettings: () => requireProtectedClaudeLaunchSources().getSettings()
+        }),
+      ordinary: composeStructuredLaunch(
+        CLAUDE_STRUCTURED_AGENT,
+        structuredAgentLaunchSources(context),
+        claudeStructuredLaunchPart({
+          resolveLaunchArgs: () => deps.resolveLaunchArgs('claude'),
+          ...(deps.resolveClaudeCommand ? { resolveCommand: deps.resolveClaudeCommand } : {}),
+          resolveAuthPolicy: deps.resolveClaudeAuthPolicy,
+          attachmentDirectory: agentSessionAttachmentStoreRoot(deps.stateDirectory),
+          ...(deps.claudeCliFlags ? { cliFlags: deps.claudeCliFlags } : {})
+        })
+      )
+    }),
     ...(deps.resolveClaudeCommand ? { resolveClaudeCommand: deps.resolveClaudeCommand } : {}),
     ...(deps.claudeCliFlags ? { claudeCliFlags: deps.claudeCliFlags } : {}),
     ...(overlay ? { resolveClaudeLaunchEnv: overlay } : {}),

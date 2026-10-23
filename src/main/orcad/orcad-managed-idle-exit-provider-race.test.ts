@@ -64,6 +64,7 @@ it.each(['provider', 'client', 'request', 'recent request'])(
       hasStagedMigration: () => false,
       automationsBusy: () => false,
       emulatorsBusy: async () => false,
+      forgeInboxBusy: () => false,
       registerCleanup: () => {}
     })
     const installed = vi.mocked(installOrcadManagedIdleExit).mock.calls.at(-1)?.[0]

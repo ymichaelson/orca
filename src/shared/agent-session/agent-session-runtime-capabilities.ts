@@ -4,6 +4,7 @@ import { AGENT_SESSION_CONTINUE_INTERRUPTED_RUNTIME_CAPABILITY } from './agent-s
 import { AGENT_SESSION_CREATE_RUNTIME_CAPABILITIES } from './agent-session-create-capabilities'
 import { AGENT_SESSION_CURRENT_REQUESTS_CLIENT_CAPABILITY } from './requests/agent-session-current-requests-capability'
 import { AGENT_SESSION_PERMISSION_MODES_RUNTIME_CAPABILITY } from './agent-session-permission-modes-capability'
+import { AGENT_SESSION_PROTECTED_OUTPUT_CLIENT_CAPABILITY } from '../agent-session-protected-output-capability'
 import { AGENT_SESSION_RESUME_RUNTIME_CAPABILITIES } from './lifecycle/agent-session-resume-runtime-capabilities'
 import { AGENT_SESSION_STOP_RUNTIME_CAPABILITIES } from './lifecycle/agent-session-stop-capabilities'
 import { AGENT_SESSION_WORKSPACE_SLEEP_MARK_RUNTIME_CAPABILITY } from './agent-session-workspace-sleep'
@@ -107,6 +108,7 @@ export const AGENT_SESSION_RUNTIME_CAPABILITIES = [
   AGENT_SESSION_KEYBOARD_RUNTIME_CAPABILITY,
   STRUCTURED_AGENT_SESSION_RUNTIME_CAPABILITY,
   AGENT_SESSION_CURRENT_REQUESTS_CLIENT_CAPABILITY,
+  AGENT_SESSION_PROTECTED_OUTPUT_CLIENT_CAPABILITY,
   STRUCTURED_AGENT_SESSION_CLIENT_LAUNCH_MODE_CAPABILITY,
   AGENT_SESSION_PENDING_SEND_RESULT_RUNTIME_CAPABILITY,
   // The host side: it accepts a send before any agent has it, and a Stop with no writer before a
