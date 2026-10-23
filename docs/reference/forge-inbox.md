@@ -179,8 +179,10 @@ read and carries presence, kind and protection status only — never secret byte
 - Instance origin is bound on first use. Reusing an instance id with a different `baseUrl` is
   rejected (`instance-origin-conflict`), including after the instance was deleted — old events and
   approvals can never be sent to a new destination.
-- The ledger is schema version 1 and is host-scoped. An unreadable or future-schema file is rejected
-  as corrupt and left on disk; nothing is recreated over it.
+- The host-scoped ledger uses schema version 2. Version 1 is migrated transactionally without
+  rebuilding existing tables; version 2 adds durable explicit patch-request records. Older builds
+  reject version 2 rather than downgrading it. An unreadable or future-schema file is left on disk;
+  nothing is recreated over it.
 - A protected analysis session raises the local chat journal database to version 5 the first time it
   is written. An older Orca build caps at 4, sees a newer schema, opens the journal read-only and
   refuses structured-chat replay/subscribe — so that build cannot use structured chats on this

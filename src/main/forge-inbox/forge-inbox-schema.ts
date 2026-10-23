@@ -1,6 +1,6 @@
-export const FORGE_INBOX_SCHEMA_VERSION = 1
+export const FORGE_INBOX_SCHEMA_VERSION = 2
 
-export const FORGE_INBOX_TABLES = [
+export const FORGE_INBOX_V1_TABLES = [
   'meta',
   'policies',
   'instance_origins',
@@ -19,8 +19,10 @@ export const FORGE_INBOX_TABLES = [
   'client_cursors'
 ] as const
 
-export function createForgeInboxTablesSql(): string {
-  return `
+export const FORGE_INBOX_TABLES = [...FORGE_INBOX_V1_TABLES, 'patch_requests'] as const
+
+// Frozen at the shipped version 1 so migration never reinterprets the old file with a new shape.
+export const FORGE_INBOX_V1_TABLES_SQL = `
 CREATE TABLE meta (
   key TEXT PRIMARY KEY,
   value TEXT NOT NULL
@@ -200,5 +202,35 @@ CREATE TABLE client_cursors (
   last_seq INTEGER NOT NULL,
   PRIMARY KEY (client_id, host_id, instance_id)
 ) WITHOUT ROWID;
+`
+
+export function createForgeInboxTablesSql(): string {
+  return `${FORGE_INBOX_V1_TABLES_SQL}\n${createForgeInboxPatchRequestsTableSql()}`
+}
+
+// Data-only request record: run_generation fences runs.generation, invalidation_generation is the
+// project_invalidations generation at request time; no prompts, file bodies or secrets are stored.
+export function createForgeInboxPatchRequestsTableSql(): string {
+  return `
+CREATE TABLE patch_requests (
+  id INTEGER PRIMARY KEY,
+  caller_key TEXT NOT NULL,
+  operation_id TEXT NOT NULL,
+  request_digest TEXT NOT NULL,
+  run_id INTEGER NOT NULL REFERENCES runs (id),
+  run_generation INTEGER NOT NULL,
+  session_id TEXT NOT NULL,
+  item_id INTEGER NOT NULL REFERENCES items (id),
+  revision INTEGER NOT NULL,
+  policy_generation INTEGER NOT NULL,
+  config_revision INTEGER NOT NULL,
+  invalidation_generation INTEGER NOT NULL,
+  state TEXT NOT NULL CHECK (state IN ('in_progress', 'succeeded', 'failed', 'unverifiable')),
+  proposal_id INTEGER REFERENCES proposals (id),
+  reason_code TEXT,
+  created_at INTEGER NOT NULL,
+  updated_at INTEGER NOT NULL,
+  UNIQUE (caller_key, operation_id)
+);
 `
 }

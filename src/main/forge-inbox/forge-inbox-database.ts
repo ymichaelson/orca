@@ -6,9 +6,12 @@ import Database from '../sqlite/sync-database'
 import { forgeCommitSignal } from './forge-inbox-commit-signal'
 import { hardenSqliteDatabaseFiles } from '../sqlite/harden-database-files'
 import {
+  createForgeInboxPatchRequestsTableSql,
   createForgeInboxTablesSql,
   FORGE_INBOX_SCHEMA_VERSION,
-  FORGE_INBOX_TABLES
+  FORGE_INBOX_TABLES,
+  FORGE_INBOX_V1_TABLES,
+  FORGE_INBOX_V1_TABLES_SQL
 } from './forge-inbox-schema'
 
 export const FORGE_INBOX_BUSY_TIMEOUT_MS = 5000
@@ -28,6 +31,9 @@ export function openForgeInboxDatabase(
   const db = new Database(dbPath)
   try {
     const stored = Number(db.pragma('user_version', { simple: true }) ?? 0)
+    if (stored < 0) {
+      throw new ForgeInboxSchemaError(`forge inbox ${dbPath} has invalid schema version ${stored}`)
+    }
     if (stored > FORGE_INBOX_SCHEMA_VERSION) {
       throw new ForgeInboxSchemaError(
         `forge inbox ${dbPath} uses schema ${stored}, newer than this build supports (${FORGE_INBOX_SCHEMA_VERSION})`
@@ -37,7 +43,14 @@ export function openForgeInboxDatabase(
       throw new ForgeInboxSchemaError(`forge inbox ${dbPath} is an existing unversioned database`)
     }
     if (stored > 0) {
-      assertForgeInboxIntact(db, dbPath)
+      assertForgeInboxIntact(db, dbPath, stored)
+      // Refuse a foreign owner before WAL or the additive migration can change the file.
+      if (requestedHostId !== undefined) {
+        const owner = db.prepare("SELECT value FROM meta WHERE key = 'host_id'").get()
+        if (owner?.value !== requestedHostId) {
+          throw new ForgeInboxHostMismatchError(`forge inbox ${dbPath} belongs to another host`)
+        }
+      }
     }
     db.pragma('journal_mode = WAL')
     db.pragma(`busy_timeout = ${FORGE_INBOX_BUSY_TIMEOUT_MS}`)
@@ -47,10 +60,15 @@ export function openForgeInboxDatabase(
     if (stored < FORGE_INBOX_SCHEMA_VERSION) {
       // Tables and the version bump commit together so a shaped file never reports version 0.
       runForgeTransaction(db, () => {
-        db.exec(createForgeInboxTablesSql())
-        db.prepare("INSERT INTO meta (key, value) VALUES ('host_id', ?)").run(
-          requestedHostId ?? randomUUID()
-        )
+        if (stored === 0) {
+          db.exec(createForgeInboxTablesSql())
+          db.prepare("INSERT INTO meta (key, value) VALUES ('host_id', ?)").run(
+            requestedHostId ?? randomUUID()
+          )
+        } else {
+          // v1 to v2 is additive: existing rows and credential bytes are never rebuilt.
+          db.exec(createForgeInboxPatchRequestsTableSql())
+        }
         db.pragma(`user_version = ${FORGE_INBOX_SCHEMA_VERSION}`)
       })
     }
@@ -101,7 +119,7 @@ export function runForgeTransaction<T>(db: Database.Database, run: () => T): T {
 }
 
 /** Read-only validation before any persistent pragma, so a damaged file is left byte-identical. */
-function assertForgeInboxIntact(db: Database.Database, dbPath: string): void {
+function assertForgeInboxIntact(db: Database.Database, dbPath: string, version: number): void {
   const check = db.pragma('quick_check', { simple: true })
   const tables = new Set(
     db
@@ -109,7 +127,8 @@ function assertForgeInboxIntact(db: Database.Database, dbPath: string): void {
       .all()
       .map((row) => row.name)
   )
-  const missing = FORGE_INBOX_TABLES.filter((name) => !tables.has(name))
+  const expectedTables = version === 1 ? FORGE_INBOX_V1_TABLES : FORGE_INBOX_TABLES
+  const missing = expectedTables.filter((name) => !tables.has(name))
   if (check !== 'ok' || missing.length > 0) {
     throw new ForgeInboxCorruptError(
       `forge inbox ${dbPath} failed validation (${check === 'ok' ? `missing ${missing.join(', ')}` : String(check)})`
@@ -119,55 +138,74 @@ function assertForgeInboxIntact(db: Database.Database, dbPath: string): void {
   if (typeof owner?.value !== 'string' || owner.value === '') {
     throw new ForgeInboxCorruptError(`forge inbox ${dbPath} has no owner host`)
   }
-  // A pre-release file written before these columns existed is refused, not silently half-used.
-  const columns = new Set(
-    db
-      .prepare("SELECT name FROM pragma_table_info('webhook_deliveries')")
-      .all()
-      .map((row) => row.name)
-  )
-  const invalidationColumns = new Set(
-    db
-      .prepare("SELECT name FROM pragma_table_info('project_invalidations')")
-      .all()
-      .map((row) => row.name)
-  )
-  if (
-    !['host_id', 'instance_id', 'project_id', 'generation'].every((name) =>
-      invalidationColumns.has(name)
-    )
-  ) {
+  // A pre-release file that lacks a released table, column or index is refused, not migrated.
+  assertForgeInboxShape(db, dbPath, version)
+}
+
+type ForgeInboxShape = {
+  objects: string[]
+  columns: Map<string, string>
+}
+
+const forgeInboxShapes = new Map<number, ForgeInboxShape>()
+
+function assertForgeInboxShape(db: Database.Database, dbPath: string, version: number): void {
+  const expected = expectedForgeInboxShape(version)
+  const objects = new Set(forgeInboxSchemaObjects(db))
+  const missing = expected.objects.filter((object) => !objects.has(object))
+  if (missing.length > 0) {
     throw new ForgeInboxCorruptError(
-      `forge inbox ${dbPath} has an outdated project_invalidations table`
+      `forge inbox ${dbPath} has an outdated schema ${version} shape (missing ${missing.join(', ')})`
     )
   }
-  const runColumns = new Set(
+  for (const [table, columns] of expected.columns) {
+    if (forgeInboxTableColumns(db, table) !== columns) {
+      throw new ForgeInboxCorruptError(`forge inbox ${dbPath} has an outdated ${table} table`)
+    }
+  }
+}
+
+function expectedForgeInboxShape(version: number): ForgeInboxShape {
+  const cached = forgeInboxShapes.get(version)
+  if (cached) {
+    return cached
+  }
+  const reference = new Database(':memory:')
+  try {
+    reference.exec(version === 1 ? FORGE_INBOX_V1_TABLES_SQL : createForgeInboxTablesSql())
+    const tables: readonly string[] = version === 1 ? FORGE_INBOX_V1_TABLES : FORGE_INBOX_TABLES
+    const shape: ForgeInboxShape = {
+      objects: forgeInboxSchemaObjects(reference),
+      columns: new Map<string, string>(
+        tables.map((table) => [table, forgeInboxTableColumns(reference, table)])
+      )
+    }
+    forgeInboxShapes.set(version, shape)
+    return shape
+  } finally {
+    reference.close()
+  }
+}
+
+/** User objects only: SQLite's own sqlite_sequence/autoindex entries follow the stored schema. */
+function forgeInboxSchemaObjects(db: Database.Database): string[] {
+  return db
+    .prepare(
+      `SELECT type || ':' || name AS object FROM sqlite_master
+       WHERE type IN ('table', 'index') AND name NOT LIKE 'sqlite_%'
+       ORDER BY object`
+    )
+    .all()
+    .map((row) => String(row.object))
+}
+
+function forgeInboxTableColumns(db: Database.Database, table: string): string {
+  return JSON.stringify(
     db
-      .prepare("SELECT name FROM pragma_table_info('runs')")
-      .all()
-      .map((row) => row.name)
+      .prepare(
+        `SELECT name, type, "notnull", dflt_value, pk FROM pragma_table_info(?)
+         ORDER BY cid`
+      )
+      .all(table)
   )
-  if (
-    !['policy_generation', 'context_digest', 'analysis_kind', 'session_id', 'result_json'].every(
-      (name) => runColumns.has(name)
-    )
-  ) {
-    throw new ForgeInboxCorruptError(`forge inbox ${dbPath} has an outdated runs table`)
-  }
-  const indexes = new Set(
-    db
-      .prepare("SELECT name FROM sqlite_master WHERE type = 'index'")
-      .all()
-      .map((row) => row.name)
-  )
-  if (
-    !['attempts', 'next_attempt_at', 'last_error_code', 'finished_at'].every((name) =>
-      columns.has(name)
-    ) ||
-    !['webhook_deliveries_claim', 'webhook_deliveries_finished'].every((name) => indexes.has(name))
-  ) {
-    throw new ForgeInboxCorruptError(
-      `forge inbox ${dbPath} has an outdated webhook_deliveries table or indexes`
-    )
-  }
 }
