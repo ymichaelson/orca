@@ -125,12 +125,14 @@ export function createForgeInboxPatchProducer(deps: {
   const { ledger } = deps
   return async (input, signal) => {
     const { scope, callerKey } = input
+    // The claim treats repeated paths as one intent; the context must see that same set.
+    const requestedPaths = [...new Set(input.paths)]
     const claimed = ledger.claimPatchRequest({
       scope,
       callerKey,
       operationId: input.operationId,
       runId: input.runId,
-      intent: { message: input.message, paths: input.paths }
+      intent: { message: input.message, paths: requestedPaths }
     })
     if (claimed.kind === 'refused') {
       return { kind: 'refused', reason: claimed.reason }
@@ -218,7 +220,7 @@ export function createForgeInboxPatchProducer(deps: {
         return settleFailed('target-mismatch')
       }
 
-      let paths = [...input.paths]
+      let paths = requestedPaths
       if (paths.length === 0) {
         const diffs = await reader.getMergeRequestDiffs(item.iid)
         if (!diffs.ok || !diffs.complete) {
