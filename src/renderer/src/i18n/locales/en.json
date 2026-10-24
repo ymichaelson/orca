@@ -18716,7 +18716,9 @@
           "patchDetails": "branch {{branch}} · base {{base}}",
           "pushDetails": "branch {{branch}} · expected head {{head}} · commit {{commit}}",
           "pushMessage": "Commit message",
-          "notApprovable": "This proposal cannot be approved from this build."
+          "notApprovable": "This proposal cannot be approved from this build.",
+          "showDiff": "Show exact diff",
+          "hideDiff": "Hide exact diff"
         },
         "forge-inbox-approval-messages": {
           "notFound": "This proposal no longer exists on the host.",
@@ -18752,6 +18754,7 @@
           "baseUnavailable": "The base commit could not be read from GitLab. Nothing was pushed.",
           "baseUnsupported": "This project’s base tree cannot be rebuilt exactly, so nothing was written or pushed.",
           "baseUnverified": "The base commit could not be verified exactly. Nothing was pushed.",
+          "diffTooLarge": "This change is too large to show exactly here. Nothing was written.",
           "sourceUnavailable": "A file needed for this change could not be read. Nothing was written.",
           "pathUnsafe": "The change contains a path this host will not write. Nothing was written.",
           "writeFailed": "The host could not write the approved files.",

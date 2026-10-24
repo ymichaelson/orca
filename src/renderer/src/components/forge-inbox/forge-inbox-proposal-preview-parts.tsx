@@ -1,5 +1,10 @@
+import { useState } from 'react'
+import { Loader2 } from 'lucide-react'
 import type { ForgeProposalPreview } from '../../../../shared/forge-inbox-rpc-types'
 import { translate } from '@/i18n/i18n'
+import { readForgeInboxProposalDiff } from '@/runtime/forge-inbox-client'
+import { Button } from '../ui/button'
+import { forgeApprovalFailureMessage } from './forge-inbox-approval-messages'
 
 export function proposalKindLabel(kind: ForgeProposalPreview['kind']): string {
   switch (kind) {
@@ -137,5 +142,90 @@ export function ProposalBody({ preview }: { preview: ForgeProposalPreview }): Re
         'This proposal cannot be approved from this build.'
       )}
     </p>
+  )
+}
+
+type DiffState =
+  | { status: 'idle' }
+  | { status: 'loading' }
+  | { status: 'shown'; text: string }
+  | { status: 'refused'; message: string }
+
+/**
+ * The diff is rendered by the host from the base the manifest pins, and only shown when it
+ * belongs to the same draft hash the dialog displays; anything else is refused, never patched in.
+ */
+export function ProposalDiffView({
+  ownerHostId,
+  instanceId,
+  proposalId,
+  hash
+}: {
+  ownerHostId: string
+  instanceId: string
+  proposalId: number
+  hash: string
+}): React.JSX.Element {
+  const [state, setState] = useState<DiffState>({ status: 'idle' })
+
+  async function toggle(): Promise<void> {
+    if (state.status === 'shown') {
+      setState({ status: 'idle' })
+      return
+    }
+    if (state.status === 'loading') {
+      return
+    }
+    setState({ status: 'loading' })
+    try {
+      const view = await readForgeInboxProposalDiff(ownerHostId, proposalId, instanceId)
+      if (view.diff === null) {
+        setState({ status: 'refused', message: forgeApprovalFailureMessage('not-found') })
+        return
+      }
+      if (!view.diff.ok) {
+        setState({ status: 'refused', message: forgeApprovalFailureMessage(view.diff.reason) })
+        return
+      }
+      if (view.diff.hash !== hash) {
+        setState({ status: 'refused', message: forgeApprovalFailureMessage('draft-mismatch') })
+        return
+      }
+      setState({ status: 'shown', text: view.diff.text })
+    } catch (error: unknown) {
+      setState({
+        status: 'refused',
+        message: error instanceof Error ? error.message : String(error)
+      })
+    }
+  }
+
+  return (
+    <div className="mt-3 flex flex-col gap-2">
+      <div className="flex justify-end">
+        <Button size="sm" variant="ghost" disabled={state.status === 'loading'} onClick={toggle}>
+          {state.status === 'loading' ? <Loader2 className="animate-spin" /> : null}
+          {state.status === 'shown'
+            ? translate(
+                'auto.components.forge-inbox.ForgeInboxProposalDialog.hideDiff',
+                'Hide exact diff'
+              )
+            : translate(
+                'auto.components.forge-inbox.ForgeInboxProposalDialog.showDiff',
+                'Show exact diff'
+              )}
+        </Button>
+      </div>
+      {state.status === 'refused' ? (
+        <p role="alert" className="text-xs text-destructive">
+          {state.message}
+        </p>
+      ) : null}
+      {state.status === 'shown' ? (
+        <pre className="scrollbar-sleek max-h-80 overflow-auto whitespace-pre rounded-md border border-border bg-muted/30 p-3 font-mono text-2xs leading-5 text-foreground/85">
+          {state.text}
+        </pre>
+      ) : null}
+    </div>
   )
 }

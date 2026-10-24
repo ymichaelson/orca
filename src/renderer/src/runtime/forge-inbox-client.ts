@@ -9,6 +9,7 @@ import type {
   ForgeInboxEventsPage,
   ForgeInboxItemDetail,
   ForgeInboxItemsPage,
+  ForgeInboxProposalDiffView,
   ForgeInboxProposalPreviewView,
   ForgeInboxProposalRejectOutcome,
   ForgeInboxPushApplyOutcome,
@@ -132,6 +133,20 @@ export function readForgeInboxProposal(
   target: RuntimeClientTarget = HOST_RUNTIME
 ): Promise<ForgeInboxProposalPreviewView> {
   return callRuntimeRpc<ForgeInboxProposalPreviewView>(target, 'forgeInbox.getProposal', {
+    ownerHostId,
+    proposalId,
+    ...(instanceId === undefined ? {} : { instanceId })
+  })
+}
+
+/** The host renders the diff from the base the manifest pins; the client never builds its own. */
+export function readForgeInboxProposalDiff(
+  ownerHostId: string,
+  proposalId: number,
+  instanceId?: string,
+  target: RuntimeClientTarget = HOST_RUNTIME
+): Promise<ForgeInboxProposalDiffView> {
+  return callRuntimeRpc<ForgeInboxProposalDiffView>(target, 'forgeInbox.getProposalDiff', {
     ownerHostId,
     proposalId,
     ...(instanceId === undefined ? {} : { instanceId })

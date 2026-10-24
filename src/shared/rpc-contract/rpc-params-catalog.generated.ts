@@ -977,6 +977,7 @@ export const RPC_PARAMS_BY_METHOD = {
   'forgeInbox.getConfig': ForgeInboxNoParams,
   'forgeInbox.getItemDetail': ForgeInboxItemParams,
   'forgeInbox.getProposal': ForgeInboxProposalParams,
+  'forgeInbox.getProposalDiff': ForgeInboxProposalParams,
   'forgeInbox.getStatus': ForgeInboxNoParams,
   'forgeInbox.listEvents': ForgeInboxListEventsParams,
   'forgeInbox.listItems': ForgeInboxListItemsParams,

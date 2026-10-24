@@ -2,6 +2,7 @@ import type {
   ForgeInboxApprovePatchOutcome,
   ForgeInboxCommentApprovalOutcome,
   ForgeInboxDiscussOutcome,
+  ForgeInboxProposalDiffView,
   ForgeInboxProposalPreviewView,
   ForgeInboxProposalRejectOutcome,
   ForgeInboxProposePatchOutcome,
@@ -44,6 +45,23 @@ export const FORGE_INBOX_PROPOSAL_READ_METHODS = [
       return guardForgeInbox(unavailable, () => ({
         ownerHostId: params.ownerHostId,
         proposal: service.getProposalPreview(scopeOf(params.instanceId), params.proposalId)
+      }))
+    }
+  }),
+  // Why the owner's read credential: the diff must be the exact one approval applies, not a guess.
+  defineMethod({
+    name: 'forgeInbox.getProposalDiff',
+    permission: 'workspace',
+    params: ForgeInboxProposalParams,
+    handler: (params, context): Promise<ForgeInboxProposalDiffView> => {
+      const service = forgeOwnerFor(context, params.ownerHostId)
+      return guardForgeInbox(unavailable, async () => ({
+        ownerHostId: params.ownerHostId,
+        diff: await service.getProposalDiff(
+          { scope: scopeOf(params.instanceId), proposalId: params.proposalId },
+          signalOf(context),
+          params.ownerHostId
+        )
       }))
     }
   })

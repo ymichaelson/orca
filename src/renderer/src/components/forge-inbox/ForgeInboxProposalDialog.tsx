@@ -29,6 +29,7 @@ import { forgeDiscussRefusalMessage } from './forge-inbox-discuss-messages'
 import { formatForgeDateTime } from './forge-inbox-display'
 import {
   ProposalBody,
+  ProposalDiffView,
   approveLabel,
   proposalKindLabel,
   targetLabel
@@ -270,6 +271,14 @@ function ProposalReview({
           </dl>
 
           <ProposalBody preview={preview} />
+          {preview.kind === 'patch' ? (
+            <ProposalDiffView
+              ownerHostId={ownerHostId}
+              instanceId={instanceId}
+              proposalId={preview.proposalId}
+              hash={preview.hash}
+            />
+          ) : null}
         </>
       ) : null}
 

@@ -18409,7 +18409,9 @@
           "patchDetails": "브랜치 {{branch}} · 기준 {{base}}",
           "pushDetails": "브랜치 {{branch}} · 예상 헤드 {{head}} · 커밋 {{commit}}",
           "pushMessage": "커밋 메시지",
-          "notApprovable": "이 빌드에서는 이 제안을 승인할 수 없습니다."
+          "notApprovable": "이 빌드에서는 이 제안을 승인할 수 없습니다.",
+          "showDiff": "정확한 차이 보기",
+          "hideDiff": "정확한 차이 숨기기"
         },
         "forge-inbox-approval-messages": {
           "notFound": "이 제안은 더 이상 호스트에 없습니다.",
@@ -18445,6 +18447,7 @@
           "baseUnavailable": "GitLab에서 기준 커밋을 읽을 수 없습니다. 아무것도 푸시되지 않았습니다.",
           "baseUnsupported": "이 프로젝트의 기준 트리를 정확히 재구성할 수 없어 아무것도 기록하거나 푸시하지 않았습니다.",
           "baseUnverified": "기준 커밋을 정확히 검증할 수 없습니다. 아무것도 푸시되지 않았습니다.",
+          "diffTooLarge": "이 변경은 너무 커서 여기에 정확히 표시할 수 없습니다. 아무것도 기록되지 않았습니다.",
           "sourceUnavailable": "이 변경에 필요한 파일을 읽을 수 없습니다. 아무것도 기록되지 않았습니다.",
           "pathUnsafe": "이 변경에 이 호스트가 기록하지 않는 경로가 포함되어 있습니다. 아무것도 기록되지 않았습니다.",
           "writeFailed": "호스트가 승인된 파일을 기록할 수 없습니다.",

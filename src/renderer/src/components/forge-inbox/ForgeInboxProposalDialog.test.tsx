@@ -10,6 +10,7 @@ import type {
 
 const mocks = vi.hoisted(() => ({
   readProposal: vi.fn(),
+  readDiff: vi.fn(),
   approveComment: vi.fn(),
   approvePatch: vi.fn(),
   approvePush: vi.fn(),
@@ -19,6 +20,7 @@ const mocks = vi.hoisted(() => ({
 
 vi.mock('@/runtime/forge-inbox-client', () => ({
   readForgeInboxProposal: mocks.readProposal,
+  readForgeInboxProposalDiff: mocks.readDiff,
   approveForgeInboxComment: mocks.approveComment,
   approveForgeInboxPatch: mocks.approvePatch,
   approveForgeInboxPush: mocks.approvePush,
@@ -213,5 +215,59 @@ describe('ForgeInboxProposalDialog', () => {
     expect(mocks.approveComment).not.toHaveBeenCalled()
     expect(mocks.approvePatch).not.toHaveBeenCalled()
     expect(mocks.approvePush).not.toHaveBeenCalled()
+    expect(container.textContent).not.toContain('Show exact diff')
+  })
+
+  it('shows the host-rendered exact diff for a file change', async () => {
+    mocks.readDiff.mockResolvedValue({
+      ownerHostId: 'host-1',
+      diff: { ok: true, hash: HASH, text: '--- a/src/a.ts\n+++ b/src/a.ts\n-old\n+new\n' }
+    })
+    await render(patchPreview())
+
+    await act(async () => button(container, 'Show exact diff').click())
+
+    expect(mocks.readDiff).toHaveBeenCalledWith('host-1', PROPOSAL.id, INSTANCE)
+    expect(container.textContent).toContain('-old')
+    expect(container.textContent).toContain('+new')
+  })
+
+  it('says why the diff cannot be shown instead of rendering a guess', async () => {
+    mocks.readDiff.mockResolvedValue({
+      ownerHostId: 'host-1',
+      diff: { ok: false, reason: 'base-mismatch' }
+    })
+    await render(patchPreview())
+
+    await act(async () => button(container, 'Show exact diff').click())
+
+    expect(container.querySelector('[role="alert"]')?.textContent).toContain(
+      'does not match the approved one'
+    )
+    expect(container.textContent).not.toContain('+++ b/src/a.ts')
+  })
+
+  it('refuses a diff that belongs to another draft than the one on screen', async () => {
+    mocks.readDiff.mockResolvedValue({
+      ownerHostId: 'host-1',
+      diff: { ok: true, hash: 'sha256:someone-else', text: '+++ b/src/a.ts\n+other\n' }
+    })
+    await render(patchPreview())
+
+    await act(async () => button(container, 'Show exact diff').click())
+
+    expect(container.querySelector('[role="alert"]')?.textContent).toContain(
+      'differs from the one you reviewed'
+    )
+    expect(container.textContent).not.toContain('+other')
+  })
+
+  it('says the proposal is gone when the host has no such draft', async () => {
+    mocks.readDiff.mockResolvedValue({ ownerHostId: 'host-1', diff: null })
+    await render(patchPreview())
+
+    await act(async () => button(container, 'Show exact diff').click())
+
+    expect(container.querySelector('[role="alert"]')?.textContent).toContain('no longer exists')
   })
 })

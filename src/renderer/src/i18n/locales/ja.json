@@ -18409,7 +18409,9 @@
           "patchDetails": "ブランチ {{branch}} · ベース {{base}}",
           "pushDetails": "ブランチ {{branch}} · 期待される head {{head}} · コミット {{commit}}",
           "pushMessage": "コミットメッセージ",
-          "notApprovable": "このビルドではこの提案を承認できません。"
+          "notApprovable": "このビルドではこの提案を承認できません。",
+          "showDiff": "正確な差分を表示",
+          "hideDiff": "正確な差分を隠す"
         },
         "forge-inbox-approval-messages": {
           "notFound": "この提案はホストに存在しません。",
@@ -18445,6 +18447,7 @@
           "baseUnavailable": "GitLab からベースコミットを読み取れませんでした。何もプッシュされていません。",
           "baseUnsupported": "このプロジェクトのベースツリーは正確に再構築できないため、何も書き込まれず、プッシュもされていません。",
           "baseUnverified": "ベースコミットを正確に検証できませんでした。何もプッシュされていません。",
+          "diffTooLarge": "この変更は大きすぎて正確に表示できません。何も書き込まれていません。",
           "sourceUnavailable": "この変更に必要なファイルを読み取れませんでした。何も書き込まれていません。",
           "pathUnsafe": "この変更には、このホストが書き込まないパスが含まれています。何も書き込まれていません。",
           "writeFailed": "ホストが承認済みのファイルを書き込めませんでした。",

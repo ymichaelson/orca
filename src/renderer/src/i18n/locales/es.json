@@ -18404,7 +18404,9 @@
           "patchDetails": "rama {{branch}} · base {{base}}",
           "pushDetails": "rama {{branch}} · head esperado {{head}} · commit {{commit}}",
           "pushMessage": "Mensaje del commit",
-          "notApprovable": "Esta propuesta no se puede aprobar desde esta compilación."
+          "notApprovable": "Esta propuesta no se puede aprobar desde esta compilación.",
+          "showDiff": "Mostrar el diff exacto",
+          "hideDiff": "Ocultar el diff exacto"
         },
         "forge-inbox-approval-messages": {
           "notFound": "Esta propuesta ya no existe en el host.",
@@ -18440,6 +18442,7 @@
           "baseUnavailable": "No se pudo leer el commit base desde GitLab. No se envió nada.",
           "baseUnsupported": "El árbol base de este proyecto no se puede reconstruir exactamente, así que no se escribió ni se envió nada.",
           "baseUnverified": "No se pudo verificar el commit base exactamente. No se envió nada.",
+          "diffTooLarge": "Este cambio es demasiado grande para mostrarlo exactamente aquí. No se escribió nada.",
           "sourceUnavailable": "No se pudo leer un archivo necesario para este cambio. No se escribió nada.",
           "pathUnsafe": "El cambio contiene una ruta que este host no escribirá. No se escribió nada.",
           "writeFailed": "El host no pudo escribir los archivos aprobados.",
