@@ -14,7 +14,10 @@ import type { ProtectedClaudeExecutable } from '../claude/claude-protected-nativ
 import type { StructuredAgentSessionHost } from '../native-chat/agent-session-wire/structured-agent-session-host'
 import { prepareProtectedClaudeFounding } from '../runtime/agent-session-protected-claude-founding'
 import type { ForgeAnalysisLaunch } from './forge-inbox-analysis-launch'
-import { sendForgeProtectedSessionTurn } from './forge-inbox-protected-session-turn'
+import {
+  sendForgeProtectedSessionTurn,
+  type ForgeProtectedSessionTurnHost
+} from './forge-inbox-protected-session-turn'
 import type {
   ForgeProtectedAnalysisFounding,
   ForgeProtectedAnalysisOpenRequest,
@@ -25,7 +28,8 @@ import type {
 export type ForgeAnalysisHostPort = Pick<
   StructuredAgentSessionHost,
   'create' | 'send' | 'waitForSendSettlement' | 'history' | 'subscribeTurnCompletions'
->
+> &
+  Pick<ForgeProtectedSessionTurnHost, 'currentWork' | 'sessionRecord'>
 
 export type ForgeInboxAnalysisPrepareInput = {
   sessionId: string

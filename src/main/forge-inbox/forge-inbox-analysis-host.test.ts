@@ -2,6 +2,7 @@ import { mkdtemp, realpath, rm } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { afterEach, describe, expect, it } from 'vitest'
+import { agentJournalSubmissionKey } from '../../shared/agent-session-journal-item-key'
 import type { AgentSessionProtectedAnalysis } from '../../shared/agent-session-protected-analysis'
 import {
   PROTECTED_CLAUDE_NATIVE_HASHES,
@@ -83,20 +84,27 @@ function executableFixture(): ProtectedClaudeExecutable {
 function page(items: AgentJournalRenderItem[] = []): AgentSessionHistoryPage {
   return {
     sessionId: SESSION_ID,
-    epoch: 'epoch-1',
+    epoch: CURSOR.epoch,
     direction: 'tail',
     items,
     removedItemIds: [],
     submissions: [],
     window: { oldest: null, newest: null, nextCursor: CURSOR },
+    liveCursor: {
+      epoch: CURSOR.epoch,
+      sequence: items.reduce((sequence, item) => Math.max(sequence, item.sequence), CURSOR.sequence)
+    },
     hasOlder: false,
     hasNewer: false
   }
 }
 
-function submission(state: AgentJournalDispatchState): AgentJournalSubmission {
+function submission(
+  state: AgentJournalDispatchState,
+  clientMessageId: string
+): AgentJournalSubmission {
   return {
-    clientMessageId: 'message-1',
+    clientMessageId,
     fence: 1,
     payloadFingerprint: 'fingerprint',
     dispatchState: state,
@@ -107,22 +115,55 @@ function submission(state: AgentJournalDispatchState): AgentJournalSubmission {
   }
 }
 
-function sendResult(state: AgentJournalDispatchState): AgentSessionSendResult {
-  return { clientMessageId: 'message-1', submission: submission(state) }
+function sendResult(
+  state: AgentJournalDispatchState,
+  clientMessageId: string
+): AgentSessionSendResult {
+  return { clientMessageId, submission: submission(state, clientMessageId) }
 }
 
 function message(
   role: 'user' | 'assistant' | 'reasoning',
   text: string,
-  sequence: number
+  sequence: number,
+  turnItemId?: string
 ): AgentJournalRenderItem {
   return {
     itemId: `${role}-${sequence}`,
     revision: 1,
     body: { kind: 'message', role, blocks: [{ type: 'text', text }] },
     sequence,
-    observedAt: 1
+    observedAt: 1,
+    ...(turnItemId ? { turnScope: { kind: 'turn' as const, turnItemId } } : {})
   }
+}
+
+/** The rows a real host writes for one send: the turn names its submission key, the answer is
+ *  scoped to that turn, and a reasoning row in the same scope is not part of the reply. */
+function journalTurn(clientMessageId: string, reply: string): AgentJournalRenderItem[] {
+  const turnItemId = `claude:turn:${clientMessageId}`
+  return [
+    {
+      ...message('user', 'the prompt', 1, turnItemId),
+      itemId: agentJournalSubmissionKey(clientMessageId)
+    },
+    {
+      itemId: turnItemId,
+      revision: 1,
+      body: {
+        kind: 'turn',
+        turnId: 'turn-1',
+        userItemId: agentJournalSubmissionKey(clientMessageId),
+        state: 'completed',
+        outcome: 'success'
+      },
+      sequence: 2,
+      observedAt: 1,
+      turnScope: { kind: 'thread' }
+    },
+    message('reasoning', 'thinking', 3, turnItemId),
+    message('assistant', reply, 4, turnItemId)
+  ]
 }
 
 function completion(sessionId: string): AgentSessionTurnCompletion {
@@ -161,11 +202,17 @@ function fakeHost(
     send?: (context: {
       publish: (completion: AgentSessionTurnCompletion) => void
       sessionId: string
+      clientMessageId: string
     }) =>
       | AgentSessionMutationResult<AgentSessionSendResult>
       | Promise<AgentSessionMutationResult<AgentSessionSendResult>>
-    settlement?: { cursor: AgentJournalCursor; value: AgentSessionSendResult }
-    items?: AgentJournalRenderItem[]
+    settlement?: (clientMessageId: string) => {
+      cursor: AgentJournalCursor
+      value: AgentSessionSendResult
+    }
+    reply?: string
+    /** Off for a test that must observe the wait before any completion exists. */
+    autoComplete?: boolean
   } = {}
 ) {
   const subscribers = new Map<
@@ -176,6 +223,7 @@ function fakeHost(
   const sends: Parameters<ForgeAnalysisHostPort['send']>[] = []
   const settlements: { sessionId: string; clientMessageId: string; budgetMs?: number }[] = []
   const histories: Parameters<ForgeAnalysisHostPort['history']>[] = []
+  let items: AgentJournalRenderItem[] = []
 
   const publish = (event: AgentSessionTurnCompletion): void => {
     for (const subscriber of subscribers.values()) {
@@ -190,27 +238,57 @@ function fakeHost(
     },
     send: async (caller, params) => {
       sends.push([caller, params])
+      const clientMessageId = params.envelope.clientOperationId
       const result = await (config.send?.({
         publish,
-        sessionId: params.envelope.sessionId
+        sessionId: params.envelope.sessionId,
+        clientMessageId
       }) ?? {
         ok: true as const,
         replayed: false,
         fence: 1,
         cursor: CURSOR,
-        value: sendResult('accepted')
+        value: sendResult('accepted', clientMessageId)
       })
+      if (result.ok && 'submission' in result.value) {
+        items = [...items, ...journalTurn(clientMessageId, config.reply ?? 'reply')]
+        if (config.autoComplete !== false && result.value.submission.dispatchState === 'accepted') {
+          queueMicrotask(() => publish(completion(params.envelope.sessionId)))
+        }
+      }
       return result
     },
     waitForSendSettlement: async (sessionId, clientMessageId, options) => {
       settlements.push({ sessionId, clientMessageId, budgetMs: options?.budgetMs })
-      return config.settlement
+      const settled = config.settlement?.(clientMessageId)
+      if (
+        settled &&
+        'submission' in settled.value &&
+        settled.value.submission.dispatchState === 'accepted' &&
+        config.autoComplete !== false
+      ) {
+        queueMicrotask(() => publish(completion(sessionId)))
+      }
+      return settled
     },
     history: async (request, scope) => {
       histories.push([request, scope])
-      const result: AgentSessionHistoryResult = { ok: true, page: page(config.items) }
+      const result: AgentSessionHistoryResult = { ok: true, page: page(items) }
       return result
     },
+    currentWork: () => ({
+      working: () => false,
+      hasActionablePrompt: () => false,
+      activeTurnId: () => null
+    }),
+    sessionRecord: () => ({
+      lease: {
+        runtimeFence: 1,
+        unreconciled: false,
+        handoffStage: null,
+        claimStatus: 'live' as const
+      }
+    }),
     subscribeTurnCompletions: (subscriber) => {
       subscribers.set(subscriber.id, subscriber)
       return () => {
@@ -219,7 +297,21 @@ function fakeHost(
     }
   }
 
-  return { port, creates, sends, settlements, histories, publish, subscribers }
+  return {
+    port,
+    creates,
+    sends,
+    settlements,
+    histories,
+    publish,
+    subscribers,
+    get items() {
+      return items
+    },
+    set items(value: AgentJournalRenderItem[]) {
+      items = value
+    }
+  }
 }
 
 async function makeHost(
@@ -444,25 +536,21 @@ describe('forge inbox analysis host: openSession', () => {
 })
 
 describe('forge inbox analysis host: one turn', () => {
-  it('answers with the assistant text the turn wrote after the prompt', async () => {
-    const host = fakeHost({
-      items: [
-        message('user', 'the prompt', 1),
-        message('reasoning', 'thinking', 2),
-        message('assistant', 'First point.', 3),
-        message('assistant', 'Second point.', 4)
-      ]
-    })
+  it('answers with the text its own turn wrote, not reasoning or another turn', async () => {
+    const host = fakeHost({ reply: 'First point.\nSecond point.' })
     const { service } = await makeHost({ host })
     const { open } = await prepared(service)
     const session = await open()
 
-    const pending = session.sendTurn('the prompt', new AbortController().signal)
-    host.publish(completion(SESSION_ID))
-
-    await expect(pending).resolves.toBe('First point.\nSecond point.')
+    await expect(session.sendTurn('the prompt', new AbortController().signal)).resolves.toBe(
+      'First point.\nSecond point.'
+    )
     expect(host.histories[0]).toEqual([
-      { sessionId: SESSION_ID, direction: 'tail', limit: 200 },
+      { sessionId: SESSION_ID, direction: 'tail', limit: 1 },
+      'own-agent'
+    ])
+    expect(host.histories[1]).toEqual([
+      { sessionId: SESSION_ID, direction: 'tail', limit: 100 },
       'own-agent'
     ])
     expect(host.subscribers.size).toBe(0)
@@ -470,15 +558,15 @@ describe('forge inbox analysis host: one turn', () => {
 
   it('settles on a completion that arrives before the send call returns', async () => {
     const host = fakeHost({
-      items: [message('user', 'the prompt', 1), message('assistant', 'Early reply.', 2)],
-      send: ({ publish, sessionId }) => {
+      reply: 'Early reply.',
+      send: ({ publish, sessionId, clientMessageId }) => {
         publish(completion(sessionId))
         return {
           ok: true,
           replayed: false,
           fence: 1,
           cursor: CURSOR,
-          value: sendResult('accepted')
+          value: sendResult('accepted', clientMessageId)
         }
       }
     })
@@ -492,9 +580,7 @@ describe('forge inbox analysis host: one turn', () => {
   })
 
   it('ignores a completion for another session', async () => {
-    const host = fakeHost({
-      items: [message('user', 'the prompt', 1), message('assistant', 'Later.', 2)]
-    })
+    const host = fakeHost({ reply: 'Later.', autoComplete: false })
     const { service } = await makeHost({ host })
     const { open } = await prepared(service)
     const session = await open()
@@ -513,29 +599,30 @@ describe('forge inbox analysis host: one turn', () => {
 
   it('waits out a pending submission until the host settles it as accepted', async () => {
     const host = fakeHost({
-      send: () => ({
+      reply: 'Settled reply.',
+      send: ({ clientMessageId }) => ({
         ok: true,
         replayed: false,
         fence: 1,
         cursor: CURSOR,
-        value: sendResult('pending')
+        value: sendResult('pending', clientMessageId)
       }),
-      settlement: { cursor: CURSOR, value: sendResult('accepted') },
-      items: [message('user', 'the prompt', 1), message('assistant', 'Settled reply.', 2)]
+      settlement: (clientMessageId) => ({
+        cursor: CURSOR,
+        value: sendResult('accepted', clientMessageId)
+      })
     })
     const { service } = await makeHost({ host })
     const { open } = await prepared(service)
     const session = await open()
 
-    const pending = session.sendTurn('the prompt', new AbortController().signal)
-    await Promise.resolve()
-    host.publish(completion(SESSION_ID))
-
-    await expect(pending).resolves.toBe('Settled reply.')
+    await expect(session.sendTurn('the prompt', new AbortController().signal)).resolves.toBe(
+      'Settled reply.'
+    )
     expect(host.settlements).toHaveLength(1)
     expect(host.settlements[0]).toMatchObject({
       sessionId: SESSION_ID,
-      clientMessageId: 'message-1'
+      clientMessageId: host.sends[0]![1].envelope.clientOperationId
     })
   })
 
@@ -546,18 +633,22 @@ describe('forge inbox analysis host: one turn', () => {
     const session = await open()
 
     await expect(session.sendTurn('the prompt', new AbortController().signal)).resolves.toBeNull()
-    expect(host.histories).toHaveLength(0)
+    expect(host.sends).toHaveLength(1)
+    expect(host.histories).toHaveLength(1)
     expect(host.subscribers.size).toBe(0)
   })
 
   it('reports nothing when the send could not be proven accepted', async () => {
-    const host = fakeHost({ send: () => accepted({ ...sendResult('unknown') }) })
+    const host = fakeHost({
+      send: ({ clientMessageId }) => accepted(sendResult('unknown', clientMessageId))
+    })
     const { service } = await makeHost({ host })
     const { open } = await prepared(service)
     const session = await open()
 
     await expect(session.sendTurn('the prompt', new AbortController().signal)).resolves.toBeNull()
-    expect(host.histories).toHaveLength(0)
+    expect(host.histories).toHaveLength(1)
+    expect(host.subscribers.size).toBe(0)
   })
 
   it('sends nothing when the turn was already aborted', async () => {
@@ -574,44 +665,51 @@ describe('forge inbox analysis host: one turn', () => {
   })
 
   it('stops waiting, and unsubscribes, when the turn is aborted mid-answer', async () => {
-    const host = fakeHost()
+    const host = fakeHost({ autoComplete: false })
     const { service } = await makeHost({ host })
     const { open } = await prepared(service)
     const session = await open()
     const stop = new AbortController()
 
     const pending = session.sendTurn('the prompt', stop.signal)
-    await Promise.resolve()
+    await new Promise((resolve) => setTimeout(resolve, 0))
     expect(host.subscribers.size).toBe(1)
 
     stop.abort()
     await expect(pending).resolves.toBeNull()
-    expect(host.histories).toHaveLength(0)
+    expect(host.sends).toHaveLength(1)
     expect(host.subscribers.size).toBe(0)
   })
 
-  it('reports nothing when the page holds no prompt to answer', async () => {
-    const host = fakeHost({ items: [message('assistant', 'orphan', 1)] })
+  it('reports nothing when no turn names this send', async () => {
+    const host = fakeHost({ autoComplete: false })
     const { service } = await makeHost({ host })
     const { open } = await prepared(service)
     const session = await open()
+    const stop = new AbortController()
 
-    const pending = session.sendTurn('the prompt', new AbortController().signal)
+    const pending = session.sendTurn('the prompt', stop.signal)
+    await new Promise((resolve) => setTimeout(resolve, 0))
+    host.items = host.items.map((item) =>
+      item.body.kind === 'turn'
+        ? { ...item, body: { ...item.body, userItemId: 'another-send' } }
+        : item
+    )
     host.publish(completion(SESSION_ID))
+    await new Promise((resolve) => setTimeout(resolve, 0))
+    stop.abort()
+
     await expect(pending).resolves.toBeNull()
+    expect(host.subscribers.size).toBe(0)
   })
 
   it('reports nothing when the assistant said only whitespace', async () => {
-    const host = fakeHost({
-      items: [message('user', 'the prompt', 1), message('assistant', '   \n', 2)]
-    })
+    const host = fakeHost({ reply: '   \n' })
     const { service } = await makeHost({ host })
     const { open } = await prepared(service)
     const session = await open()
 
-    const pending = session.sendTurn('the prompt', new AbortController().signal)
-    host.publish(completion(SESSION_ID))
-    await expect(pending).resolves.toBeNull()
+    await expect(session.sendTurn('the prompt', new AbortController().signal)).resolves.toBeNull()
   })
 })
 
