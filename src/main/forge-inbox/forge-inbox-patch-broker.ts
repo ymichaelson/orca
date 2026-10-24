@@ -1,4 +1,8 @@
 import type { ForgeInstanceScope } from '../../shared/forge-inbox-types'
+import type {
+  ForgePatchApplyFailureReason,
+  ForgePatchApprovalRefusal
+} from '../../shared/forge-patch-request'
 import {
   hashForgePatchDraft,
   parseForgePatchDraft,
@@ -7,16 +11,14 @@ import {
 import type { ForgeInboxLedger } from './forge-inbox-ledger'
 import { applyForgePatchInIsolation, type ForgePatchSource } from './forge-inbox-patch-tree'
 
-export type ForgePatchApplyRefusal =
-  | 'not-found'
-  | 'not-approved'
-  | 'not-a-patch'
-  | 'draft-mismatch'
-  | 'already-applied'
+export type ForgePatchApplyRefusal = Extract<
+  ForgePatchApprovalRefusal,
+  'not-found' | 'not-approved' | 'not-a-patch' | 'draft-mismatch' | 'already-applied'
+>
 
 export type ForgePatchApplyResult =
   | { kind: 'applied'; receiptId: number; directory: string; written: string[]; removed: string[] }
-  | { kind: 'failed'; receiptId: number; reason: string }
+  | { kind: 'failed'; receiptId: number; reason: ForgePatchApplyFailureReason }
   | { kind: 'refused'; reason: ForgePatchApplyRefusal }
 
 /**

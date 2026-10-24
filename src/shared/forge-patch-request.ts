@@ -71,6 +71,35 @@ export const FORGE_PATCH_REQUEST_UNVERIFIABLE_REASONS = ['unknown-outcome'] as c
 export type ForgePatchRequestUnverifiableReason =
   (typeof FORGE_PATCH_REQUEST_UNVERIFIABLE_REASONS)[number]
 
+/** Approval names the exact draft; every refusal here happens before a byte reaches a tree. */
+export const FORGE_PATCH_APPROVAL_REFUSAL_REASONS = [
+  'not-found',
+  'not-pending',
+  'stale',
+  'not-a-patch',
+  'draft-mismatch',
+  'head-unavailable',
+  'head-moved',
+  'not-approved',
+  'already-applied'
+] as const
+
+export type ForgePatchApprovalRefusal = (typeof FORGE_PATCH_APPROVAL_REFUSAL_REASONS)[number]
+
+/** The approved tree could not be rebuilt; no project checkout and no remote is touched. */
+export const FORGE_PATCH_APPLY_FAILURE_REASONS = [
+  'base-missing',
+  'base-unexpected',
+  'base-mismatch',
+  'base-unsupported',
+  'source-unavailable',
+  'path-unsafe',
+  'write-failed',
+  'aborted'
+] as const
+
+export type ForgePatchApplyFailureReason = (typeof FORGE_PATCH_APPLY_FAILURE_REASONS)[number]
+
 /** Producing adds refusals that only the turn can prove; the claim's reasons stay unchanged. */
 export const FORGE_PATCH_PRODUCE_REFUSAL_REASONS = [
   ...FORGE_PATCH_REQUEST_REFUSAL_REASONS,

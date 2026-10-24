@@ -199,6 +199,56 @@ describe('forge inbox rpc proposal actions', () => {
     expect(errorCodeOf(otherOwner)).toBe('forge_inbox_owner_mismatch')
   })
 
+  it('answers a patch approval with the exact approval shape, not a comment draft', async () => {
+    const { ownerHostId, proposalId, hash, ledger } = await seedPendingComment()
+    const proposal = ledger.getProposal(proposalId)
+    if (!proposal) {
+      throw new Error('proposal vanished')
+    }
+    const approval = {
+      ownerHostId,
+      proposalId,
+      expectedHash: hash,
+      expectedRevision: proposal.revision,
+      expectedPolicyGeneration: proposal.policyGeneration
+    }
+
+    const commentDraft = await harness.call('forgeInbox.approvePatch', approval, 'paired-a')
+    const unknown = await harness.call('forgeInbox.approvePatch', {
+      ...approval,
+      proposalId: 999
+    })
+
+    expect(commentDraft.ok && commentDraft.result).toMatchObject({
+      ok: false,
+      reason: 'not-a-patch'
+    })
+    expect(unknown.ok && unknown.result).toEqual({ ownerHostId, ok: false, reason: 'not-found' })
+    expect(ledger.getProposal(proposalId)?.status).toBe('pending')
+  })
+
+  it('keeps patch approval off the phone allowlist', async () => {
+    const { ownerHostId, proposalId, hash, ledger } = await seedPendingComment()
+    const proposal = ledger.getProposal(proposalId)
+    if (!proposal) {
+      throw new Error('proposal vanished')
+    }
+
+    const response = await harness.call(
+      'forgeInbox.approvePatch',
+      {
+        ownerHostId,
+        proposalId,
+        expectedHash: hash,
+        expectedRevision: proposal.revision,
+        expectedPolicyGeneration: proposal.policyGeneration
+      },
+      'mobile'
+    )
+
+    expect(errorCodeOf(response)).toBe('forbidden')
+  })
+
   it('refuses to discuss when this host wired no session reader', async () => {
     const { ownerHostId, proposalId, ledger } = await seedPendingComment()
     const runId = ledger.getProposal(proposalId)?.runId

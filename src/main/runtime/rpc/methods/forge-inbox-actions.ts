@@ -1,4 +1,5 @@
 import type {
+  ForgeInboxApprovePatchOutcome,
   ForgeInboxCommentApprovalOutcome,
   ForgeInboxDiscussOutcome,
   ForgeInboxProposalPreviewView,
@@ -7,6 +8,7 @@ import type {
 } from '../../../../shared/forge-inbox-rpc-types'
 import {
   ForgeInboxApproveCommentParams,
+  ForgeInboxApprovePatchParams,
   ForgeInboxDiscussParams,
   ForgeInboxProposalParams,
   ForgeInboxProposePatchParams,
@@ -57,6 +59,29 @@ export const FORGE_INBOX_PROPOSAL_ACTION_METHODS = [
       return guardForgeInbox(unavailable, async () => ({
         ownerHostId: params.ownerHostId,
         ...(await service.approveComment(
+          {
+            scope: scopeOf(params.instanceId),
+            proposalId: params.proposalId,
+            expectedHash: params.expectedHash,
+            expectedRevision: params.expectedRevision,
+            expectedPolicyGeneration: params.expectedPolicyGeneration
+          },
+          signalOf(context),
+          params.ownerHostId
+        ))
+      }))
+    }
+  }),
+  // Why host-admin: the owner consumes the approval and builds the tree with its own credential.
+  defineMethod({
+    name: 'forgeInbox.approvePatch',
+    permission: 'host-admin',
+    params: ForgeInboxApprovePatchParams,
+    handler: (params, context): Promise<ForgeInboxApprovePatchOutcome> => {
+      const service = forgeOwnerFor(context, params.ownerHostId)
+      return guardForgeInbox(unavailable, async () => ({
+        ownerHostId: params.ownerHostId,
+        ...(await service.approvePatch(
           {
             scope: scopeOf(params.instanceId),
             proposalId: params.proposalId,

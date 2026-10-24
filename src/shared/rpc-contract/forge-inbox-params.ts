@@ -84,12 +84,15 @@ const ProposalId = { ...Owned, proposalId: RowId }
 export const ForgeInboxProposalParams = z.strictObject(ProposalId)
 
 /** Approval binds the draft the client displayed: its hash and the versions it was made under. */
-export const ForgeInboxApproveCommentParams = z.strictObject({
+const Approval = {
   ...ProposalId,
   expectedHash: z.string().regex(/^[0-9a-f]{64}$/),
   expectedRevision: RowId,
   expectedPolicyGeneration: z.number().int().min(0).max(Number.MAX_SAFE_INTEGER)
-})
+}
+
+export const ForgeInboxApproveCommentParams = z.strictObject(Approval)
+export const ForgeInboxApprovePatchParams = z.strictObject(Approval)
 
 export const ForgeInboxRejectProposalParams = z.strictObject(ProposalId)
 

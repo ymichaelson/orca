@@ -229,6 +229,7 @@ import {
 import {
   ForgeInboxAckChangesParams,
   ForgeInboxApproveCommentParams,
+  ForgeInboxApprovePatchParams,
   ForgeInboxClearCredentialParams,
   ForgeInboxDiscussParams,
   ForgeInboxGetChangesParams,
@@ -966,6 +967,7 @@ export const RPC_PARAMS_BY_METHOD = {
   'folderWorkspace.update': FolderWorkspaceUpdate,
   'forgeInbox.ackChanges': ForgeInboxAckChangesParams,
   'forgeInbox.approveComment': ForgeInboxApproveCommentParams,
+  'forgeInbox.approvePatch': ForgeInboxApprovePatchParams,
   'forgeInbox.clearCredential': ForgeInboxClearCredentialParams,
   'forgeInbox.discuss': ForgeInboxDiscussParams,
   'forgeInbox.getChanges': ForgeInboxGetChangesParams,

@@ -104,6 +104,16 @@ describe('forge inbox rpc access', () => {
       ['forgeInbox.getStatus', {}],
       ['forgeInbox.getConfig', {}],
       ['forgeInbox.listItems', { ownerHostId }],
+      [
+        'forgeInbox.approvePatch',
+        {
+          ownerHostId,
+          proposalId: 1,
+          expectedHash: 'a'.repeat(64),
+          expectedRevision: 1,
+          expectedPolicyGeneration: 0
+        }
+      ],
       ['forgeInbox.updateConfig', { ownerHostId, expectedRevision: 1, config: {} }],
       [
         'forgeInbox.setCredential',
@@ -132,6 +142,16 @@ describe('forge inbox rpc access', () => {
       ...STREAM_METHOD_PARAMS(wrong).filter(
         ([method]) => method !== 'forgeInbox.unsubscribeChanges'
       ),
+      [
+        'forgeInbox.approvePatch',
+        {
+          ownerHostId: wrong,
+          proposalId: 1,
+          expectedHash: 'a'.repeat(64),
+          expectedRevision: 1,
+          expectedPolicyGeneration: 0
+        }
+      ],
       ['forgeInbox.updateConfig', { ownerHostId: wrong, expectedRevision: 1, config: {} }],
       [
         'forgeInbox.setCredential',
@@ -206,6 +226,36 @@ describe('forge inbox rpc access', () => {
         }
       ],
       ['forgeInbox.proposePatch', { ...valid, paths: ['src/\u0000.ts'] }]
+    ]
+    for (const [method, params] of bad) {
+      expect((await harness.call(method, params)).ok, JSON.stringify(params)).toBe(false)
+    }
+  })
+
+  it('binds a patch approval to a hex draft hash and positive versions', async () => {
+    harness = await createForgeRpcHarness()
+    const ownerHostId = await configure(harness)
+    const valid = {
+      ownerHostId,
+      proposalId: 999,
+      expectedHash: 'a'.repeat(64),
+      expectedRevision: 1,
+      expectedPolicyGeneration: 0
+    }
+
+    expect(await harness.ok('forgeInbox.approvePatch', valid)).toEqual({
+      ownerHostId,
+      ok: false,
+      reason: 'not-found'
+    })
+
+    const bad: [string, unknown][] = [
+      ['forgeInbox.approvePatch', { ...valid, extra: true }],
+      ['forgeInbox.approvePatch', { ...valid, expectedHash: 'A'.repeat(64) }],
+      ['forgeInbox.approvePatch', { ...valid, expectedHash: 'a'.repeat(63) }],
+      ['forgeInbox.approvePatch', { ...valid, expectedRevision: 0 }],
+      ['forgeInbox.approvePatch', { ...valid, expectedPolicyGeneration: -1 }],
+      ['forgeInbox.approvePatch', { ...valid, proposalId: 1.5 }]
     ]
     for (const [method, params] of bad) {
       expect((await harness.call(method, params)).ok, JSON.stringify(params)).toBe(false)
