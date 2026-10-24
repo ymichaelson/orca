@@ -1,5 +1,6 @@
 import type { RuntimeClientTarget } from '../../../shared/runtime-client-target'
 import type {
+  ForgeInboxApprovePatchOutcome,
   ForgeInboxCommentApprovalOutcome,
   ForgeInboxConfigView,
   ForgeInboxConfigWriteOutcome,
@@ -10,6 +11,7 @@ import type {
   ForgeInboxItemsPage,
   ForgeInboxProposalPreviewView,
   ForgeInboxProposalRejectOutcome,
+  ForgeInboxPushApplyOutcome,
   ForgeInboxRunsPage,
   ForgeInboxStatus
 } from '../../../shared/forge-inbox-rpc-types'
@@ -137,18 +139,42 @@ export function readForgeInboxProposal(
 }
 
 /** The hash and versions are the ones the dialog displayed; the host refuses anything else. */
+type ForgeProposalApprovalInput = {
+  proposalId: number
+  instanceId?: string
+  expectedHash: string
+  expectedRevision: number
+  expectedPolicyGeneration: number
+}
+
 export function approveForgeInboxComment(
   ownerHostId: string,
-  input: {
-    proposalId: number
-    instanceId?: string
-    expectedHash: string
-    expectedRevision: number
-    expectedPolicyGeneration: number
-  },
+  input: ForgeProposalApprovalInput,
   target: RuntimeClientTarget = HOST_RUNTIME
 ): Promise<ForgeInboxCommentApprovalOutcome> {
   return callRuntimeRpc<ForgeInboxCommentApprovalOutcome>(target, 'forgeInbox.approveComment', {
+    ownerHostId,
+    ...input
+  })
+}
+
+export function approveForgeInboxPatch(
+  ownerHostId: string,
+  input: ForgeProposalApprovalInput,
+  target: RuntimeClientTarget = HOST_RUNTIME
+): Promise<ForgeInboxApprovePatchOutcome> {
+  return callRuntimeRpc<ForgeInboxApprovePatchOutcome>(target, 'forgeInbox.approvePatch', {
+    ownerHostId,
+    ...input
+  })
+}
+
+export function approveForgeInboxPush(
+  ownerHostId: string,
+  input: ForgeProposalApprovalInput,
+  target: RuntimeClientTarget = HOST_RUNTIME
+): Promise<ForgeInboxPushApplyOutcome> {
+  return callRuntimeRpc<ForgeInboxPushApplyOutcome>(target, 'forgeInbox.approvePush', {
     ownerHostId,
     ...input
   })
