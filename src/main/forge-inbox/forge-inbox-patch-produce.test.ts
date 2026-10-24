@@ -716,6 +716,19 @@ describe('forge patch producer', () => {
     expect(finishCalls[0]?.outcome).toEqual({ kind: 'failed', reason: 'producer-failed' })
   })
 
+  it('reads a repeated explicit path once instead of failing the whole request', async () => {
+    const { producer, host, claimCalls, finishCalls } = harness()
+    await expect(
+      producer(
+        { ...PRODUCE_REQUEST, paths: ['src/feature.ts', 'src/feature.ts'] },
+        new AbortController().signal
+      )
+    ).resolves.toMatchObject({ kind: 'proposal' })
+    expect(claimCalls[0]?.intent.paths).toEqual(['src/feature.ts'])
+    expect(host.sends).toHaveLength(1)
+    expect(finishCalls[0]?.outcome).toMatchObject({ kind: 'success' })
+  })
+
   it('settles a signal aborted before the send as a producer failure', async () => {
     const { producer, host, finishCalls } = harness()
     const controller = new AbortController()
