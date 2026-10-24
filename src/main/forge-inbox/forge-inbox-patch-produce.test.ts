@@ -1,16 +1,7 @@
 import { describe, expect, it } from 'vitest'
-import type { AgentSessionProtectedAnalysis } from '../../shared/agent-session-protected-analysis'
-import {
-  PROTECTED_CLAUDE_NATIVE_HASHES,
-  PROTECTED_CLAUDE_PROFILE,
-  protectedClaudePrivatePath
-} from '../../shared/agent-session-protected-claude-launch'
 import { refuse } from '../../shared/agent-session-wire'
-import type { ForgeInboxConfigView } from '../../shared/forge-inbox-config'
 import type { ForgeItem, ForgeRun } from '../../shared/forge-inbox-types'
 import type { GitlabApiReader } from './forge-inbox-gitlab-api-client'
-import type { GitlabDiffFile, GitlabMergeRequest } from './forge-inbox-gitlab-api-schemas'
-import { createForgeGitBlob } from './forge-inbox-git-objects'
 import { buildForgePatchDraft, sha256OfContent } from './forge-inbox-patch-draft'
 import type {
   ForgePatchRequestFinishInput,
@@ -26,207 +17,27 @@ import type { ForgeInboxLedger } from './forge-inbox-ledger'
 import type { ForgeProtectedSessionRecord } from './forge-inbox-protected-session-binding'
 import { createForgeInboxPatchProducer } from './forge-inbox-patch-produce'
 import { protectedTurnHarness, TURN_SESSION } from './forge-inbox-protected-turn-test-harness'
-
-const INSTANCE_ID = 'gitlab-main'
-const PROJECT_ID = '42'
-const OWNER = '6f1c1f0e-2a5c-4b1e-9b0e-0a1b2c3d4e5f'
-const RUN_ID = 3
-const ITEM_ID = 7
-const REQUEST_ID = 11
-const PROPOSAL_ID = 55
-const IID = 9
-const HEAD = 'a'.repeat(40)
-const HEAD_MOVED = 'c'.repeat(40)
-const OLD_CONTENT = 'export const value = 0\n'
-const NEW_CONTENT = 'export const value = 1\n'
-const CANDIDATE = JSON.stringify({
-  summary: 'Update the value',
-  operations: [{ op: 'update', path: 'src/feature.ts', content: NEW_CONTENT }]
-})
-
-const SUBJECT: AgentSessionProtectedAnalysis = {
-  ownerId: OWNER,
-  instanceId: INSTANCE_ID,
-  itemId: String(ITEM_ID),
-  analysisKind: 'merge_request'
-}
-
-const CONFIG: ForgeInboxConfigView = {
-  hostId: OWNER,
-  configRevision: 1,
-  schemaVersion: 1,
-  config: {
-    schemaVersion: 1,
-    listener: {
-      enabled: false,
-      bindAddress: '127.0.0.1',
-      port: 7421,
-      acknowledgeExternalPlaintextHttp: false
-    },
-    instances: [
-      {
-        id: INSTANCE_ID,
-        displayName: 'Main',
-        baseUrl: 'https://gitlab.example.com',
-        allowInsecureHttpApi: false,
-        allowLegacyPayloadDigestDedupe: false,
-        usernames: [],
-        projects: [
-          {
-            projectId: PROJECT_ID,
-            repoId: 'repo-1',
-            rules: '',
-            enabled: true,
-            automaticAnalysis: false,
-            events: {
-              reviewRequests: false,
-              participatingMergeRequestUpdates: false,
-              pipelineFailures: false,
-              issueMentions: false,
-              issueAssignments: false
-            },
-            budgets: {
-              timeoutSeconds: 600,
-              maxInputTokens: 100_000,
-              maxOutputTokens: 8_000,
-              maxRunsPerHour: 12,
-              maxConcurrentRuns: 1
-            }
-          }
-        ]
-      }
-    ]
-  },
-  credentials: []
-}
-
-function request(overrides: Partial<ForgePatchRequest> = {}): ForgePatchRequest {
-  return {
-    id: REQUEST_ID,
-    callerKey: 'client-1',
-    operationId: 'op-1',
-    requestDigest: 'd'.repeat(64),
-    runId: RUN_ID,
-    runGeneration: 1,
-    sessionId: TURN_SESSION,
-    itemId: ITEM_ID,
-    revision: 2,
-    policyGeneration: 1,
-    configRevision: 1,
-    invalidationGeneration: 0,
-    state: 'in_progress',
-    proposalId: null,
-    reasonCode: null,
-    createdAt: 1,
-    updatedAt: 1,
-    ...overrides
-  }
-}
-
-const RUN: ForgeRun = {
-  id: RUN_ID,
-  itemId: ITEM_ID,
-  revision: 2,
-  state: 'succeeded',
-  generation: 1,
-  policyGeneration: 1,
-  contextDigest: 'digest',
-  analysisKind: 'merge_request',
-  reason: 'review-requested',
-  error: null,
-  sessionId: TURN_SESSION,
-  result: null,
-  createdAt: 1,
-  updatedAt: 1
-}
-
-const ITEM: ForgeItem = {
-  id: ITEM_ID,
-  hostId: OWNER,
-  instanceId: INSTANCE_ID,
-  projectId: PROJECT_ID,
-  kind: 'merge_request',
-  iid: IID,
-  title: 'Add thing',
-  state: 'opened',
-  currentRevision: 2,
-  activitySeq: 1,
-  createdAt: 1,
-  updatedAt: 1,
-  unread: false
-}
-
-function protectedLaunch(privateRoot: string) {
-  return {
-    version: 1,
-    profile: PROTECTED_CLAUDE_PROFILE,
-    executable: {
-      path: '/opt/claude/claude',
-      platform: 'darwin-arm64',
-      sha256: PROTECTED_CLAUDE_NATIVE_HASHES['darwin-arm64']
-    },
-    privateRoot,
-    auth: {
-      kind: 'saved-agent-env',
-      settingsKey: 'claude',
-      credentialKey: 'ANTHROPIC_API_KEY',
-      baseUrl: 'https://api.anthropic.com'
-    }
-  }
-}
-
-function record(fence = 7): ForgeProtectedSessionRecord {
-  const privateRoot = `/state/forge-protected-analysis/${TURN_SESSION}`
-  return {
-    schemaVersion: 3,
-    provider: 'claude',
-    accountHome: {
-      variable: 'CLAUDE_CONFIG_DIR',
-      path: protectedClaudePrivatePath(privateRoot, 'config')
-    },
-    options: { model: 'claude-protected-analysis' },
-    protectedAnalysis: SUBJECT,
-    protectedClaudeLaunch: protectedLaunch(privateRoot),
-    lease: { runtimeFence: fence }
-  }
-}
-
-function mergeRequest(overrides: Partial<GitlabMergeRequest> = {}): GitlabMergeRequest {
-  return {
-    iid: IID,
-    state: 'opened',
-    title: 'Add thing',
-    description: '',
-    target_branch: 'main',
-    source_branch: 'feature/work',
-    source_project_id: Number(PROJECT_ID),
-    target_project_id: Number(PROJECT_ID),
-    draft: false,
-    sha: HEAD,
-    diff_refs: { base_sha: 'b'.repeat(40), head_sha: HEAD, start_sha: 'b'.repeat(40) },
-    author: 'alice',
-    reviewers: [],
-    assignees: [],
-    updated_at: '2026-01-01T00:00:00Z',
-    headPipeline: null,
-    ...overrides
-  }
-}
-
-function diff(overrides: Partial<GitlabDiffFile> = {}): GitlabDiffFile {
-  return {
-    old_path: 'src/feature.ts',
-    new_path: 'src/feature.ts',
-    diff: '',
-    new_file: false,
-    renamed_file: false,
-    deleted_file: false,
-    generated_file: false,
-    ...overrides
-  }
-}
-
-const BLOB = createForgeGitBlob(OLD_CONTENT)
+import {
+  INSTANCE_ID,
+  PROJECT_ID,
+  RUN_ID,
+  REQUEST_ID,
+  PROPOSAL_ID,
+  HEAD,
+  HEAD_MOVED,
+  OLD_CONTENT,
+  NEW_CONTENT,
+  SUBJECT,
+  CANDIDATE,
+  CONFIG,
+  RUN,
+  ITEM,
+  request,
+  record,
+  mergeRequest,
+  diff,
+  BLOB
+} from './forge-inbox-patch-produce-test-kit'
 
 function reader(overrides: Partial<GitlabApiReader> = {}): GitlabApiReader {
   const failed = async () => ({ ok: false as const, code: 'network' as const })
@@ -285,6 +96,22 @@ function movedReader(): GitlabApiReader {
       return {
         ok: true,
         data: { branch, sha: branchHeadCalls >= 3 ? HEAD_MOVED : HEAD },
+        complete: true
+      }
+    }
+  }
+}
+
+function movedBeforeSendReader(): GitlabApiReader {
+  const base = reader()
+  let branchHeadCalls = 0
+  return {
+    ...base,
+    getRepositoryBranchHead: async (branch) => {
+      branchHeadCalls += 1
+      return {
+        ok: true,
+        data: { branch, sha: branchHeadCalls >= 2 ? HEAD_MOVED : HEAD },
         complete: true
       }
     }
@@ -355,6 +182,11 @@ type LedgerOptions = {
   fences?: () => FenceResult
   run?: ForgeRun | null
   item?: ForgeItem | null
+  finish?: (
+    input: ForgePatchRequestFinishInput,
+    current: ForgePatchRequest
+  ) => ForgePatchRequestFinishResult
+  finishThrows?: boolean
 }
 
 function ledgerWith(options: LedgerOptions = {}) {
@@ -377,7 +209,10 @@ function ledgerWith(options: LedgerOptions = {}) {
     },
     finishPatchRequest(input) {
       finishCalls.push(input)
-      const result = finishResult(input, current)
+      if (options.finishThrows) {
+        throw new Error('finish failed')
+      }
+      const result = options.finish ? options.finish(input, current) : finishResult(input, current)
       if (result.kind === 'completed') {
         current = result.request
       }
@@ -632,6 +467,118 @@ describe('forge patch producer', () => {
     ).resolves.toEqual({ kind: 'failed', reason: 'target-mismatch' })
     expect(host.sends).toHaveLength(1)
     expect(finishCalls[0]?.outcome).toEqual({ kind: 'failed', reason: 'target-mismatch' })
+  })
+
+  it('settles a branch head that moved before the send as target-mismatch', async () => {
+    const { producer, host, finishCalls } = harness({ reader: movedBeforeSendReader() })
+    await expect(
+      producer({ ...PRODUCE_REQUEST, paths: ['src/feature.ts'] }, new AbortController().signal)
+    ).resolves.toEqual({ kind: 'failed', reason: 'target-mismatch' })
+    expect(host.sends).toHaveLength(0)
+    expect(finishCalls[0]?.outcome).toEqual({ kind: 'failed', reason: 'target-mismatch' })
+  })
+
+  it('settles a reader that cannot be opened as a producer failure before any send', async () => {
+    const { producer, host, calls, finishCalls } = harness({ reader: null })
+    await expect(producer(PRODUCE_REQUEST, new AbortController().signal)).resolves.toEqual({
+      kind: 'failed',
+      reason: 'producer-failed'
+    })
+    expect(calls.openReader).toBe(1)
+    expect(host.sends).toHaveLength(0)
+    expect(finishCalls[0]?.outcome).toEqual({ kind: 'failed', reason: 'producer-failed' })
+  })
+
+  it('refuses when the record disappears while the host was installed', async () => {
+    const { producer, host, finishCalls } = harness({ records: [record(), null] })
+    await expect(producer(PRODUCE_REQUEST, new AbortController().signal)).resolves.toEqual({
+      kind: 'refused',
+      reason: 'session-missing'
+    })
+    expect(host.sends).toHaveLength(0)
+    expect(finishCalls[0]?.outcome).toEqual({
+      kind: 'failed',
+      reason: 'session-binding-lost'
+    })
+  })
+
+  it('refuses when the record loses its binding while the host was installed', async () => {
+    const { producer, host, finishCalls } = harness({
+      records: [record(), { ...record(), protectedAnalysis: { ...SUBJECT, itemId: '8' } }]
+    })
+    await expect(producer(PRODUCE_REQUEST, new AbortController().signal)).resolves.toEqual({
+      kind: 'refused',
+      reason: 'session-not-protected'
+    })
+    expect(host.sends).toHaveLength(0)
+    expect(finishCalls[0]?.outcome).toEqual({
+      kind: 'failed',
+      reason: 'session-binding-lost'
+    })
+  })
+
+  it('reports a refused settlement instead of the produce refusal', async () => {
+    const { producer, finishCalls } = harness({
+      records: [{ ...record(), protectedClaudeLaunch: undefined }],
+      ledger: { finish: () => ({ kind: 'refused', reason: 'request-digest-mismatch' }) }
+    })
+    await expect(producer(PRODUCE_REQUEST, new AbortController().signal)).resolves.toEqual({
+      kind: 'refused',
+      reason: 'finish-refused'
+    })
+    expect(finishCalls).toHaveLength(1)
+  })
+
+  it('reports a refused settlement after the protected turn instead of a proposal', async () => {
+    const { producer, finishCalls } = harness({
+      ledger: { finish: () => ({ kind: 'refused', reason: 'request-digest-mismatch' }) }
+    })
+    await expect(producer(PRODUCE_REQUEST, new AbortController().signal)).resolves.toEqual({
+      kind: 'refused',
+      reason: 'finish-refused'
+    })
+    expect(finishCalls[0]?.outcome).toMatchObject({ kind: 'success' })
+  })
+
+  it('adopts a terminal answer the ledger settled before this attempt', async () => {
+    const { producer } = harness({
+      reader: null,
+      ledger: {
+        finish: (_input, current) => ({
+          kind: 'completed',
+          request: {
+            ...current,
+            state: 'succeeded',
+            proposalId: PROPOSAL_ID,
+            reasonCode: null
+          },
+          proposal: {
+            id: PROPOSAL_ID,
+            runId: current.runId,
+            itemId: current.itemId,
+            revision: current.revision,
+            policyGeneration: current.policyGeneration,
+            status: 'pending',
+            body: {},
+            createdAt: 2,
+            resolvedAt: null
+          }
+        })
+      }
+    })
+    await expect(producer(PRODUCE_REQUEST, new AbortController().signal)).resolves.toEqual({
+      kind: 'proposal',
+      proposalId: PROPOSAL_ID,
+      requestId: REQUEST_ID
+    })
+  })
+
+  it('rejects when the ledger cannot record the attempt it just made', async () => {
+    const { producer, host } = harness({ ledger: { finishThrows: true } })
+    await expect(producer(PRODUCE_REQUEST, new AbortController().signal)).rejects.toThrow(
+      'finish failed'
+    )
+    expect(host.sends).toHaveLength(1)
   })
 
   it('refuses a record without the protected launch marker before any send', async () => {

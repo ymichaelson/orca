@@ -43,9 +43,12 @@ function escapeMarkup(value: string): string {
   return value.replace(/</g, '\\u003c').replace(/>/g, '\\u003e')
 }
 
-/** File bytes stay verbatim; only the frame's exact closing tag is made unreadable as one. */
+/**
+ * File bytes stay verbatim except the frame's exact closing tag, and the escape itself is escaped
+ * first so two different contents can never render as the same prompt.
+ */
 function neutralizeFrameClose(value: string): string {
-  return value.replaceAll('</patch-request>', '<\\/patch-request>')
+  return value.replaceAll('<\\', '<\\\\').replaceAll('</patch-request>', '<\\/patch-request>')
 }
 
 export function buildForgePatchPrompt(input: {

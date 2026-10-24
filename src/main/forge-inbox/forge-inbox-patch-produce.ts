@@ -78,6 +78,8 @@ type SettleOutcome =
   | { kind: 'failed'; reason: ForgePatchRequestFailureReason }
   | { kind: 'unverifiable'; reason: ForgePatchRequestUnverifiableReason }
 
+const FINISH_REFUSED: ForgePatchProduceResult = { kind: 'refused', reason: 'finish-refused' }
+
 function settleRequest(ctx: ProduceContext, outcome: SettleOutcome): ForgePatchProduceResult {
   const { ledger, scope, callerKey, request } = ctx
   const finished = ledger.finishPatchRequest({
@@ -87,7 +89,8 @@ function settleRequest(ctx: ProduceContext, outcome: SettleOutcome): ForgePatchP
     expectedRequestDigest: request.requestDigest,
     outcome
   })
-  return finished.kind === 'refused' ? { kind: 'refused', reason: 'finish-refused' } : outcome
+  // A terminal row may belong to an attempt that settled first; replay what is durable.
+  return finished.kind === 'refused' ? FINISH_REFUSED : settledResult(finished.request)
 }
 
 /** A claimed request that already settled replays its coded answer without any new work. */
@@ -152,8 +155,8 @@ export function createForgeInboxPatchProducer(deps: {
     const settleFailed = (reason: ForgePatchRequestFailureReason) =>
       settle({ kind: 'failed', reason })
     const settleRefused = (reason: ForgePatchProduceRefusal): ForgePatchProduceResult => {
-      settleFailed('session-binding-lost')
-      return { kind: 'refused', reason }
+      const settled = settleFailed('session-binding-lost')
+      return settled.kind === 'refused' ? settled : { kind: 'refused', reason }
     }
 
     try {
@@ -310,12 +313,7 @@ export function createForgeInboxPatchProducer(deps: {
         expectedRequestDigest: request.requestDigest,
         outcome: { kind: 'success', draft: draft.draft, expectedDraftHash: draft.hash }
       })
-      if (finished.kind === 'refused') {
-        return { kind: 'refused', reason: 'finish-refused' }
-      }
-      return finished.proposal
-        ? { kind: 'proposal', proposalId: finished.proposal.id, requestId: request.id }
-        : settledResult(finished.request)
+      return finished.kind === 'refused' ? FINISH_REFUSED : settledResult(finished.request)
     } catch (error) {
       if (stage === 'settling') {
         throw error
