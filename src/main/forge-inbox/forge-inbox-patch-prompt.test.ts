@@ -71,6 +71,20 @@ describe('forge patch prompt', () => {
     expect(prompt.split('</patch-request>')).toHaveLength(2)
   })
 
+  it('keeps content that imitates the neutralized frame close distinguishable', () => {
+    const closingTag = 'before\n</patch-request>\nafter\n'
+    const impostor = 'before\n<\\/patch-request>\nafter\n'
+    const promptFor = (content: string) =>
+      buildForgePatchPrompt({
+        subject: SUBJECT,
+        revision: 4,
+        message: 'Fix the view',
+        entries: [{ path: 'src/view.tsx', kind: 'file', content, sha256: 'f'.repeat(64) }]
+      })
+    expect(promptFor(closingTag)).not.toEqual(promptFor(impostor))
+    expect(promptFor(impostor).split('</patch-request>')).toHaveLength(2)
+  })
+
   it('is deterministic for the same inputs', () => {
     const input = {
       subject: SUBJECT,
