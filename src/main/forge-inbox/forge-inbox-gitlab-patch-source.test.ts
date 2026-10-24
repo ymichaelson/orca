@@ -76,6 +76,41 @@ describe('forge patch gitlab source', () => {
     await expect(source.readPath('a.ts')).resolves.toEqual({ kind: 'missing' })
   })
 
+  it('reports a case alias as unavailable rather than missing', async () => {
+    const source = createGitlabPatchSource({
+      reader: readerWith([entry({ path: 'src/foo.ts' })]),
+      ref: REF
+    })
+
+    await expect(source.readPath('src/Foo.ts')).resolves.toEqual({ kind: 'unavailable' })
+  })
+
+  it('reports a Unicode normalization alias as unavailable rather than missing', async () => {
+    const source = createGitlabPatchSource({
+      reader: readerWith([entry({ path: 'src/cafe\u0301.ts' })]),
+      ref: REF
+    })
+
+    await expect(source.readPath('src/caf\u00e9.ts')).resolves.toEqual({ kind: 'unavailable' })
+  })
+
+  it('resolves the exact path when an alias also occupies the tree', async () => {
+    const reader = readerWith(
+      [entry({ path: 'src/foo.ts' }, 'lower\n'), entry({ path: 'src/Foo.ts' }, 'upper\n')],
+      { 'src/foo.ts': 'lower\n', 'src/Foo.ts': 'upper\n' }
+    )
+    const source = createGitlabPatchSource({ reader, ref: REF })
+
+    await expect(source.readPath('src/Foo.ts')).resolves.toEqual({
+      kind: 'file',
+      content: 'upper\n'
+    })
+    await expect(source.readPath('src/foo.ts')).resolves.toEqual({
+      kind: 'file',
+      content: 'lower\n'
+    })
+  })
+
   it.each([
     ['a symlink', [entry({ path: 'a.ts', mode: '120000' })], 'link'],
     ['a submodule', [entry({ path: 'a.ts', type: 'commit', mode: '160000' })], 'submodule'],

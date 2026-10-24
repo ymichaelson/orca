@@ -6,6 +6,9 @@ import type { ForgeInstanceScope } from './forge-inbox-types'
 /** A request replays by caller_key + operation_id, so both identifiers are bounded and control-free. */
 export const FORGE_PATCH_REQUEST_MAX_IDENTIFIER_CHARS = 128
 
+/** A process died mid-turn; the next read must replay this coded outcome, never guess. */
+export const FORGE_PATCH_REQUEST_INTERRUPTED = 'interrupted'
+
 export type ForgePatchRequestState = 'in_progress' | 'succeeded' | 'failed' | 'unverifiable'
 
 /** Host-private request identity and the fences captured when it was claimed; no prompt is stored. */

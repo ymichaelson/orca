@@ -1,7 +1,11 @@
 import type { GitlabApiReader } from './forge-inbox-gitlab-api-client'
 import type { GitlabTreeEntry } from './forge-inbox-gitlab-api-schemas'
 import { createForgeGitBlob, isForgeGitSha1 } from './forge-inbox-git-objects'
-import { FORGE_PATCH_MAX_FILE_BYTES, isForgePatchPathAllowed } from './forge-inbox-patch-draft'
+import {
+  FORGE_PATCH_MAX_FILE_BYTES,
+  forgePatchPathCollisionKey,
+  isForgePatchPathAllowed
+} from './forge-inbox-patch-draft'
 import type { ForgePatchPathContent, ForgePatchSource } from './forge-inbox-patch-tree'
 
 export type GitlabPatchSourceDeps = {
@@ -40,7 +44,9 @@ export function createGitlabPatchSource(deps: GitlabPatchSourceDeps): ForgePatch
       }
       const entry = matches[0]
       if (entry === undefined) {
-        return { kind: 'missing' }
+        const key = forgePatchPathCollisionKey(path)
+        const aliased = tree.some((candidate) => forgePatchPathCollisionKey(candidate.path) === key)
+        return aliased ? { kind: 'unavailable' } : { kind: 'missing' }
       }
       if (entry.type === 'commit' || entry.mode === '160000') {
         return { kind: 'unsupported', why: 'submodule' }

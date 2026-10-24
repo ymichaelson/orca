@@ -28,7 +28,8 @@ export const FORGE_PATCH_REQUEST_FAILURE_REASONS = [
   'policy-stale',
   'config-stale',
   'project-unavailable',
-  'invalidation-stale'
+  'invalidation-stale',
+  'session-binding-lost'
 ] as const
 
 export type ForgePatchRequestFailureReason = (typeof FORGE_PATCH_REQUEST_FAILURE_REASONS)[number]
@@ -129,12 +130,15 @@ function settleRequest(
   }
 }
 
-type FenceResult =
+export type ForgePatchRequestFenceResult =
   | { ok: true; item: { instanceId: string; projectId: string } }
   | { ok: false; reason: ForgePatchRequestFailureReason }
 
 /** Re-proves every fence captured at claim time against the current database rows. */
-function verifyRequestFences(ctx: ForgeLedgerContext, request: ForgePatchRequest): FenceResult {
+export function verifyForgePatchRequestFences(
+  ctx: ForgeLedgerContext,
+  request: ForgePatchRequest
+): ForgePatchRequestFenceResult {
   const run = readForgeRun(ctx, request.runId)
   if (!run || run.itemId !== request.itemId) {
     return { ok: false, reason: 'run-mismatch' }
@@ -187,6 +191,15 @@ function verifyRequestFences(ctx: ForgeLedgerContext, request: ForgePatchRequest
     return { ok: false, reason: 'invalidation-stale' }
   }
   return { ok: true, item: { instanceId, projectId } }
+}
+
+/** Ledger-facing fence check: the item identity is not part of this answer. */
+export function checkForgePatchRequestFences(
+  ctx: ForgeLedgerContext,
+  request: ForgePatchRequest
+): { ok: true } | { ok: false; reason: ForgePatchRequestFailureReason } {
+  const fences = verifyForgePatchRequestFences(ctx, request)
+  return fences.ok ? { ok: true } : fences
 }
 
 /** Only strict patch manifests are replaced; comments, pushes and lookalike bodies stay live. */
@@ -262,7 +275,7 @@ export function finishForgePatchRequest(
       return settleRequest(ctx, request, 'unverifiable', outcome.reason)
     }
 
-    const fences = verifyRequestFences(ctx, request)
+    const fences = verifyForgePatchRequestFences(ctx, request)
     if (!fences.ok) {
       return settleRequest(ctx, request, 'failed', fences.reason)
     }

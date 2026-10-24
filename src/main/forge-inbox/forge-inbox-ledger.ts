@@ -19,7 +19,6 @@ import {
   consumeForgeProposal,
   createForgeProposal,
   finishForgeReceipt,
-  markInterruptedForgeReceiptsUnknown,
   readForgeProposal,
   rejectForgeProposal,
   staleForgeProposal
@@ -54,18 +53,17 @@ import {
   requeueForgeWebhookNeedsAuth
 } from './forge-inbox-webhook-delivery-state'
 import { updateForgeProjectPolicy } from './forge-inbox-project-policy-update'
+import { claimForgePatchRequest, readForgePatchRequest } from './forge-inbox-patch-requests'
+import { recoverInterruptedForgeWork } from './forge-inbox-interrupted-work'
 import {
-  claimForgePatchRequest,
-  markInterruptedForgePatchRequestsUnverifiable,
-  readForgePatchRequest
-} from './forge-inbox-patch-requests'
-import { finishForgePatchRequest } from './forge-inbox-patch-request-completion'
+  checkForgePatchRequestFences,
+  finishForgePatchRequest
+} from './forge-inbox-patch-request-completion'
 import { readForgeItemWatermark } from './forge-inbox-item-watermark'
 import { readForgeProjectInvalidationGeneration } from './forge-inbox-project-invalidation'
 import {
   bindForgeRunSession,
   claimNextQueuedForgeRun,
-  markInterruptedForgeRunsUnverifiable,
   readForgeRun,
   transitionForgeRun
 } from './forge-inbox-runs'
@@ -116,9 +114,7 @@ export class ForgeInboxLedger {
       secretStore ? () => secretStore : getSecretStore,
       options.webhookQueueLimits ?? FORGE_WEBHOOK_DEFAULT_QUEUE_LIMITS
     )
-    markInterruptedForgeReceiptsUnknown(ledger.ctx)
-    markInterruptedForgeRunsUnverifiable(ledger.ctx)
-    markInterruptedForgePatchRequestsUnverifiable(ledger.ctx)
+    recoverInterruptedForgeWork(ledger.ctx)
     return ledger
   }
 
@@ -287,6 +283,10 @@ export class ForgeInboxLedger {
 
   finishPatchRequest(input: Parameters<typeof finishForgePatchRequest>[1]) {
     return finishForgePatchRequest(this.ctx, input)
+  }
+
+  checkPatchRequestFences(request: Parameters<typeof checkForgePatchRequestFences>[1]) {
+    return checkForgePatchRequestFences(this.ctx, request)
   }
 
   createProposal(input: Parameters<typeof createForgeProposal>[1]) {
