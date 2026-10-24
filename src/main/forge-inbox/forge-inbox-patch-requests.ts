@@ -4,6 +4,7 @@ import { readForgeConfigState } from './forge-inbox-config'
 import type { ForgeLedgerContext } from './forge-inbox-context'
 import { runForgeTransaction } from './forge-inbox-database'
 import {
+  FORGE_PATCH_REQUEST_INTERRUPTED,
   hasControlCharacter,
   isBoundedIdentifier,
   patchRequestFromRow,
@@ -239,13 +240,13 @@ export function markInterruptedForgePatchRequestsUnverifiable(ctx: ForgeLedgerCo
   return runForgeTransaction(ctx.db, () => {
     const updated = ctx.db
       .prepare(
-        `UPDATE patch_requests SET state = 'unverifiable', reason_code = 'interrupted',
+        `UPDATE patch_requests SET state = 'unverifiable', reason_code = ?,
            updated_at = ?
          WHERE state = 'in_progress'
            AND run_id IN (SELECT r.id FROM runs r JOIN items i ON i.id = r.item_id
              WHERE i.host_id = ?)`
       )
-      .run(ctx.now(), ctx.hostId)
+      .run(FORGE_PATCH_REQUEST_INTERRUPTED, ctx.now(), ctx.hostId)
     return Number(updated.changes)
   })
 }
