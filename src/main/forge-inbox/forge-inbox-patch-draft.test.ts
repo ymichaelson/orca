@@ -67,8 +67,98 @@ describe('forge patch draft', () => {
     expect(build([create(path, 'x\n')])).toEqual({ ok: false, reason: 'path-invalid' })
   })
 
+  it.each([
+    'CON',
+    'src/con.txt',
+    'PRN',
+    'AUX',
+    'NUL.log',
+    'CONIN$',
+    'CONOUT$.txt',
+    'CLOCK$',
+    'COM1.log',
+    'COM¹',
+    'LPT².txt',
+    'src/file:stream',
+    'src/question?.txt',
+    'src/star*.txt',
+    'src/less<.txt',
+    'src/greater>.txt',
+    'src/quote".txt',
+    'src/pipe|.txt',
+    'src/trailing.',
+    'src/trailing ',
+    'src/git~1/config',
+    'src/.g‌it/config',
+    'CON .txt',
+    'NUL .log',
+    'COM1 .txt',
+    'café.txt',
+    'src/\ud800.txt',
+    'src/\udc00.txt',
+    `src/${'é'.repeat(128)}`
+  ])('rejects a nonportable operation path %j', (path) => {
+    expect(build([create(path, 'x\n')])).toEqual({ ok: false, reason: 'path-invalid' })
+  })
+
+  it.each(['plain/file.txt', 'café/日本語😀.txt', `src/${'é'.repeat(127)}a`])(
+    'keeps portable path %j and UTF-8 content unchanged',
+    (path) => {
+      const content = '﻿café 😀\n'
+      const operation = create(path, content)
+      const result = build([operation])
+      expect(result).toMatchObject({ ok: true, draft: { operations: [operation] } })
+    }
+  )
+
+  it.each(['\ud800', '\udc00', 'before\ud800after'])(
+    'rejects content that UTF-8 would replace %j',
+    (content) => {
+      expect(build([create('a.txt', content)])).toEqual({ ok: false, reason: 'content-binary' })
+    }
+  )
+
+  it.each([
+    ['a', 'a/b.txt'],
+    ['a/b.txt', 'a'],
+    ['A', 'a/b.txt'],
+    ['a/b.txt', 'A']
+  ])('rejects ancestor operation paths %s and %s', (first, second) => {
+    expect(build([create(first, 'a\n'), create(second, 'b\n')])).toEqual({
+      ok: false,
+      reason: 'duplicate-path'
+    })
+  })
+
+  it('rejects overlapping delete and create operations', () => {
+    expect(
+      build([
+        { op: 'delete', path: 'a', baseSha256: sha256OfContent('old\n') },
+        create('a/b.txt', 'new\n')
+      ])
+    ).toEqual({ ok: false, reason: 'duplicate-path' })
+  })
+
   it('rejects two paths that differ only in case', () => {
     expect(build([create('src/A.ts', 'a\n'), create('src/a.ts', 'b\n')])).toEqual({
+      ok: false,
+      reason: 'duplicate-path'
+    })
+  })
+
+  it.each([
+    ['σ.txt', 'ς.txt'],
+    ['I.txt', 'ı.txt'],
+    ['ﬀ.txt', 'ff.txt']
+  ])('rejects paths that collide only under full case folding: %s and %s', (first, second) => {
+    expect(build([create(first, 'a\n'), create(second, 'b\n')])).toEqual({
+      ok: false,
+      reason: 'duplicate-path'
+    })
+  })
+
+  it('keeps the sharp s colliding with its uppercase form', () => {
+    expect(build([create('ẞ.txt', 'a\n'), create('ß.txt', 'b\n')])).toEqual({
       ok: false,
       reason: 'duplicate-path'
     })

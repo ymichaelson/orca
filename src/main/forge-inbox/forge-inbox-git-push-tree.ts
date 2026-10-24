@@ -1,4 +1,8 @@
-import { isForgePatchPathAllowed, type ForgePatchDraft } from './forge-inbox-patch-draft'
+import {
+  forgePatchPathCollisionKey,
+  isForgePatchPathAllowed,
+  type ForgePatchDraft
+} from './forge-inbox-patch-draft'
 import {
   createForgeGitBlob,
   createForgeGitTree,
@@ -120,11 +124,36 @@ function readBaseEntries(
   return null
 }
 
+function baseTopologyConflicts(draft: ForgePatchDraft, model: Model): boolean {
+  const paths = new Map<string, string | null>()
+  for (const path of model.nodes.keys()) {
+    const key = forgePatchPathCollisionKey(path)
+    paths.set(key, paths.has(key) ? null : path)
+  }
+  for (const operation of draft.operations) {
+    let path = operation.path
+    while (path !== '') {
+      const existing = paths.get(forgePatchPathCollisionKey(path))
+      if (existing !== undefined && existing !== path) {
+        return true
+      }
+      if (path !== operation.path && model.nodes.get(path)?.kind === 'blob') {
+        return true
+      }
+      path = parentOf(path)
+    }
+  }
+  return false
+}
+
 function applyOperations(
   draft: ForgePatchDraft,
   model: Model,
   objects: Map<string, ForgeGitObject>
 ): ForgePushTreeFailure | null {
+  if (baseTopologyConflicts(draft, model)) {
+    return 'operation-target-conflict'
+  }
   for (const operation of draft.operations) {
     const current = model.nodes.get(operation.path)
     if (operation.op === 'create') {
@@ -202,6 +231,7 @@ function rebuild(
 
   const dirty = draft === null ? new Set<string>() : dirtyDirectories(draft)
   const built = new Map<string, string | null>()
+  let invalidTree = false
   const build = (path: string): string | null => {
     if (built.has(path)) {
       return built.get(path) ?? null
@@ -234,6 +264,7 @@ function rebuild(
       return null
     }
     const tree = createForgeGitTree(treeEntries)
+    invalidTree ||= tree === null
     built.set(path, tree?.oid ?? null)
     if (tree !== null) {
       objects.set(tree.oid, tree)
@@ -242,7 +273,7 @@ function rebuild(
   }
 
   const rootTree = build('')
-  return rootTree === null
+  return rootTree === null || invalidTree
     ? { ok: false, reason: 'tree-invalid' }
     : { ok: true, rootTree, objects: [...objects.values()] }
 }

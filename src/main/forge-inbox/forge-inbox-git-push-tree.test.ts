@@ -170,6 +170,69 @@ describe('forge push tree', () => {
     })
   })
 
+  it.each(['a', 'A'])('refuses a created child beneath base blob %s', (path) => {
+    expect(
+      buildForgePushTree({
+        entries: [blob(path, HELLO)],
+        draft: draftOf([create('a/b.txt', 'world\n')])
+      })
+    ).toEqual({ ok: false, reason: 'operation-target-conflict' })
+  })
+
+  it.each(['create', 'update'] as const)('refuses to %s over a base directory', (op) => {
+    const operation = op === 'create' ? create('src', 'x\n') : update('src', 'old\n', 'new\n')
+    expect(
+      buildForgePushTree({
+        entries: [tree('src', TREE_WORLD), blob('src/b.txt', WORLD)],
+        draft: draftOf([operation])
+      })
+    ).toEqual({ ok: false, reason: 'operation-target-conflict' })
+  })
+
+  it.each([
+    { entries: [blob('A.txt', HELLO)], path: 'a.txt' },
+    { entries: [blob('σ.txt', HELLO)], path: 'ς.txt' },
+    { entries: [tree('SRC', TREE_WORLD), blob('SRC/b.txt', WORLD)], path: 'src/c.txt' },
+    { entries: [blob('café.txt', HELLO)], path: 'café.txt' }
+  ])('refuses a create at $path aliasing a base entry', ({ entries, path }) => {
+    expect(buildForgePushTree({ entries, draft: draftOf([create(path, 'x\n')]) })).toEqual({
+      ok: false,
+      reason: 'operation-target-conflict'
+    })
+  })
+
+  it('does not omit an operation when a dirty subtree cannot be serialized', () => {
+    expect(
+      buildForgePushTree({
+        entries: [blob('src/A.txt', HELLO), blob('src/a.txt', WORLD)],
+        draft: draftOf([create('src/b.txt', 'x\n')])
+      })
+    ).toEqual({ ok: false, reason: 'tree-invalid' })
+  })
+
+  it('preserves untouched nonportable base names while including every portable change', () => {
+    const result = expectTree(
+      buildForgePushTree({
+        entries: [blob('CON', HELLO), blob('café.txt', WORLD)],
+        draft: draftOf([create('café/new.txt', '﻿new 😀\n'), create('other.txt', 'other\n')])
+      })
+    )
+    const root = result.objects.find((object) => object.oid === result.rootTree)
+    expect(root?.content.includes(Buffer.from(`100644 CON\u0000`, 'utf8'))).toBe(true)
+    expect(root?.content.includes(Buffer.from(`100644 café.txt\u0000`, 'utf8'))).toBe(true)
+    expect(root?.content.includes(Buffer.from('40000 café\u0000', 'utf8'))).toBe(true)
+    expect(root?.content.includes(Buffer.from('100644 other.txt\u0000', 'utf8'))).toBe(true)
+    expect(result.objects.some((object) => object.content.equals(Buffer.from('﻿new 😀\n')))).toBe(
+      true
+    )
+    expect(
+      result.objects.some(
+        (object) =>
+          object.type === 'tree' && object.content.includes(Buffer.from('100644 new.txt\u0000'))
+      )
+    ).toBe(true)
+  })
+
   it('refuses case-folded siblings rather than emitting a tree git cannot check out', () => {
     expect(
       buildForgePushTree({

@@ -1,3 +1,4 @@
+import { isSafeWindowsFileNameSegment } from '../../shared/windows-file-name'
 import type { RelayPlatform } from './remote-exec/remote-frame-protocol'
 
 export type RemotePathFlavor = 'posix' | 'windows'
@@ -98,30 +99,9 @@ export function assertSafeRemotePathSegment(segment: string, pathFlavor: RemoteP
     return
   }
 
-  // Why: Win32 canonicalizes names and exposes devices/NTFS streams through
-  // otherwise ordinary-looking path segments, bypassing no-clobber checks.
-  const normalized = normalizeWindowsRemotePath(segment)
-  const deviceStem = normalized.split('.')[0]?.toUpperCase()
-  if (
-    normalized.includes('/') ||
-    hasUnsafeWindowsPathChar(normalized) ||
-    /[ .]$/u.test(normalized) ||
-    /^(?:CON|PRN|AUX|NUL|CONIN\$|CONOUT\$|CLOCK\$|COM[1-9\u00B9\u00B2\u00B3]|LPT[1-9\u00B9\u00B2\u00B3])$/u.test(
-      deviceStem ?? ''
-    )
-  ) {
+  if (!isSafeWindowsFileNameSegment(segment)) {
     throw new Error(`Unsafe remote path segment: ${JSON.stringify(segment)}`)
   }
-}
-
-function hasUnsafeWindowsPathChar(value: string): boolean {
-  for (let i = 0; i < value.length; i += 1) {
-    const char = value[i]
-    if (value.charCodeAt(i) <= 31 || (char !== undefined && '<>:"|?*'.includes(char))) {
-      return true
-    }
-  }
-  return false
 }
 
 export function normalizeRemoteHome(rawHome: string, host: RemoteHostPlatform): string {
