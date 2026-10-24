@@ -1,9 +1,11 @@
-import { mkdirSync, readdirSync, writeFileSync } from 'node:fs'
+import { mkdirSync, readdirSync, readFileSync, writeFileSync } from 'node:fs'
 import { createServer as createHttpServer } from 'node:http'
 import { createServer as createNetServer } from 'node:net'
 import path from 'node:path'
 import { DatabaseSync } from 'node:sqlite'
 import type { Locator } from '@stablyai/playwright-test'
+import { createForgeGitBlob } from '../../src/main/forge-inbox/forge-inbox-git-objects'
+import { sha256OfContent } from '../../src/main/forge-inbox/forge-inbox-patch-draft'
 import { expect, test } from './helpers/orca-app'
 
 const PROJECT_ID = '42'
@@ -14,6 +16,9 @@ const WEBHOOK_TOKEN = 'glpat-e2e-webhook-token'
 const READ_TOKEN = 'glpat-e2e-read-token'
 const TITLE = 'Add thing'
 const DRAFT = 'Please add a test for the retry path.'
+const BASE_FILE = 'old\n'
+const CHANGED_FILE = 'new\n'
+const CREATED_FILE = 'b\n'
 
 const named = (username: string): { id: number; username: string; name: string } => ({
   id: 1,
@@ -54,6 +59,30 @@ async function startFakeGitlab(): Promise<{ url: string; close: () => Promise<vo
     }
     if (pathname === `/api/v4/projects/${PROJECT_ID}/merge_requests/${IID}/notes`) {
       send([], { 'x-next-page': '' })
+      return
+    }
+    if (pathname === `/api/v4/projects/${PROJECT_ID}/repository/tree`) {
+      send(
+        [
+          {
+            id: createForgeGitBlob(BASE_FILE).oid,
+            name: 'a.ts',
+            type: 'blob',
+            mode: '100644',
+            path: 'src/a.ts'
+          }
+        ],
+        { 'x-next-page': '' }
+      )
+      return
+    }
+    if (pathname === `/api/v4/projects/${PROJECT_ID}/repository/files/src%2Fa.ts/raw`) {
+      response.writeHead(200, { 'content-type': 'text/plain' })
+      response.end(BASE_FILE)
+      return
+    }
+    if (pathname === `/api/v4/projects/${PROJECT_ID}/repository/branches/main`) {
+      send({ name: 'main', commit: { id: SHA } })
       return
     }
     response.writeHead(404, { 'content-type': 'application/json' })
@@ -334,6 +363,133 @@ test('captures the inbox, item detail, settings and approval dialog from real ho
       orcaPage.getByPlaceholder('Ask the analysis session about this proposal…')
     ).toBeVisible()
     await screenshot('06-discuss-session-entry')
+
+    await orcaPage.keyboard.press('Escape')
+    await expect(dialog).toBeHidden()
+
+    // Seed the exact patch a protected turn would propose, superseding the older pending comment
+    // the way the host does, so approval runs through the real owner service and broker.
+    const seed = new DatabaseSync(ledgerPath)
+    let patchProposalId: number
+    try {
+      seed.exec('PRAGMA busy_timeout = 5000')
+      const itemRow = seed
+        .prepare('SELECT id, current_revision FROM items ORDER BY id DESC LIMIT 1')
+        .get()
+      if (itemRow === undefined) {
+        throw new Error('forge inbox item row is missing')
+      }
+      const { id: itemId, current_revision: itemRevision } = itemRow
+      if (typeof itemId !== 'number' || typeof itemRevision !== 'number') {
+        throw new Error('forge inbox item row is not readable')
+      }
+      const policyRow = seed
+        .prepare('SELECT generation FROM policies WHERE instance_id = ? AND project_id = ?')
+        .get(INSTANCE_ID, PROJECT_ID)
+      if (policyRow === undefined || typeof policyRow.generation !== 'number') {
+        throw new Error('forge inbox policy row is not readable')
+      }
+      const now = Date.now()
+      seed
+        .prepare("UPDATE proposals SET status = 'stale', resolved_at = ? WHERE status = 'pending'")
+        .run(now)
+      const run = seed
+        .prepare(
+          `INSERT INTO runs (item_id, revision, state, generation, policy_generation,
+             context_digest, analysis_kind, reason, error, session_id, result_json,
+             created_at, updated_at)
+           VALUES (?, ?, 'awaiting-approval', 2, ?, 'e2e-patch-context', 'merge_request',
+             'awaiting-approval', NULL, 'e2e-session', ?, ?, ?)`
+        )
+        .run(
+          itemId,
+          itemRevision,
+          policyRow.generation,
+          JSON.stringify({ summary: 'Ready to apply.', concerns: [] }),
+          now,
+          now
+        )
+      const proposal = seed
+        .prepare(
+          `INSERT INTO proposals (run_id, item_id, revision, policy_generation, status,
+             body_json, created_at, resolved_at)
+           VALUES (?, ?, ?, ?, 'pending', ?, ?, NULL)`
+        )
+        .run(
+          Number(run.lastInsertRowid),
+          itemId,
+          itemRevision,
+          policyRow.generation,
+          JSON.stringify({
+            kind: 'patch',
+            target: { instanceId: INSTANCE_ID, projectId: PROJECT_ID },
+            baseSha: SHA,
+            branch: 'main',
+            operations: [
+              {
+                op: 'update',
+                path: 'src/a.ts',
+                baseSha256: sha256OfContent(BASE_FILE),
+                content: CHANGED_FILE,
+                resultSha256: sha256OfContent(CHANGED_FILE)
+              },
+              {
+                op: 'create',
+                path: 'src/b.ts',
+                content: CREATED_FILE,
+                resultSha256: sha256OfContent(CREATED_FILE)
+              }
+            ]
+          }),
+          now
+        )
+      patchProposalId = Number(proposal.lastInsertRowid)
+    } finally {
+      seed.close()
+    }
+
+    // Why: the dialog may keep the item selected after Escape; an explicit reload re-reads the detail.
+    await inbox.getByRole('button', { name: 'Refresh', exact: true }).click()
+    await inbox.locator('ul button').filter({ hasText: TITLE }).click()
+    const patchReview = inbox.getByRole('button', { name: 'Review', exact: true })
+    await expect(patchReview).toBeVisible({ timeout: 30_000 })
+    await patchReview.click()
+    await expect(
+      orcaPage.getByRole('button', { name: 'Approve and apply changes', exact: true })
+    ).toBeVisible()
+    await orcaPage.getByRole('button', { name: 'Show exact diff', exact: true }).click()
+    const diff = dialog.locator('pre').filter({ hasText: '+new' })
+    await expect(diff).toContainText('-old')
+    await expect(diff).toContainText('+b')
+    await expect(dialog).toContainText(`base ${SHA.slice(0, 12)}`)
+    await settleAnimations(dialog)
+    await screenshot('07-patch-exact-diff')
+
+    await orcaPage.getByRole('button', { name: 'Approve and apply changes', exact: true }).click()
+    await expect(dialog).toBeHidden({ timeout: 30_000 })
+
+    const verify = new DatabaseSync(ledgerPath, { readOnly: true })
+    try {
+      const receipt = verify
+        .prepare('SELECT state FROM receipts WHERE proposal_id = ?')
+        .get(patchProposalId)
+      expect(receipt?.state).toBe('applied')
+      const proposal = verify
+        .prepare('SELECT status FROM proposals WHERE id = ?')
+        .get(patchProposalId)
+      expect(proposal?.status).toBe('consumed')
+    } finally {
+      verify.close()
+    }
+
+    const workRoot = path.join(path.dirname(ledgerPath), 'forge-inbox-patch-work')
+    const tree = readdirSync(workRoot).find((name) => name.startsWith('forge-patch-'))
+    if (tree === undefined) {
+      throw new Error('the applied patch tree is missing')
+    }
+    expect(readFileSync(path.join(workRoot, tree, 'src/a.ts'), 'utf8')).toBe(CHANGED_FILE)
+    expect(readFileSync(path.join(workRoot, tree, 'src/b.ts'), 'utf8')).toBe(CREATED_FILE)
+    await screenshot('08-patch-applied')
   } finally {
     await gitlab.close()
   }
