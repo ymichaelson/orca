@@ -2,7 +2,10 @@ import {
   agentSessionProtectedAnalysisEqual,
   type AgentSessionProtectedAnalysis
 } from '../../shared/agent-session-protected-analysis'
-import { isProtectedClaudeRecordBinding } from '../../shared/agent-session-protected-claude-launch'
+import {
+  isProtectedClaudeRecordBinding,
+  protectedClaudeLaunchSchema
+} from '../../shared/agent-session-protected-claude-launch'
 import type { ForgeDiscussRefusal } from '../../shared/forge-inbox-rpc-types'
 import type { ForgeInstanceScope, ForgeRunState } from '../../shared/forge-inbox-types'
 import {
@@ -102,22 +105,33 @@ export function createForgeInboxDiscuss(deps: {
       return { kind: 'refused', reason: 'session-missing' }
     }
     // The ledger names the session; the record must independently prove it is this item's.
-    if (
-      !isProtectedClaudeRecordBinding(record) ||
-      !agentSessionProtectedAnalysisEqual(record.protectedAnalysis, subject)
-    ) {
+    if (!isProtectedFor(record, subject)) {
       return { kind: 'refused', reason: 'session-not-protected' }
     }
     if (signal.aborted) {
       return { kind: 'unknown', sessionId }
     }
     const host = await deps.ensureHost()
+    if (signal.aborted) {
+      return { kind: 'unknown', sessionId }
+    }
+    // Installing the host may have replaced, unprotected, or moved the record's fence.
+    const recheck = await deps.readRecord(sessionId)
+    if (!recheck) {
+      return { kind: 'refused', reason: 'session-missing' }
+    }
+    if (!isProtectedFor(recheck, subject)) {
+      return { kind: 'refused', reason: 'session-not-protected' }
+    }
+    if (recheck.lease.runtimeFence !== record.lease.runtimeFence) {
+      return { kind: 'refused', reason: 'send-refused' }
+    }
     const prompt = buildForgeDiscussPrompt({ subject, revision: run.revision, message: trimmed })
     const outcome = await sendForgeProtectedSessionTurn({
       host,
       callerKey: `forge-discuss:${sessionId}`,
       sessionId,
-      fence: record.lease.runtimeFence,
+      fence: recheck.lease.runtimeFence,
       prompt,
       signal
     })
@@ -128,6 +142,18 @@ export function createForgeInboxDiscuss(deps: {
       ? { kind: 'reply', sessionId, text: outcome.text }
       : { kind: 'unknown', sessionId }
   }
+}
+
+/** Binding alone treats an absent launch marker as accepted; Discuss requires the marker itself. */
+function isProtectedFor(
+  record: ForgeDiscussSessionRecord,
+  subject: AgentSessionProtectedAnalysis
+): boolean {
+  return (
+    isProtectedClaudeRecordBinding(record) &&
+    protectedClaudeLaunchSchema.safeParse(record.protectedClaudeLaunch).success &&
+    agentSessionProtectedAnalysisEqual(record.protectedAnalysis, subject)
+  )
 }
 
 /** A run in these states has an analysis to discuss; a live one belongs to the analysis turn. */

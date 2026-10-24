@@ -1,6 +1,7 @@
 import { mkdir, realpath } from 'node:fs/promises'
 import { join } from 'node:path'
 import { afterEach, describe, expect, it } from 'vitest'
+import { agentJournalSubmissionKey } from '../../shared/agent-session-journal-item-key'
 import { PROTECTED_CLAUDE_NATIVE_HASHES } from '../../shared/agent-session-protected-claude-launch'
 import type {
   AgentSessionHistoryPage,
@@ -8,7 +9,8 @@ import type {
 } from '../../shared/agent-session-wire'
 import type {
   AgentJournalCursor,
-  AgentJournalDispatchState
+  AgentJournalDispatchState,
+  AgentJournalRenderItem
 } from '../../shared/agent-session-journal-types'
 import { LOCAL_EXECUTION_HOST_ID } from '../../shared/execution-host'
 import type { ProtectedClaudeExecutable } from '../claude/claude-protected-native-profile'
@@ -50,6 +52,10 @@ function page(
     removedItemIds: [],
     submissions: [],
     window: { oldest: null, newest: null, nextCursor: CURSOR },
+    liveCursor: {
+      epoch: CURSOR.epoch,
+      sequence: items.reduce((sequence, item) => Math.max(sequence, item.sequence), CURSOR.sequence)
+    },
     hasOlder: false,
     hasNewer: false
   }
@@ -72,6 +78,54 @@ function submission(
       resolvedAt: null
     }
   }
+}
+
+/** The exact rows one send writes; only a reply turn completes and carries assistant text. */
+function sentJournal(
+  send: Parameters<ForgeAnalysisHostPort['send']>,
+  outcome: 'reply' | 'held' | 'unknown'
+): AgentJournalRenderItem[] {
+  const turnItemId = 'claude:turn-1'
+  return [
+    {
+      itemId: agentJournalSubmissionKey(send[1].envelope.clientOperationId),
+      revision: 1,
+      sequence: 1,
+      observedAt: 1,
+      body: send[1].body,
+      turnScope: { kind: 'turn', turnItemId }
+    },
+    {
+      itemId: turnItemId,
+      revision: 1,
+      sequence: 2,
+      observedAt: 1,
+      turnScope: { kind: 'thread' },
+      body: {
+        kind: 'turn',
+        turnId: 'turn-1',
+        userItemId: agentJournalSubmissionKey(send[1].envelope.clientOperationId),
+        state: outcome === 'reply' ? 'completed' : 'running',
+        ...(outcome === 'reply' ? { outcome: 'success' as const } : {})
+      }
+    },
+    ...(outcome === 'reply'
+      ? [
+          {
+            itemId: 'reply',
+            revision: 1,
+            sequence: 3,
+            observedAt: 2,
+            turnScope: { kind: 'turn' as const, turnItemId },
+            body: {
+              kind: 'message' as const,
+              role: 'assistant' as const,
+              blocks: [{ type: 'text' as const, text: JSON.stringify(RESULT) }]
+            }
+          }
+        ]
+      : [])
+  ]
 }
 
 function fakeHost(fx: OwnerFixture, outcome: 'reply' | 'held' | 'unknown') {
@@ -102,6 +156,7 @@ function fakeHost(fx: OwnerFixture, outcome: 'reply' | 'held' | 'unknown') {
     send: async (...args) => {
       sends.push(args)
       const sessionId = args[1].envelope.sessionId
+      const clientMessageId = args[1].envelope.clientOperationId
       bindings.push({ stage: 'send', sessionId, rows: runs(fx) })
       if (outcome === 'reply') {
         for (const subscriber of subscribers.values()) {
@@ -124,7 +179,7 @@ function fakeHost(fx: OwnerFixture, outcome: 'reply' | 'held' | 'unknown') {
         fence: 1,
         cursor: CURSOR,
         value: submission(
-          'message-1',
+          clientMessageId,
           outcome === 'reply' ? 'pending' : outcome === 'held' ? 'accepted' : 'unknown'
         )
       }
@@ -137,20 +192,7 @@ function fakeHost(fx: OwnerFixture, outcome: 'reply' | 'held' | 'unknown') {
       histories += 1
       return {
         ok: true,
-        page: page(request.sessionId, [
-          { itemId: 'prompt', revision: 1, sequence: 1, observedAt: 1, body: sends[0][1].body },
-          {
-            itemId: 'reply',
-            revision: 1,
-            sequence: 2,
-            observedAt: 2,
-            body: {
-              kind: 'message',
-              role: 'assistant',
-              blocks: [{ type: 'text', text: JSON.stringify(RESULT) }]
-            }
-          }
-        ])
+        page: page(request.sessionId, sends[0] ? sentJournal(sends[0], outcome) : [])
       }
     },
     subscribeTurnCompletions: (subscriber) => {
@@ -158,7 +200,20 @@ function fakeHost(fx: OwnerFixture, outcome: 'reply' | 'held' | 'unknown') {
       return () => {
         subscribers.delete(subscriber.id)
       }
-    }
+    },
+    currentWork: () => ({
+      working: () => false,
+      hasActionablePrompt: () => false,
+      activeTurnId: () => null
+    }),
+    sessionRecord: () => ({
+      lease: {
+        runtimeFence: 1,
+        unreconciled: false,
+        handoffStage: null,
+        claimStatus: 'live' as const
+      }
+    })
   }
   return {
     host,
@@ -264,7 +319,7 @@ describe('forge inbox owner with production runtime analysis', () => {
       }
     })
     expect(host.settlements()).toBe(1)
-    expect(host.histories()).toBe(1)
+    expect(host.histories()).toBe(2)
     expect(host.subscribers.size).toBe(0)
     expect(
       fx.rows(`SELECT p.status, r.session_id,
@@ -328,7 +383,7 @@ describe('forge inbox owner with production runtime analysis', () => {
       ]
       expect(runs(fx)).toEqual(expected)
       expect(host.subscribers.size).toBe(0)
-      expect(host.histories()).toBe(0)
+      expect(host.histories()).toBe(1)
       expect(fx.rows('SELECT id FROM proposals')).toEqual([])
 
       const reopened = fx.service({ analyse })

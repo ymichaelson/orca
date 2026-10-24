@@ -1,4 +1,5 @@
 import { afterEach, describe, expect, it } from 'vitest'
+import { agentJournalSubmissionKey } from '../../shared/agent-session-journal-item-key'
 import {
   PROTECTED_CLAUDE_NATIVE_HASHES,
   PROTECTED_CLAUDE_PROFILE,
@@ -47,9 +48,12 @@ const SESSION = 'session-1'
 
 type OwnerService = ReturnType<OwnerFixture['service']>
 
-function submission(state: AgentJournalDispatchState): AgentJournalSubmission {
+function submission(
+  state: AgentJournalDispatchState,
+  clientMessageId = 'message-1'
+): AgentJournalSubmission {
   return {
-    clientMessageId: 'message-1',
+    clientMessageId,
     fence: 1,
     payloadFingerprint: 'fingerprint',
     dispatchState: state,
@@ -60,8 +64,48 @@ function submission(state: AgentJournalDispatchState): AgentJournalSubmission {
   }
 }
 
-function sendResult(state: AgentJournalDispatchState): AgentSessionSendResult {
-  return { clientMessageId: 'message-1', submission: submission(state) }
+function sendResult(
+  state: AgentJournalDispatchState,
+  clientMessageId = 'message-1'
+): AgentSessionSendResult {
+  return { clientMessageId, submission: submission(state, clientMessageId) }
+}
+
+/** Reduced history retains the canonical submission key for a recognized user echo. */
+function journalTurn(clientMessageId: string, reply: string): AgentJournalRenderItem[] {
+  const turnItemId = `claude:turn:${clientMessageId}`
+  return [
+    {
+      itemId: agentJournalSubmissionKey(clientMessageId),
+      revision: 1,
+      body: { kind: 'message', role: 'user', blocks: [{ type: 'text', text: 'question' }] },
+      sequence: 10,
+      observedAt: 1,
+      turnScope: { kind: 'turn', turnItemId }
+    },
+    {
+      itemId: turnItemId,
+      revision: 1,
+      body: {
+        kind: 'turn',
+        turnId: 'turn-1',
+        userItemId: agentJournalSubmissionKey(clientMessageId),
+        state: 'completed',
+        outcome: 'success'
+      },
+      sequence: 11,
+      observedAt: 1,
+      turnScope: { kind: 'thread' }
+    },
+    {
+      itemId: `claude:answer:${clientMessageId}`,
+      revision: 1,
+      body: { kind: 'message', role: 'assistant', blocks: [{ type: 'text', text: reply }] },
+      sequence: 12,
+      observedAt: 1,
+      turnScope: { kind: 'turn', turnItemId }
+    }
+  ]
 }
 
 function message(
@@ -82,12 +126,16 @@ function historyPage(items: AgentJournalRenderItem[]): AgentSessionHistoryPage {
   const cursor: AgentJournalCursor = { epoch: 'epoch-1', sequence: 3 }
   return {
     sessionId: SESSION,
-    epoch: 'epoch-1',
+    epoch: cursor.epoch,
     direction: 'tail',
     items,
     removedItemIds: [],
     submissions: [],
     window: { oldest: null, newest: null, nextCursor: cursor },
+    liveCursor: {
+      epoch: cursor.epoch,
+      sequence: items.reduce((sequence, item) => Math.max(sequence, item.sequence), cursor.sequence)
+    },
     hasOlder: false,
     hasNewer: false
   }
@@ -99,6 +147,10 @@ function discussHost() {
     Parameters<ForgeDiscussHostPort['subscribeTurnCompletions']>[0]
   >()
   const sends: Parameters<ForgeDiscussHostPort['send']>[] = []
+  let items: AgentJournalRenderItem[] = [
+    message('user', 'Is the retry path covered?', 1),
+    message('assistant', 'Not yet — I flagged it.', 2)
+  ]
   const publish = (completion: AgentSessionTurnCompletion): void => {
     for (const subscriber of subscribers.values()) {
       subscriber.emit({ type: 'completion', completion })
@@ -107,6 +159,8 @@ function discussHost() {
   const port: ForgeDiscussHostPort = {
     send: async (caller, params) => {
       sends.push([caller, params])
+      const messageId = params.envelope.clientOperationId
+      items = [...items, ...journalTurn(messageId, 'Not yet — I flagged it.')]
       queueMicrotask(() =>
         publish({
           scope: {
@@ -126,20 +180,30 @@ function discussHost() {
         replayed: false,
         fence: 1,
         cursor: { epoch: 'epoch-1', sequence: 3 },
-        value: sendResult('accepted')
+        value: sendResult('accepted', messageId)
       }
     },
     waitForSendSettlement: async () => undefined,
     history: async () => {
       const result: AgentSessionHistoryResult = {
         ok: true,
-        page: historyPage([
-          message('user', 'Is the retry path covered?', 1),
-          message('assistant', 'Not yet — I flagged it.', 2)
-        ])
+        page: historyPage(items)
       }
       return result
     },
+    currentWork: () => ({
+      working: () => false,
+      hasActionablePrompt: () => false,
+      activeTurnId: () => null
+    }),
+    sessionRecord: () => ({
+      lease: {
+        runtimeFence: 7,
+        unreconciled: false,
+        handoffStage: null,
+        claimStatus: 'live' as const
+      }
+    }),
     subscribeTurnCompletions: (subscriber) => {
       subscribers.set(subscriber.id, subscriber)
       return () => {

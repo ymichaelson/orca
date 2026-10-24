@@ -1,5 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import type { AgentSessionProtectedAnalysis } from '../../shared/agent-session-protected-analysis'
+import { agentJournalSubmissionKey } from '../../shared/agent-session-journal-item-key'
 import {
   PROTECTED_CLAUDE_NATIVE_HASHES,
   PROTECTED_CLAUDE_PROFILE,
@@ -86,9 +87,12 @@ function record(
   }
 }
 
-function submission(state: AgentJournalDispatchState): AgentJournalSubmission {
+function submission(
+  state: AgentJournalDispatchState,
+  clientMessageId = 'message-1'
+): AgentJournalSubmission {
   return {
-    clientMessageId: 'message-1',
+    clientMessageId,
     fence: 1,
     payloadFingerprint: 'fingerprint',
     dispatchState: state,
@@ -99,8 +103,53 @@ function submission(state: AgentJournalDispatchState): AgentJournalSubmission {
   }
 }
 
-function sendResult(state: AgentJournalDispatchState): AgentSessionSendResult {
-  return { clientMessageId: 'message-1', submission: submission(state) }
+function sendResult(
+  state: AgentJournalDispatchState,
+  clientMessageId = 'message-1'
+): AgentSessionSendResult {
+  return { clientMessageId, submission: submission(state, clientMessageId) }
+}
+
+/** Reduced history retains the canonical submission key for a recognized user echo. */
+function journalTurn(
+  clientMessageId: string,
+  reply: string,
+  sequence: number,
+  state: 'running' | 'completed' = 'completed'
+): AgentJournalRenderItem[] {
+  const turnItemId = `claude:turn:${clientMessageId}`
+  return [
+    {
+      itemId: agentJournalSubmissionKey(clientMessageId),
+      revision: 1,
+      body: { kind: 'message', role: 'user', blocks: [{ type: 'text', text: 'question' }] },
+      sequence,
+      observedAt: 1,
+      turnScope: { kind: 'turn', turnItemId }
+    },
+    {
+      itemId: turnItemId,
+      revision: 1,
+      body: {
+        kind: 'turn',
+        turnId: 'turn-1',
+        userItemId: agentJournalSubmissionKey(clientMessageId),
+        state,
+        ...(state === 'completed' ? { outcome: 'success' as const } : {})
+      },
+      sequence: sequence + 1,
+      observedAt: 1,
+      turnScope: { kind: 'thread' }
+    },
+    {
+      itemId: `claude:answer:${clientMessageId}`,
+      revision: 1,
+      body: { kind: 'message', role: 'assistant', blocks: [{ type: 'text', text: reply }] },
+      sequence: sequence + 2,
+      observedAt: 1,
+      turnScope: { kind: 'turn', turnItemId }
+    }
+  ]
 }
 
 function message(
@@ -120,12 +169,16 @@ function message(
 function page(items: AgentJournalRenderItem[] = []): AgentSessionHistoryPage {
   return {
     sessionId: SESSION,
-    epoch: 'epoch-1',
+    epoch: CURSOR.epoch,
     direction: 'tail',
     items,
     removedItemIds: [],
     submissions: [],
     window: { oldest: null, newest: null, nextCursor: CURSOR },
+    liveCursor: {
+      epoch: CURSOR.epoch,
+      sequence: items.reduce((sequence, item) => Math.max(sequence, item.sequence), CURSOR.sequence)
+    },
     hasOlder: false,
     hasNewer: false
   }
@@ -140,6 +193,7 @@ function fakeHost(
     send?: () => Awaited<ReturnType<ForgeDiscussHostPort['send']>>
     items?: AgentJournalRenderItem[]
     complete?: boolean
+    reply?: string
   } = {}
 ) {
   const subscribers = new Map<
@@ -147,6 +201,8 @@ function fakeHost(
     Parameters<ForgeDiscussHostPort['subscribeTurnCompletions']>[0]
   >()
   const sends: Parameters<ForgeDiscussHostPort['send']>[] = []
+  let items = config.items ?? []
+  let fence = 7
 
   const publish = (event: AgentSessionTurnCompletion): void => {
     for (const subscriber of subscribers.values()) {
@@ -157,24 +213,48 @@ function fakeHost(
   const port: ForgeDiscussHostPort = {
     send: async (caller, params) => {
       sends.push([caller, params])
+      if (config.send) {
+        return config.send()
+      }
+      const messageId = params.envelope.clientOperationId
+      items = [
+        ...items,
+        ...journalTurn(
+          messageId,
+          config.reply ?? 'reply',
+          items.length + 10,
+          config.complete === false ? 'running' : 'completed'
+        )
+      ]
       if (config.complete !== false) {
         queueMicrotask(() => publish(completion(params.envelope.sessionId)))
       }
-      return (
-        config.send?.() ?? {
-          ok: true,
-          replayed: false,
-          fence: 1,
-          cursor: CURSOR,
-          value: sendResult('accepted')
-        }
-      )
+      return {
+        ok: true,
+        replayed: false,
+        fence,
+        cursor: CURSOR,
+        value: sendResult('accepted', messageId)
+      }
     },
     waitForSendSettlement: async () => undefined,
     history: async () => {
-      const result: AgentSessionHistoryResult = { ok: true, page: page(config.items) }
+      const result: AgentSessionHistoryResult = { ok: true, page: page(items) }
       return result
     },
+    currentWork: () => ({
+      working: () => false,
+      hasActionablePrompt: () => false,
+      activeTurnId: () => null
+    }),
+    sessionRecord: () => ({
+      lease: {
+        runtimeFence: fence,
+        unreconciled: false,
+        handoffStage: null,
+        claimStatus: 'live' as const
+      }
+    }),
     subscribeTurnCompletions: (subscriber) => {
       subscribers.set(subscriber.id, subscriber)
       return () => {
@@ -182,7 +262,16 @@ function fakeHost(
       }
     }
   }
-  return { port, sends }
+  return {
+    port,
+    sends,
+    get fence() {
+      return fence
+    },
+    set fence(value: number) {
+      fence = value
+    }
+  }
 }
 
 function sentPrompt(send: Parameters<ForgeDiscussHostPort['send']>): string {
@@ -286,7 +375,8 @@ describe('forge inbox discuss', () => {
   it('continues the recorded protected session with its own fence, never a new one', async () => {
     const runId = analysedRun()
     const host = fakeHost({
-      items: [message('user', 'Is the migration safe?', 1), message('assistant', 'It is.', 2)]
+      items: [message('user', 'Is the migration safe?', 1), message('assistant', 'It is.', 2)],
+      reply: 'It is.'
     })
     const { ensureHost, result } = discuss({
       runId,
@@ -340,6 +430,7 @@ describe('forge inbox discuss', () => {
     await discussion({ scope: SCOPE, runId, message: 'first' }, new AbortController().signal)
 
     const recordAfterFirst = record(subjectOf(runId), { fence: 8 })
+    host.fence = 8
     const second = createForgeInboxDiscuss({
       ledger,
       ensureHost: async () => host.port,
@@ -362,6 +453,62 @@ describe('forge inbox discuss', () => {
 
     await expect(result).resolves.toEqual({ kind: 'refused', reason: 'session-not-protected' })
     expect(ensureHost).not.toHaveBeenCalled()
+    expect(host.sends).toHaveLength(0)
+  })
+
+  it('refuses the analysis subject without an explicit protected launch marker', async () => {
+    const runId = analysedRun()
+    const unmarked = record(subjectOf(runId))
+    delete unmarked.protectedClaudeLaunch
+    const { host, result } = discuss({ runId, record: unmarked })
+    await expect(result).resolves.toEqual({ kind: 'refused', reason: 'session-not-protected' })
+    expect(host.sends).toHaveLength(0)
+  })
+
+  it('refuses when the record moves to another fence while the host is installed', async () => {
+    const runId = analysedRun()
+    const host = fakeHost()
+    const readRecord = vi
+      .fn()
+      .mockReturnValueOnce(record(subjectOf(runId)))
+      .mockReturnValueOnce(record(subjectOf(runId), { fence: 8 }))
+    const run = createForgeInboxDiscuss({ ledger, ensureHost: async () => host.port, readRecord })
+
+    await expect(
+      run({ scope: SCOPE, runId, message: 'hello' }, new AbortController().signal)
+    ).resolves.toEqual({ kind: 'refused', reason: 'send-refused' })
+    expect(host.sends).toHaveLength(0)
+  })
+
+  it('refuses when the record loses its protection while the host is installed', async () => {
+    const runId = analysedRun()
+    const host = fakeHost()
+    const unprotected = record(subjectOf(runId))
+    delete unprotected.protectedClaudeLaunch
+    const readRecord = vi
+      .fn()
+      .mockReturnValueOnce(record(subjectOf(runId)))
+      .mockReturnValueOnce(unprotected)
+    const run = createForgeInboxDiscuss({ ledger, ensureHost: async () => host.port, readRecord })
+
+    await expect(
+      run({ scope: SCOPE, runId, message: 'hello' }, new AbortController().signal)
+    ).resolves.toEqual({ kind: 'refused', reason: 'session-not-protected' })
+    expect(host.sends).toHaveLength(0)
+  })
+
+  it('refuses when the record disappears while the host is installed', async () => {
+    const runId = analysedRun()
+    const host = fakeHost()
+    const readRecord = vi
+      .fn()
+      .mockReturnValueOnce(record(subjectOf(runId)))
+      .mockReturnValueOnce(null)
+    const run = createForgeInboxDiscuss({ ledger, ensureHost: async () => host.port, readRecord })
+
+    await expect(
+      run({ scope: SCOPE, runId, message: 'hello' }, new AbortController().signal)
+    ).resolves.toEqual({ kind: 'refused', reason: 'session-missing' })
     expect(host.sends).toHaveLength(0)
   })
 
