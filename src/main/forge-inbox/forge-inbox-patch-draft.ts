@@ -1,5 +1,6 @@
 import { createHash } from 'node:crypto'
 import { z } from 'zod'
+import { isSafeWindowsOperationFileNameSegment } from '../../shared/windows-file-name'
 import { canonicalJson } from './forge-inbox-canonical-json'
 
 export const FORGE_PATCH_MAX_OPERATIONS = 32
@@ -133,7 +134,7 @@ export function buildForgePatchDraft(input: {
     if (problem !== null) {
       return { ok: false, reason: problem }
     }
-    seen.add(operation.path.toLowerCase())
+    seen.add(forgePatchPathCollisionKey(operation.path))
     if (operation.op !== 'delete') {
       totalBytes += Buffer.byteLength(operation.content, 'utf8')
     }
@@ -167,12 +168,14 @@ function operationProblem(
   operation: ForgePatchOperation,
   seen: ReadonlySet<string>
 ): ForgePatchDraftFailure | null {
-  if (!isForgePatchPathAllowed(operation.path)) {
+  if (!isForgePatchOperationPathAllowed(operation.path)) {
     return 'path-invalid'
   }
-  // Why casefold: two paths differing only in case collide on a case-insensitive checkout.
-  if (seen.has(operation.path.toLowerCase())) {
-    return 'duplicate-path'
+  const key = forgePatchPathCollisionKey(operation.path)
+  for (const previous of seen) {
+    if (key === previous || key.startsWith(`${previous}/`) || previous.startsWith(`${key}/`)) {
+      return 'duplicate-path'
+    }
   }
   if (operation.op === 'delete') {
     return HASH.test(operation.baseSha256) ? null : 'hash-invalid'
@@ -183,7 +186,7 @@ function operationProblem(
   if (!HASH.test(operation.resultSha256)) {
     return 'hash-invalid'
   }
-  if (operation.content.includes('\u0000')) {
+  if (operation.content.includes('\u0000') || !operation.content.isWellFormed()) {
     return 'content-binary'
   }
   if (Buffer.byteLength(operation.content, 'utf8') > FORGE_PATCH_MAX_FILE_BYTES) {
@@ -207,6 +210,35 @@ export function isForgePatchPathAllowed(path: string): boolean {
       (segment) =>
         segment === '' || segment === '.' || segment === '..' || segment.toLowerCase() === '.git'
     )
+}
+
+export function forgePatchPathCollisionKey(path: string): string {
+  return path.normalize('NFC').toLowerCase().toUpperCase().toLowerCase()
+}
+
+/** HFS+ ignores these code points, so a `.git` alias can still name the worktree control directory. */
+function isGitWorktreeControlSegment(segment: string): boolean {
+  const normalized = segment
+    .replace(/[\u200c-\u200f\u202a-\u202e\u206a-\u206f\ufeff]/gu, '')
+    .toLowerCase()
+  return normalized === '.git' || normalized === 'git~1'
+}
+
+/** Only paths explicitly written or deleted must be portable; untouched base names stay exact. */
+export function isForgePatchOperationPathAllowed(path: string): boolean {
+  return (
+    isForgePatchPathAllowed(path) &&
+    path.isWellFormed() &&
+    path === path.normalize('NFC') &&
+    path
+      .split('/')
+      .every(
+        (segment) =>
+          Buffer.byteLength(segment, 'utf8') <= 255 &&
+          !isGitWorktreeControlSegment(segment) &&
+          isSafeWindowsOperationFileNameSegment(segment)
+      )
+  )
 }
 
 function hasForbiddenBranchCharacter(branch: string): boolean {
