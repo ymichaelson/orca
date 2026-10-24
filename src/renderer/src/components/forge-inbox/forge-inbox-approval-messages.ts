@@ -1,11 +1,27 @@
+import type { ForgeCommentApprovalFailure } from '../../../../shared/forge-inbox-rpc-types'
 import type {
-  ForgeCommentApprovalFailure,
-  ForgeDiscussRefusal
-} from '../../../../shared/forge-inbox-rpc-types'
+  ForgePatchApplyFailureReason,
+  ForgePatchApprovalRefusal
+} from '../../../../shared/forge-patch-request'
+import type {
+  ForgePushApplyRefusal,
+  ForgePushApprovalRefusal,
+  ForgePushFailureReason
+} from '../../../../shared/forge-push'
 import { translate } from '@/i18n/i18n'
 
+/** Every approval stops for a coded reason; none of them means a write succeeded. */
+export type ForgeApprovalFailure =
+  | ForgeCommentApprovalFailure
+  | ForgePatchApprovalRefusal
+  | ForgePatchApplyFailureReason
+  | ForgePushApprovalRefusal
+  | ForgePushApplyRefusal
+  | ForgePushFailureReason
+  | 'unconfirmed'
+
 /** Why an approval stopped. Nothing was written unless the outcome said so. */
-export function forgeApprovalFailureMessage(reason: ForgeCommentApprovalFailure): string {
+export function forgeApprovalFailureMessage(reason: ForgeApprovalFailure): string {
   switch (reason) {
     case 'not-found':
       return translate(
@@ -27,20 +43,131 @@ export function forgeApprovalFailureMessage(reason: ForgeCommentApprovalFailure)
         'auto.components.forge-inbox.forge-inbox-approval-messages.notAComment',
         'This proposal is not a comment, so it cannot be sent from here.'
       )
+    case 'not-a-patch':
+      return translate(
+        'auto.components.forge-inbox.forge-inbox-approval-messages.notAPatch',
+        'This proposal is not a file change, so it cannot be applied from here.'
+      )
+    case 'not-a-push':
+      return translate(
+        'auto.components.forge-inbox.forge-inbox-approval-messages.notAPush',
+        'This proposal is not a push, so it cannot be pushed from here.'
+      )
+    case 'already-applied':
+      return translate(
+        'auto.components.forge-inbox.forge-inbox-approval-messages.alreadyApplied',
+        'This file change was already applied.'
+      )
+    case 'already-pushed':
+      return translate(
+        'auto.components.forge-inbox.forge-inbox-approval-messages.alreadyPushed',
+        'This push was already attempted.'
+      )
     case 'draft-mismatch':
       return translate(
         'auto.components.forge-inbox.forge-inbox-approval-messages.draftMismatch',
         'The draft on the host differs from the one you reviewed. Nothing was sent.'
       )
+    case 'plan-mismatch':
+      return translate(
+        'auto.components.forge-inbox.forge-inbox-approval-messages.planMismatch',
+        'The push plan on the host differs from the one you reviewed. Nothing was pushed.'
+      )
     case 'head-unavailable':
       return translate(
         'auto.components.forge-inbox.forge-inbox-approval-messages.headUnavailable',
-        'The current head of the merge request could not be read. Nothing was sent.'
+        'The current branch head could not be read. Nothing happened.'
       )
     case 'head-moved':
       return translate(
         'auto.components.forge-inbox.forge-inbox-approval-messages.headMoved',
         'The branch moved since this draft was made. Review a fresh draft.'
+      )
+    case 'base-missing':
+      return translate(
+        'auto.components.forge-inbox.forge-inbox-approval-messages.baseMissing',
+        'The base revision this change was built on is no longer available. Nothing was written.'
+      )
+    case 'base-unexpected':
+    case 'base-mismatch':
+      return translate(
+        'auto.components.forge-inbox.forge-inbox-approval-messages.baseMismatch',
+        'The base revision does not match the approved one. Nothing was written.'
+      )
+    case 'base-unavailable':
+      return translate(
+        'auto.components.forge-inbox.forge-inbox-approval-messages.baseUnavailable',
+        'The base commit could not be read from GitLab. Nothing was pushed.'
+      )
+    case 'base-unsupported':
+      return translate(
+        'auto.components.forge-inbox.forge-inbox-approval-messages.baseUnsupported',
+        'This project’s base tree cannot be rebuilt exactly, so nothing was written or pushed.'
+      )
+    case 'base-unverified':
+      return translate(
+        'auto.components.forge-inbox.forge-inbox-approval-messages.baseUnverified',
+        'The base commit could not be verified exactly. Nothing was pushed.'
+      )
+    case 'source-unavailable':
+      return translate(
+        'auto.components.forge-inbox.forge-inbox-approval-messages.sourceUnavailable',
+        'A file needed for this change could not be read. Nothing was written.'
+      )
+    case 'path-unsafe':
+      return translate(
+        'auto.components.forge-inbox.forge-inbox-approval-messages.pathUnsafe',
+        'The change contains a path this host will not write. Nothing was written.'
+      )
+    case 'write-failed':
+      return translate(
+        'auto.components.forge-inbox.forge-inbox-approval-messages.writeFailed',
+        'The host could not write the approved files.'
+      )
+    case 'tree-invalid':
+      return translate(
+        'auto.components.forge-inbox.forge-inbox-approval-messages.treeInvalid',
+        'The approved file tree could not be built. Nothing was pushed.'
+      )
+    case 'tree-mismatch':
+      return translate(
+        'auto.components.forge-inbox.forge-inbox-approval-messages.treeMismatch',
+        'The built file tree differs from the approved one. Nothing was pushed.'
+      )
+    case 'git-unavailable':
+      return translate(
+        'auto.components.forge-inbox.forge-inbox-approval-messages.gitUnavailable',
+        'Git is not available on this host, so nothing was pushed.'
+      )
+    case 'project-unavailable':
+      return translate(
+        'auto.components.forge-inbox.forge-inbox-approval-messages.projectUnavailable',
+        'The project is not available on this host.'
+      )
+    case 'workspace-failed':
+      return translate(
+        'auto.components.forge-inbox.forge-inbox-approval-messages.workspaceFailed',
+        'The host could not prepare a private work directory. Nothing was pushed.'
+      )
+    case 'aborted':
+      return translate(
+        'auto.components.forge-inbox.forge-inbox-approval-messages.aborted',
+        'The change stopped before it finished. Check the files before trying again.'
+      )
+    case 'rejected':
+      return translate(
+        'auto.components.forge-inbox.forge-inbox-approval-messages.pushRejected',
+        'GitLab rejected the push.'
+      )
+    case 'internal':
+      return translate(
+        'auto.components.forge-inbox.forge-inbox-approval-messages.internal',
+        'The action failed on the host.'
+      )
+    case 'unconfirmed':
+      return translate(
+        'auto.components.forge-inbox.forge-inbox-approval-messages.unconfirmed',
+        'The push may have succeeded, but the remote answer could not be confirmed. Check GitLab before trying again.'
       )
     case 'delivery-failed':
       return translate(
@@ -121,57 +248,6 @@ export function forgeApprovalFailureMessage(reason: ForgeCommentApprovalFailure)
       return translate(
         'auto.components.forge-inbox.forge-inbox-approval-messages.cancelled',
         'The run was cancelled before this action ran.'
-      )
-  }
-}
-
-/** Discuss never invents an answer: a refusal says the original session was not resumed. */
-export function forgeDiscussRefusalMessage(reason: ForgeDiscussRefusal): string {
-  switch (reason) {
-    case 'message-empty':
-      return translate(
-        'auto.components.forge-inbox.forge-inbox-approval-messages.discussMessageEmpty',
-        'Write a message before sending.'
-      )
-    case 'message-too-large':
-      return translate(
-        'auto.components.forge-inbox.forge-inbox-approval-messages.discussMessageTooLarge',
-        'That message is too large.'
-      )
-    case 'run-missing':
-      return translate(
-        'auto.components.forge-inbox.forge-inbox-approval-messages.discussRunMissing',
-        'That run no longer exists on the host.'
-      )
-    case 'run-not-analysed':
-      return translate(
-        'auto.components.forge-inbox.forge-inbox-approval-messages.discussRunNotAnalysed',
-        'That run has no analysed session to discuss.'
-      )
-    case 'project-unavailable':
-      return translate(
-        'auto.components.forge-inbox.forge-inbox-approval-messages.discussProjectUnavailable',
-        'The project is not available on this host.'
-      )
-    case 'session-missing':
-      return translate(
-        'auto.components.forge-inbox.forge-inbox-approval-messages.discussSessionMissing',
-        'The original session could not be found and was not reopened.'
-      )
-    case 'session-not-protected':
-      return translate(
-        'auto.components.forge-inbox.forge-inbox-approval-messages.discussSessionNotProtected',
-        'The original session is not a protected analysis session, so it was not resumed.'
-      )
-    case 'host-unavailable':
-      return translate(
-        'auto.components.forge-inbox.forge-inbox-approval-messages.discussHostUnavailable',
-        'This host cannot prove the original session, so Discuss is unavailable.'
-      )
-    case 'send-refused':
-      return translate(
-        'auto.components.forge-inbox.forge-inbox-approval-messages.discussSendRefused',
-        'The original session refused the message.'
       )
   }
 }

@@ -7,6 +7,8 @@ import type {
 import { translate } from '@/i18n/i18n'
 import {
   approveForgeInboxComment,
+  approveForgeInboxPatch,
+  approveForgeInboxPush,
   discussForgeInboxRun,
   readForgeInboxProposal,
   rejectForgeInboxProposal
@@ -22,61 +24,15 @@ import {
   DialogTitle
 } from '../ui/dialog'
 import { Textarea } from '../ui/textarea'
-import {
-  forgeApprovalFailureMessage,
-  forgeDiscussRefusalMessage
-} from './forge-inbox-approval-messages'
+import { forgeApprovalFailureMessage } from './forge-inbox-approval-messages'
+import { forgeDiscussRefusalMessage } from './forge-inbox-discuss-messages'
 import { formatForgeDateTime } from './forge-inbox-display'
-
-function proposalKindLabel(kind: ForgeProposalPreview['kind']): string {
-  switch (kind) {
-    case 'comment':
-      return translate(
-        'auto.components.forge-inbox.ForgeInboxProposalDialog.kindComment',
-        'Comment'
-      )
-    case 'patch':
-      return translate(
-        'auto.components.forge-inbox.ForgeInboxProposalDialog.kindPatch',
-        'File changes'
-      )
-    case 'push':
-      return translate('auto.components.forge-inbox.ForgeInboxProposalDialog.kindPush', 'Push')
-    case 'unknown':
-      return translate(
-        'auto.components.forge-inbox.ForgeInboxProposalDialog.kindUnknown',
-        'Unrecognised action'
-      )
-  }
-}
-
-function targetLabel(preview: ForgeProposalPreview): string {
-  if (preview.kind === 'comment') {
-    const targetKind =
-      preview.target.kind === 'merge_request'
-        ? translate(
-            'auto.components.forge-inbox.ForgeInboxProposalDialog.mergeRequest',
-            'merge request'
-          )
-        : translate('auto.components.forge-inbox.ForgeInboxProposalDialog.issue', 'issue')
-    return translate(
-      'auto.components.forge-inbox.ForgeInboxProposalDialog.commentTarget',
-      '{{kind}} !{{iid}} · project {{projectId}}',
-      { kind: targetKind, iid: preview.target.iid, projectId: preview.target.projectId }
-    )
-  }
-  if (preview.kind === 'patch' || preview.kind === 'push') {
-    return translate(
-      'auto.components.forge-inbox.ForgeInboxProposalDialog.projectTarget',
-      'project {{projectId}}',
-      { projectId: preview.target.projectId }
-    )
-  }
-  return translate(
-    'auto.components.forge-inbox.ForgeInboxProposalDialog.unknownTarget',
-    'This build cannot read this proposal’s target.'
-  )
-}
+import {
+  ProposalBody,
+  approveLabel,
+  proposalKindLabel,
+  targetLabel
+} from './forge-inbox-proposal-preview-parts'
 
 /** Model output and the exact draft are rendered as plain text: neither may become clickable HTML. */
 export function ForgeInboxProposalDialog({
@@ -142,22 +98,28 @@ function ProposalReview({
   useEffect(() => loadPreview(), [loadPreview])
 
   const pending = preview?.status === 'pending'
-  const canApprove = pending && preview.kind === 'comment' && busy === null
+  const canApprove = pending && preview.kind !== 'unknown' && busy === null
 
   async function approve(): Promise<void> {
-    if (!preview || preview.kind !== 'comment') {
+    if (!preview || preview.kind === 'unknown') {
       return
     }
     setBusy('approve')
     setActionError(null)
     try {
-      const outcome = await approveForgeInboxComment(ownerHostId, {
+      const input = {
         proposalId: proposal.id,
         instanceId,
         expectedHash: preview.hash,
         expectedRevision: preview.revision,
         expectedPolicyGeneration: preview.policyGeneration
-      })
+      }
+      const outcome =
+        preview.kind === 'comment'
+          ? await approveForgeInboxComment(ownerHostId, input)
+          : preview.kind === 'patch'
+            ? await approveForgeInboxPatch(ownerHostId, input)
+            : await approveForgeInboxPush(ownerHostId, input)
       if (outcome.ok) {
         onChanged()
         onClose()
@@ -242,7 +204,7 @@ function ProposalReview({
         <DialogDescription>
           {translate(
             'auto.components.forge-inbox.ForgeInboxProposalDialog.description',
-            'The agent proposes this exact {{kind}}. Nothing is sent to GitLab until you approve it.',
+            'The agent proposes this exact {{kind}}. Nothing happens until you approve it.',
             { kind: proposalKindLabel(preview?.kind ?? 'unknown').toLowerCase() }
           )}
         </DialogDescription>
@@ -290,6 +252,10 @@ function ProposalReview({
               {translate('auto.components.forge-inbox.ForgeInboxProposalDialog.hash', 'Hash')}
             </dt>
             <dd className="break-all font-mono text-foreground/85">{preview.hash ?? '—'}</dd>
+            <dt className="text-muted-foreground">
+              {translate('auto.components.forge-inbox.ForgeInboxProposalDialog.host', 'Host')}
+            </dt>
+            <dd className="break-all font-mono text-foreground/85">{ownerHostId}</dd>
             {preview.kind === 'comment' ? (
               <>
                 <dt className="text-muted-foreground">
@@ -364,58 +330,9 @@ function ProposalReview({
         </Button>
         <Button disabled={!canApprove} onClick={approve}>
           {busy === 'approve' ? <Loader2 className="animate-spin" /> : null}
-          {translate(
-            'auto.components.forge-inbox.ForgeInboxProposalDialog.approve',
-            'Approve and send comment'
-          )}
+          {approveLabel(preview?.kind ?? 'unknown')}
         </Button>
       </DialogFooter>
     </DialogContent>
-  )
-}
-
-function ProposalBody({ preview }: { preview: ForgeProposalPreview }): React.JSX.Element {
-  if (preview.kind === 'comment') {
-    return (
-      <pre className="scrollbar-sleek mt-3 max-h-64 overflow-y-auto whitespace-pre-wrap break-words rounded-md border border-border bg-muted/30 p-3 font-mono text-xs leading-5 text-foreground/85">
-        {preview.body}
-      </pre>
-    )
-  }
-  if (preview.kind === 'patch') {
-    return (
-      <ul className="mt-3 flex flex-col gap-1 text-xs">
-        {preview.files.map((file) => (
-          <li key={file.path} className="flex items-baseline gap-2">
-            <span className="font-mono text-2xs text-foreground/80">{file.op}</span>
-            <span className="min-w-0 flex-1 truncate text-muted-foreground">{file.path}</span>
-            <span className="text-2xs text-muted-foreground">{file.contentBytes} B</span>
-          </li>
-        ))}
-      </ul>
-    )
-  }
-  if (preview.kind === 'push') {
-    return (
-      <p className="mt-3 text-xs text-muted-foreground">
-        {translate(
-          'auto.components.forge-inbox.ForgeInboxProposalDialog.pushDetails',
-          'branch {{branch}} · expected head {{head}} · commit {{commit}}',
-          {
-            branch: preview.branch,
-            head: preview.expectedHeadSha.slice(0, 12),
-            commit: preview.commitSha.slice(0, 12)
-          }
-        )}
-      </p>
-    )
-  }
-  return (
-    <p className="mt-3 text-xs text-muted-foreground">
-      {translate(
-        'auto.components.forge-inbox.ForgeInboxProposalDialog.notApprovable',
-        'This proposal cannot be approved from this build.'
-      )}
-    </p>
   )
 }
