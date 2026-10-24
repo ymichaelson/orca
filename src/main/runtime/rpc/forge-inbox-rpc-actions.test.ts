@@ -156,6 +156,19 @@ describe('forge inbox rpc proposal actions', () => {
     expect(errorCodeOf(discuss)).toBe('forbidden')
   })
 
+  it('keeps patch proposals off the phone allowlist', async () => {
+    const { ownerHostId, proposalId, ledger } = await seedPendingComment()
+    const runId = ledger.getProposal(proposalId)?.runId
+
+    const response = await harness.call(
+      'forgeInbox.proposePatch',
+      { ownerHostId, runId, operationId: 'op-phone', message: 'Update the value' },
+      'mobile'
+    )
+
+    expect(errorCodeOf(response)).toBe('forbidden')
+  })
+
   it('rejects locally, then reports the same proposal as no longer pending', async () => {
     const { ownerHostId, proposalId, ledger } = await seedPendingComment()
 
@@ -201,5 +214,19 @@ describe('forge inbox rpc proposal actions', () => {
       kind: 'refused',
       reason: 'host-unavailable'
     })
+  })
+
+  it('refuses to propose a patch when this host wired no producer', async () => {
+    const { ownerHostId, proposalId, ledger } = await seedPendingComment()
+    const runId = ledger.getProposal(proposalId)?.runId
+
+    const response = await harness.ok('forgeInbox.proposePatch', {
+      ownerHostId,
+      runId,
+      operationId: 'op-unwired',
+      message: 'Update the value'
+    })
+
+    expect(response).toEqual({ ownerHostId, kind: 'refused', reason: 'host-unavailable' })
   })
 })

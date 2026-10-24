@@ -1,15 +1,19 @@
 import type { SqliteRow } from '../sqlite/sqlite-statement'
+import {
+  FORGE_PATCH_REQUEST_MAX_IDENTIFIER_CHARS,
+  hasControlCharacter,
+  type ForgePatchRequestState
+} from '../../shared/forge-patch-request'
 import type { ForgeLedgerContext } from './forge-inbox-context'
 import { rowNumber, rowText } from './forge-inbox-rows'
 import type { ForgeInstanceScope } from './forge-inbox-types'
 
-/** A request replays by caller_key + operation_id, so both identifiers are bounded and control-free. */
-export const FORGE_PATCH_REQUEST_MAX_IDENTIFIER_CHARS = 128
-
-/** A process died mid-turn; the next read must replay this coded outcome, never guess. */
-export const FORGE_PATCH_REQUEST_INTERRUPTED = 'interrupted'
-
-export type ForgePatchRequestState = 'in_progress' | 'succeeded' | 'failed' | 'unverifiable'
+export {
+  FORGE_PATCH_REQUEST_INTERRUPTED,
+  FORGE_PATCH_REQUEST_MAX_IDENTIFIER_CHARS,
+  type ForgePatchRequestInterruptedReason,
+  type ForgePatchRequestState
+} from '../../shared/forge-patch-request'
 
 /** Host-private request identity and the fences captured when it was claimed; no prompt is stored. */
 export type ForgePatchRequest = {
@@ -32,15 +36,7 @@ export type ForgePatchRequest = {
   updatedAt: number
 }
 
-export function hasControlCharacter(value: string): boolean {
-  for (const char of value) {
-    const code = char.codePointAt(0) ?? 0
-    if (code < 0x20 || code === 0x7f) {
-      return true
-    }
-  }
-  return false
-}
+export { hasControlCharacter }
 
 export function isBoundedIdentifier(value: unknown): value is string {
   return (

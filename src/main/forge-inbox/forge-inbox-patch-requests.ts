@@ -1,4 +1,10 @@
 import { createHash } from 'node:crypto'
+import {
+  FORGE_PATCH_REQUEST_MAX_MESSAGE_CHARS,
+  FORGE_PATCH_REQUEST_MAX_PATHS,
+  FORGE_PATCH_REQUEST_MAX_PATH_CHARS,
+  type ForgePatchRequestRefusal
+} from '../../shared/forge-patch-request'
 import { canonicalJson } from './forge-inbox-canonical-json'
 import { readForgeConfigState } from './forge-inbox-config'
 import type { ForgeLedgerContext } from './forge-inbox-context'
@@ -23,9 +29,12 @@ export {
   type ForgePatchRequestState
 } from './forge-inbox-patch-request-record'
 
-export const FORGE_PATCH_REQUEST_MAX_MESSAGE_CHARS = 64 * 1024
-export const FORGE_PATCH_REQUEST_MAX_PATHS = 256
-export const FORGE_PATCH_REQUEST_MAX_PATH_CHARS = 1024
+export {
+  FORGE_PATCH_REQUEST_MAX_MESSAGE_CHARS,
+  FORGE_PATCH_REQUEST_MAX_PATHS,
+  FORGE_PATCH_REQUEST_MAX_PATH_CHARS,
+  type ForgePatchRequestRefusal
+} from '../../shared/forge-patch-request'
 
 /** Bounded transient input: it is canonicalized into a digest and never written to the ledger. */
 export type ForgePatchRequestIntent = {
@@ -41,18 +50,6 @@ export type ForgePatchRequestClaimInput = {
   runId: number
   intent: ForgePatchRequestIntent
 }
-
-export type ForgePatchRequestRefusal =
-  | 'invalid-caller'
-  | 'invalid-operation-id'
-  | 'invalid-intent'
-  | 'intent-conflict'
-  | 'run-not-found'
-  | 'run-not-eligible'
-  | 'session-not-bound'
-  | 'revision-stale'
-  | 'policy-stale'
-  | 'project-unavailable'
 
 export type ForgePatchRequestClaimResult =
   | { kind: 'claimed'; request: ForgePatchRequest }

@@ -434,13 +434,16 @@ function harness(
   options.configureHost?.(host)
   const records = [...(options.records ?? [record()])]
   const calls = { openReader: 0, ensureHost: 0, readRecord: 0 }
+  const readerCalls: { target: { instanceId: string; projectId: string }; signal: AbortSignal }[] =
+    []
   const producer = createForgeInboxPatchProducer({
     ledger,
-    openReader: async () => {
+    openReader: async (target, signal) => {
       if (options.throwing === 'openReader') {
         throw new Error('openReader failed')
       }
       calls.openReader += 1
+      readerCalls.push({ target, signal })
       return options.reader === undefined ? reader() : options.reader
     },
     ensureHost: async () => {
@@ -459,7 +462,7 @@ function harness(
       return next ?? null
     }
   })
-  return { producer, host, calls, claimCalls, finishCalls }
+  return { producer, host, calls, readerCalls, claimCalls, finishCalls }
 }
 
 function sentPrompt(
@@ -525,6 +528,17 @@ describe('forge patch producer', () => {
       draft: expected.draft,
       expectedDraftHash: expected.hash
     })
+  })
+
+  it('opens the reader for the item’s own instance and project under the caller’s signal', async () => {
+    const { producer, readerCalls } = harness()
+    const controller = new AbortController()
+    await expect(producer(PRODUCE_REQUEST, controller.signal)).resolves.toMatchObject({
+      kind: 'proposal'
+    })
+    expect(readerCalls).toHaveLength(1)
+    expect(readerCalls[0]?.target).toEqual({ instanceId: INSTANCE_ID, projectId: PROJECT_ID })
+    expect(readerCalls[0]?.signal).toBe(controller.signal)
   })
 
   it('replays a terminal claim without touching a reader or the host', async () => {

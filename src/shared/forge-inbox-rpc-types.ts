@@ -13,6 +13,12 @@ import type {
   ForgeCredentialStatus,
   ForgeInboxConfig
 } from './forge-inbox-config'
+import type {
+  ForgePatchProduceRefusal,
+  ForgePatchRequestFailureReason,
+  ForgePatchRequestInterruptedReason,
+  ForgePatchRequestUnverifiableReason
+} from './forge-patch-request'
 export type ForgeInboxPhase = 'new' | 'running' | 'stopped'
 
 export type ForgeInboxListenerView = {
@@ -219,3 +225,19 @@ export type ForgeInboxDiscussOutcome = { ownerHostId: string } & (
   | { kind: 'unknown'; sessionId: string }
   | { kind: 'refused'; reason: ForgeDiscussRefusal }
 )
+
+/** A host that wired no producer refuses; it never reports a proposal it did not make. */
+export type ForgeInboxPatchRefusal = ForgePatchProduceRefusal | 'host-unavailable'
+
+/** Producing writes nothing to GitLab: the answer is a local proposal, a coded failure, or a refusal. */
+export type ForgeInboxPatchOutcome =
+  | { kind: 'proposal'; proposalId: number; requestId: number }
+  | { kind: 'in-progress' }
+  | { kind: 'failed'; reason: ForgePatchRequestFailureReason }
+  | {
+      kind: 'unverifiable'
+      reason: ForgePatchRequestUnverifiableReason | ForgePatchRequestInterruptedReason
+    }
+  | { kind: 'refused'; reason: ForgeInboxPatchRefusal }
+
+export type ForgeInboxProposePatchOutcome = { ownerHostId: string } & ForgeInboxPatchOutcome
