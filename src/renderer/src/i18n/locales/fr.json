@@ -21707,6 +21707,7 @@
           "baseUnavailable": "Le commit de base n’a pas pu être lu depuis GitLab. Rien n’a été poussé.",
           "baseUnsupported": "L’arbre de base de ce projet ne peut pas être reconstruit exactement ; rien n’a été écrit ni poussé.",
           "baseUnverified": "Le commit de base n’a pas pu être vérifié exactement. Rien n’a été poussé.",
+          "diffTooLarge": "Cette modification est trop volumineuse pour être affichée exactement ici. Rien n’a été écrit.",
           "sourceUnavailable": "Un fichier nécessaire à cette modification n’a pas pu être lu. Rien n’a été écrit.",
           "pathUnsafe": "La modification contient un chemin que cet hôte n’écrira pas. Rien n’a été écrit.",
           "writeFailed": "L’hôte n’a pas pu écrire les fichiers approuvés.",

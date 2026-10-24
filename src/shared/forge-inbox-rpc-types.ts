@@ -178,6 +178,26 @@ export type ForgeInboxProposalPreviewView = {
   proposal: ForgeProposalPreview | null
 }
 
+/** Why the host will not render the exact diff; none of them means the proposal changed. */
+export type ForgePatchDiffFailure =
+  | 'not-a-patch'
+  | 'base-missing'
+  | 'base-unexpected'
+  | 'base-mismatch'
+  | 'base-unavailable'
+  | 'base-unsupported'
+  | 'diff-too-large'
+
+export type ForgeProposalDiffOutcome =
+  | { ok: true; hash: string; text: string }
+  | { ok: false; reason: ForgePatchDiffFailure }
+
+export type ForgeInboxProposalDiffView = {
+  ownerHostId: string
+  /** Null when the proposal is not in the addressed instance; anything else explains itself. */
+  diff: ForgeProposalDiffOutcome | null
+}
+
 /** What can stop an otherwise valid approval; a refusal never means a write happened. */
 export type ForgeCommentApprovalFailure =
   | 'not-found'

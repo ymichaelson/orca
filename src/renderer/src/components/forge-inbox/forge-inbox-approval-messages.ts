@@ -1,4 +1,7 @@
-import type { ForgeCommentApprovalFailure } from '../../../../shared/forge-inbox-rpc-types'
+import type {
+  ForgeCommentApprovalFailure,
+  ForgePatchDiffFailure
+} from '../../../../shared/forge-inbox-rpc-types'
 import type {
   ForgePatchApplyFailureReason,
   ForgePatchApprovalRefusal
@@ -18,6 +21,7 @@ export type ForgeApprovalFailure =
   | ForgePushApprovalRefusal
   | ForgePushApplyRefusal
   | ForgePushFailureReason
+  | ForgePatchDiffFailure
   | 'unconfirmed'
 
 /** Why an approval stopped. Nothing was written unless the outcome said so. */
@@ -108,6 +112,11 @@ export function forgeApprovalFailureMessage(reason: ForgeApprovalFailure): strin
       return translate(
         'auto.components.forge-inbox.forge-inbox-approval-messages.baseUnverified',
         'The base commit could not be verified exactly. Nothing was pushed.'
+      )
+    case 'diff-too-large':
+      return translate(
+        'auto.components.forge-inbox.forge-inbox-approval-messages.diffTooLarge',
+        'This change is too large to show exactly here. Nothing was written.'
       )
     case 'source-unavailable':
       return translate(

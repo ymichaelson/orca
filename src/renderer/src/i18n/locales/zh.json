@@ -21015,6 +21015,7 @@
           "baseUnavailable": "无法从 GitLab 读取基准提交。未推送任何内容。",
           "baseUnsupported": "此项目的基准树无法精确重建，因此未写入或推送任何内容。",
           "baseUnverified": "无法精确验证基准提交。未推送任何内容。",
+          "diffTooLarge": "此改动过大，无法在此精确显示。未写入任何内容。",
           "sourceUnavailable": "无法读取此变更所需的文件。未写入任何内容。",
           "pathUnsafe": "该变更包含此主机不会写入的路径。未写入任何内容。",
           "writeFailed": "主机无法写入已批准的文件。",

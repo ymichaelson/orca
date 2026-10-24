@@ -41,6 +41,15 @@ export function createForgeOwnerActions(
       const state = await resolve(expectedOwner)
       return state.patchApply(request, signal)
     },
+    /** Rendering needs GitLab, so a stopped host refuses instead of answering from a closed ledger. */
+    async getProposalDiff(
+      request: Parameters<ForgeOwnerRunning['patchDiff']>[0],
+      signal: AbortSignal,
+      expectedOwner?: string
+    ): ReturnType<ForgeOwnerRunning['patchDiff']> {
+      const state = await resolve(expectedOwner)
+      return state.patchDiff(request, signal)
+    },
     async proposePush(
       request: Parameters<ForgeOwnerPushPropose>[0],
       signal: AbortSignal,
