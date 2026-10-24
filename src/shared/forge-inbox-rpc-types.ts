@@ -21,6 +21,12 @@ import type {
   ForgePatchRequestInterruptedReason,
   ForgePatchRequestUnverifiableReason
 } from './forge-patch-request'
+import type {
+  ForgePushApplyRefusal,
+  ForgePushApprovalRefusal,
+  ForgePushFailureReason,
+  ForgePushProposalRefusal
+} from './forge-push'
 export type ForgeInboxPhase = 'new' | 'running' | 'stopped'
 
 export type ForgeInboxListenerView = {
@@ -255,3 +261,24 @@ export type ForgeInboxPatchApplyOutcome =
     }
 
 export type ForgeInboxApprovePatchOutcome = { ownerHostId: string } & ForgeInboxPatchApplyOutcome
+
+/** A push plan is local until approved; the host answers with the exact commit it would create. */
+export type ForgeInboxPushProposalOutcome = { ownerHostId: string } & (
+  | { kind: 'proposal'; proposalId: number; hash: string; commitSha: string; treeSha: string }
+  | { kind: 'refused'; reason: ForgePushProposalRefusal }
+)
+
+/** Approval pushes at most once; an unconfirmed remote answer keeps its receipt and is never replayed. */
+export type ForgeInboxPushApplyOutcome = { ownerHostId: string } & (
+  | { ok: true; receiptId: number; branch: string; commitSha: string }
+  | {
+      ok: false
+      reason:
+        | ForgePushApprovalRefusal
+        | ForgePushApplyRefusal
+        | ForgePushFailureReason
+        | 'unconfirmed'
+      /** Present once a receipt exists, so a failed or unknown attempt stays traceable. */
+      receiptId?: number
+    }
+)

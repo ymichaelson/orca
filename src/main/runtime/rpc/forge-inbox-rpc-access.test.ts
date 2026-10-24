@@ -7,6 +7,7 @@ import {
   FORGE_PATCH_REQUEST_MAX_PATHS
 } from '../../../shared/forge-patch-request'
 import { FORGE_INBOX_RUNTIME_CAPABILITY } from '../../../shared/forge-inbox-runtime-capabilities'
+import { FORGE_PUSH_MAX_MESSAGE_CHARS } from '../../../shared/forge-push'
 import {
   CANARY,
   configure,
@@ -114,6 +115,20 @@ describe('forge inbox rpc access', () => {
           expectedPolicyGeneration: 0
         }
       ],
+      [
+        'forgeInbox.proposePush',
+        { ownerHostId, runId: 1, patchProposalId: 1, message: 'Publish it' }
+      ],
+      [
+        'forgeInbox.approvePush',
+        {
+          ownerHostId,
+          proposalId: 1,
+          expectedHash: 'a'.repeat(64),
+          expectedRevision: 1,
+          expectedPolicyGeneration: 0
+        }
+      ],
       ['forgeInbox.updateConfig', { ownerHostId, expectedRevision: 1, config: {} }],
       [
         'forgeInbox.setCredential',
@@ -144,6 +159,20 @@ describe('forge inbox rpc access', () => {
       ),
       [
         'forgeInbox.approvePatch',
+        {
+          ownerHostId: wrong,
+          proposalId: 1,
+          expectedHash: 'a'.repeat(64),
+          expectedRevision: 1,
+          expectedPolicyGeneration: 0
+        }
+      ],
+      [
+        'forgeInbox.proposePush',
+        { ownerHostId: wrong, runId: 1, patchProposalId: 1, message: 'Publish it' }
+      ],
+      [
+        'forgeInbox.approvePush',
         {
           ownerHostId: wrong,
           proposalId: 1,
@@ -259,6 +288,58 @@ describe('forge inbox rpc access', () => {
     ]
     for (const [method, params] of bad) {
       expect((await harness.call(method, params)).ok, JSON.stringify(params)).toBe(false)
+    }
+  })
+
+  it('accepts a bounded push request and binds its approval like a patch', async () => {
+    harness = await createForgeRpcHarness()
+    const ownerHostId = await configure(harness)
+    const valid = { ownerHostId, runId: 1, patchProposalId: 1, message: 'Publish it' }
+
+    expect(await harness.ok('forgeInbox.proposePush', valid)).toEqual({
+      ownerHostId,
+      kind: 'refused',
+      reason: 'run-missing'
+    })
+
+    const bad: [string, unknown][] = [
+      ['forgeInbox.proposePush', { ...valid, extra: true }],
+      ['forgeInbox.proposePush', { ...valid, message: '' }],
+      [
+        'forgeInbox.proposePush',
+        { ...valid, message: 'x'.repeat(FORGE_PUSH_MAX_MESSAGE_CHARS + 1) }
+      ],
+      ['forgeInbox.proposePush', { ...valid, runId: 0 }],
+      ['forgeInbox.proposePush', { ...valid, patchProposalId: 1.5 }]
+    ]
+    for (const [method, params] of bad) {
+      expect((await harness.call(method, params)).ok, JSON.stringify(params)).toBe(false)
+    }
+
+    const approval = {
+      ownerHostId,
+      proposalId: 999,
+      expectedHash: 'a'.repeat(64),
+      expectedRevision: 1,
+      expectedPolicyGeneration: 0
+    }
+    expect(await harness.ok('forgeInbox.approvePush', approval)).toEqual({
+      ownerHostId,
+      ok: false,
+      reason: 'not-found'
+    })
+    for (const params of [
+      { ...approval, extra: true },
+      { ...approval, expectedHash: 'A'.repeat(64) },
+      { ...approval, expectedHash: 'a'.repeat(32) },
+      { ...approval, expectedRevision: 0 },
+      { ...approval, expectedPolicyGeneration: -1 },
+      { ...approval, proposalId: 0 }
+    ]) {
+      expect(
+        (await harness.call('forgeInbox.approvePush', params)).ok,
+        JSON.stringify(params)
+      ).toBe(false)
     }
   })
 

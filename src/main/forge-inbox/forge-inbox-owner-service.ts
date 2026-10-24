@@ -4,15 +4,11 @@ import {
   FORGE_INBOX_CONFIG_SCHEMA_VERSION,
   type ForgeInboxConfigView
 } from '../../shared/forge-inbox-config'
-import type {
-  ForgeCommentApprovalOutcome,
-  ForgeInboxPatchOutcome
-} from '../../shared/forge-inbox-rpc-types'
+import type { ForgeCommentApprovalOutcome } from '../../shared/forge-inbox-rpc-types'
 import { approveAndPublishForgeComment } from './forge-inbox-comment-approval'
-import type { ForgeInboxDiscuss } from './forge-inbox-discuss'
 import type { ForgeInboxLedger } from './forge-inbox-ledger'
 import type { ForgeInboxOwnerServiceOptions } from './forge-inbox-owner-service-options'
-import type { ForgeInboxPatchProducer } from './forge-inbox-patch-produce'
+import { createForgeOwnerActions } from './forge-inbox-owner-actions'
 import { createForgeOwnerProposalActions } from './forge-inbox-owner-proposal-actions'
 import {
   ForgeInboxOwnerMismatchError,
@@ -161,6 +157,9 @@ export function createForgeInboxOwnerService(options: ForgeInboxOwnerServiceOpti
   })
 
   const proposalActions = createForgeOwnerProposalActions(() => running?.ledger ?? null)
+  const actions = createForgeOwnerActions(async (expectedOwner) =>
+    fenced(running ?? (await ready()), expectedOwner)
+  )
 
   return {
     start,
@@ -253,6 +252,7 @@ export function createForgeInboxOwnerService(options: ForgeInboxOwnerServiceOpti
       return fenced(running ?? (await ready()), expectedOwner).ledger.clearCredential(input)
     },
     ...proposalActions,
+    ...actions,
     async approveComment(
       input: Parameters<typeof approveAndPublishForgeComment>[1],
       signal: AbortSignal,
@@ -264,34 +264,6 @@ export function createForgeInboxOwnerService(options: ForgeInboxOwnerServiceOpti
         input,
         signal
       )
-    },
-    async discuss(
-      request: Parameters<ForgeInboxDiscuss>[0],
-      signal: AbortSignal,
-      expectedOwner?: string
-    ) {
-      const state = fenced(running ?? (await ready()), expectedOwner)
-      return state.discuss
-        ? state.discuss(request, signal)
-        : { kind: 'refused' as const, reason: 'host-unavailable' as const }
-    },
-    async proposePatch(
-      request: Parameters<ForgeInboxPatchProducer>[0],
-      signal: AbortSignal,
-      expectedOwner?: string
-    ): Promise<ForgeInboxPatchOutcome> {
-      const state = fenced(running ?? (await ready()), expectedOwner)
-      return state.proposePatch
-        ? state.proposePatch(request, signal)
-        : { kind: 'refused' as const, reason: 'host-unavailable' as const }
-    },
-    async approvePatch(
-      request: Parameters<ForgeOwnerRunning['patchApply']>[0],
-      signal: AbortSignal,
-      expectedOwner?: string
-    ): ReturnType<ForgeOwnerRunning['patchApply']> {
-      const state = fenced(running ?? (await ready()), expectedOwner)
-      return state.patchApply(request, signal)
     },
     async settled(): Promise<void> {
       const state = running

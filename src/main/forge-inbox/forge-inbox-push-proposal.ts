@@ -1,8 +1,13 @@
 import { createHash } from 'node:crypto'
 import { z } from 'zod'
 import type { ForgeInstanceScope, ForgeProposal } from '../../shared/forge-inbox-types'
+import {
+  FORGE_PUSH_MAX_MESSAGE_CHARS,
+  type ForgePushApprovalRefusal
+} from '../../shared/forge-push'
 import { canonicalJson } from './forge-inbox-canonical-json'
-import { isForgePatchBranchAllowed, type ForgePatchTarget } from './forge-inbox-patch-draft'
+import { recordForgeChange, type ForgeLedgerContext } from './forge-inbox-context'
+import { runForgeTransaction } from './forge-inbox-database'
 import {
   createForgeGitCommit,
   isForgeGitSha1,
@@ -10,8 +15,23 @@ import {
   type ForgeGitObject
 } from './forge-inbox-git-objects'
 import type { ForgeInboxLedger } from './forge-inbox-ledger'
+import {
+  hashForgePatchDraft,
+  isForgePatchBranchAllowed,
+  parseForgePatchDraft,
+  type ForgePatchTarget
+} from './forge-inbox-patch-draft'
+import { policyGenerationOfItem } from './forge-inbox-policy'
 import { approveForgeProposal } from './forge-inbox-proposal-approval'
+import {
+  appendForgeProposalInTransaction,
+  readForgeProposal,
+  readForgeReceiptForProposal
+} from './forge-inbox-proposals'
 import type { ForgePatchHeadReader } from './forge-inbox-patch-proposal'
+import { readForgeItem } from './forge-inbox-queries'
+import { rowNumber, rowText } from './forge-inbox-rows'
+import { readForgeRun } from './forge-inbox-runs'
 
 const IDENTITY = z
   .object({
@@ -22,11 +42,16 @@ const IDENTITY = z
   })
   .strict()
 
+const PATCH_HASH = /^[0-9a-f]{64}$/
+
 export type ForgePushCommit = {
   author: ForgeGitIdentity
   committer: ForgeGitIdentity
   message: string
 }
+
+/** The patch proposal whose applied manifest this push publishes; approval binds both ids. */
+export type ForgePushPatchSource = { proposalId: number; hash: string }
 
 /**
  * Everything the broker will push. The commit id is derived here so the approval binds the exact
@@ -34,6 +59,7 @@ export type ForgePushCommit = {
  */
 export type ForgePushPlan = {
   kind: 'push'
+  patch: ForgePushPatchSource
   target: ForgePatchTarget
   branch: string
   /** The branch head the new commit's parent must be; approval stales when it moves. */
@@ -46,6 +72,12 @@ export type ForgePushPlan = {
 const planSchema = z
   .object({
     kind: z.literal('push'),
+    patch: z
+      .object({
+        proposalId: z.number().int().positive(),
+        hash: z.string().regex(PATCH_HASH)
+      })
+      .strict(),
     target: z
       .object({ instanceId: z.string().min(1).max(512), projectId: z.string().min(1).max(512) })
       .strict(),
@@ -53,7 +85,13 @@ const planSchema = z
     expectedHeadSha: z.string(),
     treeSha: z.string(),
     commitSha: z.string(),
-    commit: z.object({ author: IDENTITY, committer: IDENTITY, message: z.string() }).strict()
+    commit: z
+      .object({
+        author: IDENTITY,
+        committer: IDENTITY,
+        message: z.string().min(1).max(FORGE_PUSH_MAX_MESSAGE_CHARS)
+      })
+      .strict()
   })
   .strict()
 
@@ -61,6 +99,7 @@ export type ForgePushPlanFailure =
   | 'target-invalid'
   | 'branch-invalid'
   | 'base-invalid'
+  | 'patch-invalid'
   | 'tree-invalid'
   | 'commit-invalid'
   | 'commit-mismatch'
@@ -91,6 +130,12 @@ function commitObjectOf(plan: Omit<ForgePushPlan, 'commitSha'>) {
 export function buildForgePushPlan(
   input: Omit<ForgePushPlan, 'kind' | 'commitSha'>
 ): ForgePushPlanResult {
+  if (
+    !planSchema.shape.patch.safeParse(input.patch).success ||
+    !Number.isSafeInteger(input.patch.proposalId)
+  ) {
+    return { ok: false, reason: 'patch-invalid' }
+  }
   if (!planSchema.shape.target.safeParse(input.target).success) {
     return { ok: false, reason: 'target-invalid' }
   }
@@ -128,27 +173,27 @@ export type ForgePushProposalFailure =
   | 'run-missing'
   | 'item-missing'
   | 'item-mismatch'
-  | 'run-not-running'
-  | 'generation-mismatch'
-  | 'policy-generation-mismatch'
-  | 'not-found'
-  | 'not-pending'
-  | 'not-a-push'
-  | 'draft-mismatch'
-  | 'head-unavailable'
-  | 'head-moved'
-  | 'stale'
+  | 'patch-missing'
+  | 'patch-mismatch'
+  | 'patch-not-applied'
+
+/** Creation-time refusals cannot come back from approval; the shared type keeps the mapping honest. */
+export type ForgePushApprovalFailure = ForgePushApprovalRefusal
 
 export type ForgePushProposalCreated =
   | { ok: true; proposal: ForgeProposal; plan: ForgePushPlan; hash: string }
   | { ok: false; reason: ForgePushProposalFailure }
 
+/**
+ * A push may only publish a patch the owner already approved and applied, so creation is gated on
+ * that receipt rather than on a live run. The new proposal binds the item's current revision and
+ * policy generation, which approval re-checks; a newer push for the item stales the older pending one.
+ */
 export function createForgePushProposal(
-  deps: { ledger: Pick<ForgeInboxLedger, 'getRun' | 'getItem' | 'createProposal'> },
+  ctx: ForgeLedgerContext,
   input: {
     scope: ForgeInstanceScope
     runId: number
-    expectedGeneration: number
     plan: Omit<ForgePushPlan, 'kind' | 'commitSha'>
   }
 ): ForgePushProposalCreated {
@@ -156,30 +201,88 @@ export function createForgePushProposal(
   if (!built.ok) {
     return built
   }
-  const run = deps.ledger.getRun(input.runId)
-  if (!run) {
-    return { ok: false, reason: 'run-missing' }
-  }
-  const item = deps.ledger.getItem(input.scope, run.itemId)
-  if (!item) {
-    return { ok: false, reason: 'item-missing' }
-  }
-  if (
-    built.plan.target.instanceId !== item.instanceId ||
-    built.plan.target.projectId !== item.projectId
-  ) {
-    return { ok: false, reason: 'item-mismatch' }
-  }
-  const created = deps.ledger.createProposal({
-    runId: input.runId,
-    expectedGeneration: input.expectedGeneration,
-    body: built.plan,
-    supersedePending: true
+  const plan = built.plan
+  return runForgeTransaction(ctx.db, (): ForgePushProposalCreated => {
+    const run = readForgeRun(ctx, input.runId)
+    if (!run) {
+      return { ok: false, reason: 'run-missing' }
+    }
+    const item = readForgeItem(ctx, input.scope, run.itemId)
+    if (!item) {
+      return { ok: false, reason: 'item-missing' }
+    }
+    if (plan.target.instanceId !== item.instanceId || plan.target.projectId !== item.projectId) {
+      return { ok: false, reason: 'item-mismatch' }
+    }
+    const patch = readForgeProposal(ctx, plan.patch.proposalId)
+    if (!patch) {
+      return { ok: false, reason: 'patch-missing' }
+    }
+    if (patch.runId !== run.id || patch.itemId !== item.id) {
+      return { ok: false, reason: 'patch-mismatch' }
+    }
+    if (
+      patch.status !== 'consumed' ||
+      readForgeReceiptForProposal(ctx, patch.id)?.state !== 'applied'
+    ) {
+      return { ok: false, reason: 'patch-not-applied' }
+    }
+    const draft = parseForgePatchDraft(patch.body)
+    if (draft === null) {
+      return { ok: false, reason: 'patch-mismatch' }
+    }
+    if (
+      hashForgePatchDraft(draft) !== plan.patch.hash ||
+      draft.baseSha !== plan.expectedHeadSha ||
+      draft.branch !== plan.branch ||
+      draft.target.instanceId !== plan.target.instanceId ||
+      draft.target.projectId !== plan.target.projectId
+    ) {
+      return { ok: false, reason: 'patch-mismatch' }
+    }
+    const proposal = appendForgeProposalInTransaction(ctx, {
+      runId: run.id,
+      itemId: item.id,
+      revision: item.currentRevision,
+      policyGeneration: policyGenerationOfItem(ctx, item.id),
+      status: 'pending',
+      body: plan
+    })
+    staleOlderPendingPushes(ctx, item.id, proposal.id)
+    return { ok: true, proposal, plan, hash: built.hash }
   })
-  if (!created.ok) {
-    return created
+}
+
+/** Only a pending push is replaced; a pending comment or patch keeps its own approval. */
+function staleOlderPendingPushes(
+  ctx: ForgeLedgerContext,
+  itemId: number,
+  keepProposalId: number
+): void {
+  const rows = ctx.db
+    .prepare(
+      "SELECT id, body_json FROM proposals WHERE item_id = ? AND status = 'pending' AND id <> ?"
+    )
+    .all(itemId, keepProposalId)
+  const now = ctx.now()
+  for (const row of rows) {
+    const id = rowNumber(row, 'id')
+    let body: unknown
+    try {
+      body = JSON.parse(rowText(row, 'body_json'))
+    } catch {
+      continue
+    }
+    if (parseForgePushPlan(body) === null) {
+      continue
+    }
+    ctx.db
+      .prepare(
+        "UPDATE proposals SET status = 'stale', resolved_at = ? WHERE id = ? AND status = 'pending'"
+      )
+      .run(now, id)
+    recordForgeChange(ctx, itemId, 'proposal', id, 'stale')
   }
-  return { ok: true, proposal: created.proposal, plan: built.plan, hash: built.hash }
 }
 
 /** Consumes exactly one push approval; a moved branch makes it stale, an unreadable one keeps it pending. */
@@ -197,7 +300,7 @@ export async function approveForgePush(
   },
   signal: AbortSignal
 ): Promise<
-  { ok: true; proposal: ForgeProposal } | { ok: false; reason: ForgePushProposalFailure }
+  { ok: true; proposal: ForgeProposal } | { ok: false; reason: ForgePushApprovalFailure }
 > {
   const result = await approveForgeProposal(
     {

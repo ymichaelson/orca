@@ -4,14 +4,18 @@ import type {
   ForgeInboxDiscussOutcome,
   ForgeInboxProposalPreviewView,
   ForgeInboxProposalRejectOutcome,
-  ForgeInboxProposePatchOutcome
+  ForgeInboxProposePatchOutcome,
+  ForgeInboxPushApplyOutcome,
+  ForgeInboxPushProposalOutcome
 } from '../../../../shared/forge-inbox-rpc-types'
 import {
   ForgeInboxApproveCommentParams,
   ForgeInboxApprovePatchParams,
+  ForgeInboxApprovePushParams,
   ForgeInboxDiscussParams,
   ForgeInboxProposalParams,
   ForgeInboxProposePatchParams,
+  ForgeInboxProposePushParams,
   ForgeInboxRejectProposalParams
 } from '../../../../shared/rpc-contract/forge-inbox-params'
 import { FORGE_INBOX_RPC_ERROR_CODES } from '../../../../shared/forge-inbox-rpc-errors'
@@ -146,6 +150,51 @@ export const FORGE_INBOX_PROPOSAL_ACTION_METHODS = [
             runId: params.runId,
             message: params.message,
             paths: params.paths ?? []
+          },
+          signalOf(context),
+          params.ownerHostId
+        ))
+      }))
+    }
+  }),
+  // Why workspace: a push plan is local until approved, and approval is a separate host-admin call.
+  defineMethod({
+    name: 'forgeInbox.proposePush',
+    permission: 'workspace',
+    params: ForgeInboxProposePushParams,
+    handler: (params, context): Promise<ForgeInboxPushProposalOutcome> => {
+      const service = forgeOwnerFor(context, params.ownerHostId)
+      return guardForgeInbox(unavailable, async () => ({
+        ownerHostId: params.ownerHostId,
+        ...(await service.proposePush(
+          {
+            scope: scopeOf(params.instanceId),
+            runId: params.runId,
+            patchProposalId: params.patchProposalId,
+            message: params.message
+          },
+          signalOf(context),
+          params.ownerHostId
+        ))
+      }))
+    }
+  }),
+  // Why host-admin: the owner pushes with its stored write credential, not the caller's.
+  defineMethod({
+    name: 'forgeInbox.approvePush',
+    permission: 'host-admin',
+    params: ForgeInboxApprovePushParams,
+    handler: (params, context): Promise<ForgeInboxPushApplyOutcome> => {
+      const service = forgeOwnerFor(context, params.ownerHostId)
+      return guardForgeInbox(unavailable, async () => ({
+        ownerHostId: params.ownerHostId,
+        ...(await service.approvePush(
+          {
+            scope: scopeOf(params.instanceId),
+            proposalId: params.proposalId,
+            expectedHash: params.expectedHash,
+            expectedRevision: params.expectedRevision,
+            expectedPolicyGeneration: params.expectedPolicyGeneration
           },
           signalOf(context),
           params.ownerHostId

@@ -8,14 +8,20 @@ import type { ForgePushBaseReader } from './forge-inbox-gitlab-push-base'
 import {
   approveForgePush,
   buildForgePushPlan,
-  createForgePushProposal,
-  hashForgePushPlan,
   type ForgePushPlan
 } from './forge-inbox-push-proposal'
-import { buildForgePushArgs, pushForgeProposal } from './forge-inbox-push-broker'
+import {
+  buildForgePushArgs,
+  pushForgeProposal,
+  type ForgePushRemote
+} from './forge-inbox-push-broker'
 import type { ForgeInboxLedger } from './forge-inbox-ledger'
 import type { ForgePatchDraft } from './forge-inbox-patch-draft'
-import { buildForgePatchDraft, sha256OfContent } from './forge-inbox-patch-draft'
+import {
+  buildForgePatchDraft,
+  hashForgePatchDraft,
+  sha256OfContent
+} from './forge-inbox-patch-draft'
 import {
   createWebhookHarness,
   INSTANCE_ID,
@@ -58,9 +64,11 @@ function baseCommit(overrides: Record<string, unknown> = {}) {
 }
 
 type PlanInput = Omit<ForgePushPlan, 'kind' | 'commitSha'>
+type PatchSource = { proposalId: number; hash: string }
 
-function planInput(overrides: Partial<PlanInput> = {}): PlanInput {
+function planInput(patch: PatchSource, overrides: Partial<PlanInput> = {}): PlanInput {
   return {
+    patch,
     target: TARGET,
     branch: 'main',
     expectedHeadSha: BASE,
@@ -187,6 +195,46 @@ describe('forge push broker', () => {
     return { runId: run.id, generation: run.generation }
   }
 
+  /** A push only publishes a patch the owner consumed and the broker applied. */
+  function appliedPatch(runId: number, generation: number): PatchSource {
+    const draft = updateHelloToWorld()
+    const created = ledger.createProposal({
+      runId,
+      expectedGeneration: generation,
+      body: draft
+    })
+    if (!created.ok) {
+      throw new Error(`patch proposal rejected: ${created.reason}`)
+    }
+    const consumed = ledger.consumeProposal(created.proposal.id, {
+      revision: created.proposal.revision,
+      policyGeneration: created.proposal.policyGeneration
+    })
+    if (!consumed.ok) {
+      throw new Error(`patch not consumed: ${consumed.reason}`)
+    }
+    const begun = ledger.beginReceipt({ proposalId: created.proposal.id })
+    if (!begun.started) {
+      throw new Error('patch receipt did not start')
+    }
+    ledger.finishReceipt(begun.receipt.id, { state: 'applied' })
+    return { proposalId: created.proposal.id, hash: hashForgePatchDraft(draft) }
+  }
+
+  function createPush(overrides: Partial<PlanInput> = {}) {
+    const run = runningRun()
+    const patch = appliedPatch(run.runId, run.generation)
+    const created = ledger.createPushProposal({
+      scope: SCOPE,
+      runId: run.runId,
+      plan: planInput(patch, overrides)
+    })
+    if (!created.ok) {
+      throw new Error(`proposal rejected: ${created.reason}`)
+    }
+    return created
+  }
+
   async function approvedPush(
     options: {
       overrides?: Partial<PlanInput>
@@ -195,29 +243,13 @@ describe('forge push broker', () => {
       >
     } = {}
   ): Promise<{ proposalId: number; hash: string }> {
-    const run = runningRun()
-    const built = buildForgePushPlan(planInput(options.overrides))
-    if (!built.ok) {
-      throw new Error(`plan rejected: ${built.reason}`)
-    }
-    const created = createForgePushProposal(
-      { ledger },
-      {
-        scope: SCOPE,
-        runId: run.runId,
-        expectedGeneration: run.generation,
-        plan: built.plan
-      }
-    )
-    if (!created.ok) {
-      throw new Error(`proposal rejected: ${created.reason}`)
-    }
+    const created = createPush(options.overrides)
     const approved = await approveForgePush(
       { ledger, readHead: options.readHead ?? (async () => ({ ok: true, sha: BASE })) },
       {
         scope: SCOPE,
         proposalId: created.proposal.id,
-        expectedHash: hashForgePushPlan(created.plan),
+        expectedHash: created.hash,
         expectedRevision: created.proposal.revision,
         expectedPolicyGeneration: created.proposal.policyGeneration
       },
@@ -245,11 +277,16 @@ describe('forge push broker', () => {
     }
   }
 
-  function push(
+  /** A config entry the broker must install; the file remote ignores its contents. */
+  function remoteAt(url: string): ForgePushRemote {
+    return { ok: true, url, config: [['core.autocrlf', 'false']] }
+  }
+
+  function pushPath(
     approved: { proposalId: number; hash: string },
     options: {
       reader?: ForgePushBaseReader
-      draft?: (plan: ForgePushPlan) => ForgePatchDraft | null
+      remote?: ForgePushRemote
       signal?: AbortSignal
     } = {}
   ) {
@@ -257,9 +294,8 @@ describe('forge push broker', () => {
       {
         ledger,
         reader: options.reader ?? baseReader(),
-        remoteUrl: remote,
-        parentDirectory: root,
-        draft: options.draft ?? (() => updateHelloToWorld())
+        remote: async () => options.remote ?? remoteAt(remote),
+        parentDirectory: root
       },
       { scope: SCOPE, proposalId: approved.proposalId, expectedHash: approved.hash },
       options.signal ?? new AbortController().signal
@@ -269,7 +305,7 @@ describe('forge push broker', () => {
   it('pushes the approved commit and moves the branch to it', async () => {
     const approved = await approvedPush()
 
-    const result = await push(approved)
+    const result = await pushPath(approved)
 
     expect(result).toMatchObject({ kind: 'pushed', branch: 'main', commitSha: COMMIT })
     expect(remoteHead()).toBe(COMMIT)
@@ -283,47 +319,26 @@ describe('forge push broker', () => {
     git(['push', '--quiet', '--force', remote, `${FIRST}:refs/heads/main`], work)
     expect(remoteHead()).toBe(FIRST)
 
-    const result = await push(approved)
+    const result = await pushPath(approved)
 
     expect(result).toEqual({ kind: 'failed', receiptId: expect.any(Number), reason: 'rejected' })
     expect(remoteHead()).toBe(FIRST)
   })
 
   it('refuses before any git work when the proposal is not approved', async () => {
-    const run = runningRun()
-    const built = buildForgePushPlan(planInput())
-    if (!built.ok) {
-      throw new Error('plan rejected')
-    }
-    const created = createForgePushProposal(
-      { ledger },
-      { scope: SCOPE, runId: run.runId, expectedGeneration: run.generation, plan: built.plan }
-    )
-    if (!created.ok) {
-      throw new Error('proposal rejected')
-    }
+    const created = createPush()
 
-    const result = await push({ proposalId: created.proposal.id, hash: built.hash })
+    const result = await pushPath({ proposalId: created.proposal.id, hash: created.hash })
 
     expect(result).toEqual({ kind: 'refused', reason: 'not-approved' })
+    expect(ledger.getProposalReceipt(created.proposal.id)).toBeNull()
     expect(remoteHead()).toBe(BASE)
   })
 
   it('refuses a manifest that does not reproduce the approved tree', async () => {
-    const approved = await approvedPush()
+    const approved = await approvedPush({ overrides: { treeSha: 'f'.repeat(40) } })
 
-    const result = await push(approved, {
-      draft: () =>
-        draftOf([
-          {
-            op: 'update',
-            path: 'a.txt',
-            baseSha256: sha256OfContent('hello\n'),
-            content: 'different\n',
-            resultSha256: sha256OfContent('different\n')
-          }
-        ])
-    })
+    const result = await pushPath(approved)
 
     expect(result).toMatchObject({ kind: 'failed', reason: 'tree-mismatch' })
     expect(remoteHead()).toBe(BASE)
@@ -332,7 +347,7 @@ describe('forge push broker', () => {
   it('refuses a base whose metadata does not reproduce the approved head', async () => {
     const approved = await approvedPush()
 
-    const result = await push(approved, {
+    const result = await pushPath(approved, {
       reader: baseReader({
         getRepositoryCommit: vi.fn(async () => ({
           ok: true as const,
@@ -349,27 +364,30 @@ describe('forge push broker', () => {
   it('marks the receipt unknown when the remote cannot confirm the outcome', async () => {
     const approved = await approvedPush()
 
-    const result = await pushForgeProposal(
-      {
-        ledger,
-        reader: baseReader(),
-        remoteUrl: join(root, 'missing-remote.git'),
-        parentDirectory: root,
-        draft: () => updateHelloToWorld()
-      },
-      { scope: SCOPE, proposalId: approved.proposalId, expectedHash: approved.hash },
-      new AbortController().signal
-    )
+    const result = await pushPath(approved, { remote: remoteAt(join(root, 'missing-remote.git')) })
 
     expect(result).toEqual({ kind: 'unknown', receiptId: expect.any(Number) })
     expect(remoteHead()).toBe(BASE)
   })
 
+  it('refuses without a receipt when the write credential is missing', async () => {
+    const approved = await approvedPush()
+
+    await expect(
+      pushPath(approved, { remote: { ok: false, reason: 'no-credential' } })
+    ).resolves.toEqual({ kind: 'refused', reason: 'no-credential' })
+    await expect(
+      pushPath(approved, { remote: { ok: true, url: remote, config: [] } })
+    ).resolves.toEqual({ kind: 'refused', reason: 'no-credential' })
+    expect(ledger.getProposalReceipt(approved.proposalId)).toBeNull()
+    expect(remoteHead()).toBe(BASE)
+  })
+
   it('never runs a second push for the same approval', async () => {
     const approved = await approvedPush()
-    await expect(push(approved)).resolves.toMatchObject({ kind: 'pushed' })
+    await expect(pushPath(approved)).resolves.toMatchObject({ kind: 'pushed' })
 
-    await expect(push(approved)).resolves.toEqual({
+    await expect(pushPath(approved)).resolves.toEqual({
       kind: 'refused',
       reason: 'already-pushed'
     })
@@ -379,7 +397,7 @@ describe('forge push broker', () => {
 
 describe('forge push arguments', () => {
   it('sends one explicit refspec under a literal lease and never a bare force', () => {
-    const built = buildForgePushPlan(planInput())
+    const built = buildForgePushPlan(planInput({ proposalId: 1, hash: 'a'.repeat(64) }))
     if (!built.ok) {
       throw new Error(`plan rejected: ${built.reason}`)
     }
