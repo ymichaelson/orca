@@ -1,6 +1,5 @@
 import { getSecretStore, type SecretStore } from '../../shared/secret-store'
 import type Database from '../sqlite/sync-database'
-import type { ForgeLedgerContext } from './forge-inbox-context'
 import { forgeCommitSignal, type ForgeCommitListener } from './forge-inbox-commit-signal'
 import { getForgeConfig, updateForgeConfig } from './forge-inbox-config'
 import {
@@ -14,15 +13,7 @@ import { listForgeEvents } from './forge-inbox-events'
 import { ingestForgeEvent } from './forge-inbox-ingest'
 import { createForgeNotificationFeed } from './forge-inbox-notification-feed'
 import { ingestForgeObservation, type ForgeObservationInput } from './forge-inbox-observation'
-import {
-  beginForgeReceipt,
-  consumeForgeProposal,
-  createForgeProposal,
-  finishForgeReceipt,
-  readForgeProposal,
-  rejectForgeProposal,
-  staleForgeProposal
-} from './forge-inbox-proposals'
+import { ForgeProposalLedger } from './forge-inbox-ledger-proposals'
 import {
   getForgeClientCursor,
   getForgeItemDetail,
@@ -75,8 +66,7 @@ import {
 } from './forge-inbox-run-scheduling'
 
 /** Durable forge-inbox ledger. Callers pass hostId/instanceId on every read; nothing is global. */
-export class ForgeInboxLedger {
-  private readonly ctx: ForgeLedgerContext
+export class ForgeInboxLedger extends ForgeProposalLedger {
   private readonly webhookLimits: ForgeWebhookQueueLimits
   readonly notifications: ReturnType<typeof createForgeNotificationFeed>
 
@@ -87,8 +77,8 @@ export class ForgeInboxLedger {
     secretStore: () => SecretStore,
     webhookLimits: ForgeWebhookQueueLimits
   ) {
+    super({ db, hostId, now, secretStore })
     this.webhookLimits = webhookLimits
-    this.ctx = { db, hostId, now, secretStore }
     this.notifications = createForgeNotificationFeed(this.ctx)
   }
 
@@ -289,36 +279,8 @@ export class ForgeInboxLedger {
     return checkForgePatchRequestFences(this.ctx, request)
   }
 
-  createProposal(input: Parameters<typeof createForgeProposal>[1]) {
-    return createForgeProposal(this.ctx, input)
-  }
-
-  getProposal(id: number) {
-    return readForgeProposal(this.ctx, id)
-  }
-
-  consumeProposal(id: number, expected: Parameters<typeof consumeForgeProposal>[2]) {
-    return consumeForgeProposal(this.ctx, id, expected)
-  }
-
   bumpPolicyGeneration(project: Parameters<typeof bumpForgePolicyGeneration>[1]) {
     return bumpForgePolicyGeneration(this.ctx, project)
-  }
-
-  rejectProposal(id: number) {
-    return rejectForgeProposal(this.ctx, id)
-  }
-
-  staleProposal(id: number, expected: Parameters<typeof staleForgeProposal>[2]) {
-    return staleForgeProposal(this.ctx, id, expected)
-  }
-
-  beginReceipt(input: Parameters<typeof beginForgeReceipt>[1]) {
-    return beginForgeReceipt(this.ctx, input)
-  }
-
-  finishReceipt(id: number, outcome: Parameters<typeof finishForgeReceipt>[2]) {
-    return finishForgeReceipt(this.ctx, id, outcome)
   }
 
   listItems(query: Parameters<typeof listForgeItems>[1]) {

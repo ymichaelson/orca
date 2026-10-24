@@ -1,6 +1,8 @@
 import { randomUUID } from 'node:crypto'
 import { dirname, join } from 'node:path'
 import { createForgeOwnerPatchApply } from './forge-inbox-owner-patch-apply'
+import { createForgeOwnerPushApply } from './forge-inbox-owner-push-apply'
+import { createForgeOwnerPushPropose } from './forge-inbox-owner-push-proposal'
 import type { ForgeInboxOwnerServiceOptions } from './forge-inbox-owner-service'
 import { createForgeAnalysisProposal } from './forge-inbox-analysis-proposal'
 import { createForgeAnalysisScheduler } from './forge-inbox-analysis-scheduler'
@@ -37,6 +39,10 @@ export type ForgeOwnerRunning = {
   proposePatch: ForgeInboxPatchProducer | null
   /** Approves a shown patch and builds it in a private directory; never pushes. */
   patchApply: ReturnType<typeof createForgeOwnerPatchApply>
+  /** Builds a push plan over the exact applied patch; the plan stays local until approved. */
+  pushPropose: ReturnType<typeof createForgeOwnerPushPropose>
+  /** Pushes one approved plan through a sealed bare repository; never merges. */
+  pushApply: ReturnType<typeof createForgeOwnerPushApply>
   abort: AbortController
   closing: Promise<void> | null
 }
@@ -101,6 +107,17 @@ export function openForgeOwnerRunning(
     signal: abort.signal,
     parentDirectory: join(dirname(options.dbPath), 'forge-inbox-patch-work')
   })
+  const pushPropose = createForgeOwnerPushPropose({
+    ledger,
+    http: options.http,
+    signal: abort.signal
+  })
+  const pushApply = createForgeOwnerPushApply({
+    ledger,
+    http: options.http,
+    signal: abort.signal,
+    parentDirectory: join(dirname(options.dbPath), 'forge-inbox-push-work')
+  })
   return {
     ledger,
     listener,
@@ -111,6 +128,8 @@ export function openForgeOwnerRunning(
     discuss,
     proposePatch,
     patchApply,
+    pushPropose,
+    pushApply,
     abort,
     closing: null
   }

@@ -18,6 +18,15 @@ export function readForgeProposal(ctx: ForgeLedgerContext, id: number): ForgePro
   return row ? proposalFromRow(row) : null
 }
 
+/** A proposal writes at most one receipt, so this is also the approval's durable outcome. */
+export function readForgeReceiptForProposal(
+  ctx: ForgeLedgerContext,
+  proposalId: number
+): ForgeReceipt | null {
+  const row = ctx.db.prepare('SELECT * FROM receipts WHERE proposal_id = ?').get(proposalId)
+  return row ? receiptFromRow(row) : null
+}
+
 /** Appends one proposal inside a caller-held transaction; lifecycle checks belong to the caller. */
 export function appendForgeProposalInTransaction(
   ctx: ForgeLedgerContext,

@@ -1,6 +1,7 @@
 import { z } from 'zod'
 import { forgeProjectPolicyPatchSchema } from '../forge-inbox-project-policy-patch'
 import { FORGE_CREDENTIAL_KINDS, FORGE_CREDENTIAL_MAX_BYTES } from '../forge-inbox-config'
+import { FORGE_PUSH_MAX_MESSAGE_CHARS } from '../forge-push'
 import {
   FORGE_PATCH_REQUEST_MAX_IDENTIFIER_CHARS,
   FORGE_PATCH_REQUEST_MAX_MESSAGE_CHARS,
@@ -93,6 +94,7 @@ const Approval = {
 
 export const ForgeInboxApproveCommentParams = z.strictObject(Approval)
 export const ForgeInboxApprovePatchParams = z.strictObject(Approval)
+export const ForgeInboxApprovePushParams = z.strictObject(Approval)
 
 export const ForgeInboxRejectProposalParams = z.strictObject(ProposalId)
 
@@ -119,4 +121,12 @@ export const ForgeInboxProposePatchParams = z.strictObject({
     .array(controlFree(z.string().min(1).max(FORGE_PATCH_REQUEST_MAX_PATH_CHARS)))
     .max(FORGE_PATCH_REQUEST_MAX_PATHS)
     .optional()
+})
+
+/** A push publishes one applied patch; the message is the exact commit message to approve. */
+export const ForgeInboxProposePushParams = z.strictObject({
+  ...Owned,
+  runId: RowId,
+  patchProposalId: RowId,
+  message: z.string().min(1).max(FORGE_PUSH_MAX_MESSAGE_CHARS)
 })
