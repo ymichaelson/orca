@@ -1,4 +1,5 @@
 import type { ForgeInstanceScope, ForgeProposal } from '../../shared/forge-inbox-types'
+import type { ForgePatchApprovalRefusal } from '../../shared/forge-patch-request'
 import {
   buildForgePatchDraft,
   hashForgePatchDraft,
@@ -35,9 +36,15 @@ export type ForgePatchProposalCreated =
   | { ok: true; proposal: ForgeProposal; draft: ForgePatchDraft; hash: string }
   | { ok: false; reason: ForgePatchProposalFailure }
 
+/** Creation-time refusals cannot come back from approval; the narrower type keeps that honest. */
+export type ForgePatchApprovalFailure = Exclude<
+  ForgePatchApprovalRefusal,
+  'not-approved' | 'already-applied'
+>
+
 export type ForgePatchProposalApproved =
   | { ok: true; proposal: ForgeProposal }
-  | { ok: false; reason: ForgePatchProposalFailure }
+  | { ok: false; reason: ForgePatchApprovalFailure }
 
 /**
  * Creates the one patch the owner may approve for this run's item. The manifest must target the

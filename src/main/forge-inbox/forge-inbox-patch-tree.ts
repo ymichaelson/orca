@@ -1,5 +1,6 @@
 import { mkdirSync, mkdtempSync, rmSync, unlinkSync, writeFileSync } from 'node:fs'
 import { dirname, join, resolve, sep } from 'node:path'
+import type { ForgePatchApplyFailureReason } from '../../shared/forge-patch-request'
 import { sha256OfContent, type ForgePatchDraft } from './forge-inbox-patch-draft'
 
 export const FORGE_PATCH_TREE_MAX_FILES = 32
@@ -22,18 +23,7 @@ function isMissingFile(error: unknown): boolean {
 
 export type ForgePatchTreeResult =
   | { ok: true; directory: string; written: string[]; removed: string[] }
-  | {
-      ok: false
-      reason:
-        | 'base-missing'
-        | 'base-unexpected'
-        | 'base-mismatch'
-        | 'base-unsupported'
-        | 'source-unavailable'
-        | 'path-unsafe'
-        | 'write-failed'
-        | 'aborted'
-    }
+  | { ok: false; reason: ForgePatchApplyFailureReason }
 
 /**
  * Applies the approved manifest to a fresh private directory built from the pinned commit.

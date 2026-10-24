@@ -14,6 +14,8 @@ import type {
   ForgeInboxConfig
 } from './forge-inbox-config'
 import type {
+  ForgePatchApplyFailureReason,
+  ForgePatchApprovalRefusal,
   ForgePatchProduceRefusal,
   ForgePatchRequestFailureReason,
   ForgePatchRequestInterruptedReason,
@@ -241,3 +243,15 @@ export type ForgeInboxPatchOutcome =
   | { kind: 'refused'; reason: ForgeInboxPatchRefusal }
 
 export type ForgeInboxProposePatchOutcome = { ownerHostId: string } & ForgeInboxPatchOutcome
+
+/** Approval either writes the exact approved tree locally or names why it refused; never both. */
+export type ForgeInboxPatchApplyOutcome =
+  | { ok: true; receiptId: number; written: string[]; removed: string[] }
+  | {
+      ok: false
+      reason: ForgePatchApprovalRefusal | ForgePatchApplyFailureReason
+      /** Present once a receipt exists, so a failed attempt is traceable rather than silent. */
+      receiptId?: number
+    }
+
+export type ForgeInboxApprovePatchOutcome = { ownerHostId: string } & ForgeInboxPatchApplyOutcome

@@ -1,4 +1,6 @@
 import { randomUUID } from 'node:crypto'
+import { dirname, join } from 'node:path'
+import { createForgeOwnerPatchApply } from './forge-inbox-owner-patch-apply'
 import type { ForgeInboxOwnerServiceOptions } from './forge-inbox-owner-service'
 import { createForgeAnalysisProposal } from './forge-inbox-analysis-proposal'
 import { createForgeAnalysisScheduler } from './forge-inbox-analysis-scheduler'
@@ -33,6 +35,8 @@ export type ForgeOwnerRunning = {
   discuss: ForgeInboxDiscuss | null
   /** Exists only when the host can run a protected turn; without one proposals are refused. */
   proposePatch: ForgeInboxPatchProducer | null
+  /** Approves a shown patch and builds it in a private directory; never pushes. */
+  patchApply: ReturnType<typeof createForgeOwnerPatchApply>
   abort: AbortController
   closing: Promise<void> | null
 }
@@ -91,6 +95,12 @@ export function openForgeOwnerRunning(
   const comments = createForgeCommentBroker({ ledger, http: options.http })
   const discuss = options.discuss?.(ledger) ?? null
   const proposePatch = options.proposePatch?.(ledger) ?? null
+  const patchApply = createForgeOwnerPatchApply({
+    ledger,
+    http: options.http,
+    signal: abort.signal,
+    parentDirectory: join(dirname(options.dbPath), 'forge-inbox-patch-work')
+  })
   return {
     ledger,
     listener,
@@ -100,6 +110,7 @@ export function openForgeOwnerRunning(
     comments,
     discuss,
     proposePatch,
+    patchApply,
     abort,
     closing: null
   }

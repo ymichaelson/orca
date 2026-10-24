@@ -4,7 +4,6 @@ import {
   FORGE_INBOX_CONFIG_SCHEMA_VERSION,
   type ForgeInboxConfigView
 } from '../../shared/forge-inbox-config'
-import type { ForgeInstanceScope } from '../../shared/forge-inbox-types'
 import type {
   ForgeCommentApprovalOutcome,
   ForgeInboxPatchOutcome
@@ -14,7 +13,7 @@ import type { ForgeInboxDiscuss } from './forge-inbox-discuss'
 import type { ForgeInboxLedger } from './forge-inbox-ledger'
 import type { ForgeInboxOwnerServiceOptions } from './forge-inbox-owner-service-options'
 import type { ForgeInboxPatchProducer } from './forge-inbox-patch-produce'
-import { previewForgeProposal } from './forge-inbox-proposal-preview'
+import { createForgeOwnerProposalActions } from './forge-inbox-owner-proposal-actions'
 import {
   ForgeInboxOwnerMismatchError,
   ForgeInboxOwnerNotRunningError
@@ -161,6 +160,8 @@ export function createForgeInboxOwnerService(options: ForgeInboxOwnerServiceOpti
     return running?.ledger ?? null
   })
 
+  const proposalActions = createForgeOwnerProposalActions(() => running?.ledger ?? null)
+
   return {
     start,
     ...reads,
@@ -251,33 +252,7 @@ export function createForgeInboxOwnerService(options: ForgeInboxOwnerServiceOpti
     ) {
       return fenced(running ?? (await ready()), expectedOwner).ledger.clearCredential(input)
     },
-    /** Null while dormant: reading must not create a ledger, and there is nothing to preview yet. */
-    getProposalPreview(scope: ForgeInstanceScope, proposalId: number) {
-      const state = running
-      const proposal = state?.ledger.getProposal(proposalId)
-      if (!state || !proposal || !state.ledger.getItem(scope, proposal.itemId)) {
-        return null
-      }
-      return previewForgeProposal(proposal)
-    },
-    /** Rejection is local state only: no network, no credential, and it never touches the project switch. */
-    rejectProposal(
-      scope: ForgeInstanceScope,
-      proposalId: number
-    ): { ok: true } | { ok: false; reason: 'not-found' | 'not-pending' } {
-      const state = running
-      const proposal = state?.ledger.getProposal(proposalId)
-      if (!state || !proposal || !state.ledger.getItem(scope, proposal.itemId)) {
-        return { ok: false as const, reason: 'not-found' as const }
-      }
-      const result = state.ledger.rejectProposal(proposalId)
-      return result.ok
-        ? { ok: true as const }
-        : {
-            ok: false as const,
-            reason: result.reason === 'not-pending' ? result.reason : 'not-found'
-          }
-    },
+    ...proposalActions,
     async approveComment(
       input: Parameters<typeof approveAndPublishForgeComment>[1],
       signal: AbortSignal,
@@ -309,6 +284,14 @@ export function createForgeInboxOwnerService(options: ForgeInboxOwnerServiceOpti
       return state.proposePatch
         ? state.proposePatch(request, signal)
         : { kind: 'refused' as const, reason: 'host-unavailable' as const }
+    },
+    async approvePatch(
+      request: Parameters<ForgeOwnerRunning['patchApply']>[0],
+      signal: AbortSignal,
+      expectedOwner?: string
+    ): ReturnType<ForgeOwnerRunning['patchApply']> {
+      const state = fenced(running ?? (await ready()), expectedOwner)
+      return state.patchApply(request, signal)
     },
     async settled(): Promise<void> {
       const state = running
