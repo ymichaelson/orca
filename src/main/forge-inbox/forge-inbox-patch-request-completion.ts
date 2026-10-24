@@ -1,3 +1,9 @@
+import {
+  FORGE_PATCH_REQUEST_FAILURE_REASONS,
+  FORGE_PATCH_REQUEST_UNVERIFIABLE_REASONS,
+  type ForgePatchRequestFailureReason,
+  type ForgePatchRequestUnverifiableReason
+} from '../../shared/forge-patch-request'
 import { readForgeConfigState } from './forge-inbox-config'
 import { recordForgeChange, type ForgeLedgerContext } from './forge-inbox-context'
 import { runForgeTransaction } from './forge-inbox-database'
@@ -14,30 +20,12 @@ import { readForgeRun } from './forge-inbox-runs'
 import { readForgeProjectInvalidationGeneration } from './forge-inbox-project-invalidation'
 import type { ForgeInstanceScope, ForgeProposal } from './forge-inbox-types'
 
-export const FORGE_PATCH_REQUEST_FAILURE_REASONS = [
-  'producer-failed',
-  'draft-invalid',
-  'draft-hash-invalid',
-  'draft-hash-mismatch',
-  'target-mismatch',
-  'run-mismatch',
-  'session-mismatch',
-  'run-not-eligible',
-  'item-not-merge-request',
-  'revision-stale',
-  'policy-stale',
-  'config-stale',
-  'project-unavailable',
-  'invalidation-stale',
-  'session-binding-lost'
-] as const
-
-export type ForgePatchRequestFailureReason = (typeof FORGE_PATCH_REQUEST_FAILURE_REASONS)[number]
-
-export const FORGE_PATCH_REQUEST_UNVERIFIABLE_REASONS = ['unknown-outcome'] as const
-
-export type ForgePatchRequestUnverifiableReason =
-  (typeof FORGE_PATCH_REQUEST_UNVERIFIABLE_REASONS)[number]
+export {
+  FORGE_PATCH_REQUEST_FAILURE_REASONS,
+  FORGE_PATCH_REQUEST_UNVERIFIABLE_REASONS,
+  type ForgePatchRequestFailureReason,
+  type ForgePatchRequestUnverifiableReason
+} from '../../shared/forge-patch-request'
 
 /** A producer's coded result; arbitrary error text is never accepted or persisted. */
 export type ForgePatchRequestOutcome =

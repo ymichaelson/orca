@@ -27,6 +27,8 @@ export async function startForgeInboxForHost(input: {
   analyse?: ForgeAnalysisRunnerFactory
   /** Without one, Discuss is refused: a session this host cannot prove is never resumed elsewhere. */
   discuss?: NonNullable<ForgeInboxOwnerServiceOptions['discuss']>
+  /** Without one, patch proposals are refused: a turn this host cannot run is never faked. */
+  proposePatch?: NonNullable<ForgeInboxOwnerServiceOptions['proposePatch']>
 }): Promise<ForgeInboxHostStartup> {
   const service = createForgeInboxOwnerService({
     dbPath: join(input.profileDirectory, FORGE_INBOX_LEDGER_FILE),
@@ -34,7 +36,8 @@ export async function startForgeInboxForHost(input: {
     networkReady: input.networkReady,
     notificationSinks: [createForgeNotificationDispatcher(input.notify)],
     ...(input.analyse ? { analyse: input.analyse } : {}),
-    ...(input.discuss ? { discuss: input.discuss } : {})
+    ...(input.discuss ? { discuss: input.discuss } : {}),
+    ...(input.proposePatch ? { proposePatch: input.proposePatch } : {})
   })
   try {
     // Attached before the start so a stop during the ledger-open and listener-bind window reaches it.

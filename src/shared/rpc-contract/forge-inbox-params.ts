@@ -1,6 +1,13 @@
 import { z } from 'zod'
 import { forgeProjectPolicyPatchSchema } from '../forge-inbox-project-policy-patch'
 import { FORGE_CREDENTIAL_KINDS, FORGE_CREDENTIAL_MAX_BYTES } from '../forge-inbox-config'
+import {
+  FORGE_PATCH_REQUEST_MAX_IDENTIFIER_CHARS,
+  FORGE_PATCH_REQUEST_MAX_MESSAGE_CHARS,
+  FORGE_PATCH_REQUEST_MAX_PATHS,
+  FORGE_PATCH_REQUEST_MAX_PATH_CHARS,
+  hasControlCharacter
+} from '../forge-patch-request'
 
 // Why a bounded string, not a UUID: the owner mints a UUID, but a host may be pinned to any id.
 const OwnerHostId = z.string().min(1).max(128)
@@ -93,4 +100,20 @@ export const ForgeInboxDiscussParams = z.strictObject({
   ...Owned,
   runId: RowId,
   message: z.string().min(1).max(FORGE_DISCUSS_MAX_MESSAGE_CHARS)
+})
+
+/** No control characters: these become a SQLite key and filesystem paths, never prompt text. */
+const controlFree = (schema: z.ZodString) =>
+  schema.refine((value) => !hasControlCharacter(value), 'control characters are not allowed')
+
+/** The same intent the claim digests, so a retry that reorders the paths is the same request. */
+export const ForgeInboxProposePatchParams = z.strictObject({
+  ...Owned,
+  runId: RowId,
+  operationId: controlFree(z.string().min(1).max(FORGE_PATCH_REQUEST_MAX_IDENTIFIER_CHARS)),
+  message: z.string().min(1).max(FORGE_PATCH_REQUEST_MAX_MESSAGE_CHARS),
+  paths: z
+    .array(controlFree(z.string().min(1).max(FORGE_PATCH_REQUEST_MAX_PATH_CHARS)))
+    .max(FORGE_PATCH_REQUEST_MAX_PATHS)
+    .optional()
 })

@@ -1,6 +1,11 @@
 import './unused-default-rpc-methods.test-fixture'
 import { afterEach, describe, expect, it } from 'vitest'
 import Database from '../../sqlite/sync-database'
+import {
+  FORGE_PATCH_REQUEST_MAX_IDENTIFIER_CHARS,
+  FORGE_PATCH_REQUEST_MAX_MESSAGE_CHARS,
+  FORGE_PATCH_REQUEST_MAX_PATHS
+} from '../../../shared/forge-patch-request'
 import { FORGE_INBOX_RUNTIME_CAPABILITY } from '../../../shared/forge-inbox-runtime-capabilities'
 import {
   CANARY,
@@ -162,6 +167,45 @@ describe('forge inbox rpc access', () => {
       ['forgeInbox.getChanges', { ownerHostId, afterSeq: -1 }],
       ['forgeInbox.listItems', { ownerHostId, clientId: 'someone-else' }],
       ['forgeInbox.getStatus', { extra: true }]
+    ]
+    for (const [method, params] of bad) {
+      expect((await harness.call(method, params)).ok, JSON.stringify(params)).toBe(false)
+    }
+  })
+
+  it('rejects a patch request that is not a bounded identifier, message or path set', async () => {
+    harness = await createForgeRpcHarness()
+    const ownerHostId = await configure(harness)
+    const valid = { ownerHostId, runId: 1, operationId: 'op-1', message: 'Update the value' }
+
+    expect(await harness.ok('forgeInbox.proposePatch', valid)).toEqual({
+      ownerHostId,
+      kind: 'refused',
+      reason: 'host-unavailable'
+    })
+
+    const bad: [string, unknown][] = [
+      ['forgeInbox.proposePatch', { ...valid, extra: true }],
+      ['forgeInbox.proposePatch', { ...valid, message: '' }],
+      [
+        'forgeInbox.proposePatch',
+        { ...valid, message: 'x'.repeat(FORGE_PATCH_REQUEST_MAX_MESSAGE_CHARS + 1) }
+      ],
+      [
+        'forgeInbox.proposePatch',
+        { ...valid, operationId: 'x'.repeat(FORGE_PATCH_REQUEST_MAX_IDENTIFIER_CHARS + 1) }
+      ],
+      ['forgeInbox.proposePatch', { ...valid, operationId: '' }],
+      ['forgeInbox.proposePatch', { ...valid, runId: 0 }],
+      ['forgeInbox.proposePatch', { ...valid, paths: { 'src/a.ts': true } }],
+      [
+        'forgeInbox.proposePatch',
+        {
+          ...valid,
+          paths: Array.from({ length: FORGE_PATCH_REQUEST_MAX_PATHS + 1 }, () => 'src/a.ts')
+        }
+      ],
+      ['forgeInbox.proposePatch', { ...valid, paths: ['src/\u0000.ts'] }]
     ]
     for (const [method, params] of bad) {
       expect((await harness.call(method, params)).ok, JSON.stringify(params)).toBe(false)

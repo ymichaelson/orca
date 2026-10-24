@@ -2,17 +2,19 @@ import type {
   ForgeInboxCommentApprovalOutcome,
   ForgeInboxDiscussOutcome,
   ForgeInboxProposalPreviewView,
-  ForgeInboxProposalRejectOutcome
+  ForgeInboxProposalRejectOutcome,
+  ForgeInboxProposePatchOutcome
 } from '../../../../shared/forge-inbox-rpc-types'
 import {
   ForgeInboxApproveCommentParams,
   ForgeInboxDiscussParams,
   ForgeInboxProposalParams,
+  ForgeInboxProposePatchParams,
   ForgeInboxRejectProposalParams
 } from '../../../../shared/rpc-contract/forge-inbox-params'
 import { FORGE_INBOX_RPC_ERROR_CODES } from '../../../../shared/forge-inbox-rpc-errors'
 import { defineMethod, type RpcContext } from '../core'
-import { forgeOwnerFor, guardForgeInbox } from '../forge-inbox-owner-gate'
+import { forgeOwnerFor, forgeReaderId, guardForgeInbox } from '../forge-inbox-owner-gate'
 
 const { unavailable } = FORGE_INBOX_RPC_ERROR_CODES
 
@@ -94,6 +96,31 @@ export const FORGE_INBOX_PROPOSAL_ACTION_METHODS = [
             scope: scopeOf(params.instanceId),
             runId: params.runId,
             message: params.message
+          },
+          signalOf(context),
+          params.ownerHostId
+        ))
+      }))
+    }
+  }),
+  // Why workspace: the turn produces a local proposal only; publishing it stays a separate approval.
+  defineMethod({
+    name: 'forgeInbox.proposePatch',
+    permission: 'workspace',
+    params: ForgeInboxProposePatchParams,
+    handler: (params, context): Promise<ForgeInboxProposePatchOutcome> => {
+      const service = forgeOwnerFor(context, params.ownerHostId)
+      const callerKey = forgeReaderId(context)
+      return guardForgeInbox(unavailable, async () => ({
+        ownerHostId: params.ownerHostId,
+        ...(await service.proposePatch(
+          {
+            scope: scopeOf(params.instanceId),
+            callerKey,
+            operationId: params.operationId,
+            runId: params.runId,
+            message: params.message,
+            paths: params.paths ?? []
           },
           signalOf(context),
           params.ownerHostId

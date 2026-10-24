@@ -11,6 +11,7 @@ import {
   type ForgeNotificationProcessor
 } from './forge-inbox-notification-processor'
 import type { ForgeInboxDiscuss } from './forge-inbox-discuss'
+import type { ForgeInboxPatchProducer } from './forge-inbox-patch-produce'
 import { createForgeOwnerListener } from './forge-inbox-owner-listener'
 import {
   createForgeWebhookWorker,
@@ -30,6 +31,8 @@ export type ForgeOwnerRunning = {
   comments: ForgeCommentBroker
   /** Exists only when the host can prove a session record; without one Discuss is refused. */
   discuss: ForgeInboxDiscuss | null
+  /** Exists only when the host can run a protected turn; without one proposals are refused. */
+  proposePatch: ForgeInboxPatchProducer | null
   abort: AbortController
   closing: Promise<void> | null
 }
@@ -87,6 +90,7 @@ export function openForgeOwnerRunning(
   const analysis = createAnalysisScheduler(ledger, options)
   const comments = createForgeCommentBroker({ ledger, http: options.http })
   const discuss = options.discuss?.(ledger) ?? null
+  const proposePatch = options.proposePatch?.(ledger) ?? null
   return {
     ledger,
     listener,
@@ -95,6 +99,7 @@ export function openForgeOwnerRunning(
     notifications,
     comments,
     discuss,
+    proposePatch,
     abort,
     closing: null
   }

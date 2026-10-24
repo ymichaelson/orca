@@ -4,6 +4,7 @@ import {
   type ForgeInboxAnalysisRuntimeBinding
 } from '../forge-inbox/forge-inbox-analysis-runtime'
 import { forgeInboxDiscussForRuntime } from '../forge-inbox/forge-inbox-discuss-runtime'
+import { forgeInboxPatchProducerForRuntime } from '../forge-inbox/forge-inbox-patch-produce-runtime'
 import type { ForgeInboxOwnerService } from '../forge-inbox/forge-inbox-owner-service'
 import type { MobileNotificationDispatchEvent } from '../runtime/runtime-mobile-notification-controller'
 import type { MainHttpClient } from '../network/http-client'
@@ -37,6 +38,12 @@ export async function startOrcadForgeInbox(input: {
     }),
     discuss: forgeInboxDiscussForRuntime({
       ensureStructuredAgentSessionHost: () => runtime.ensureStructuredAgentSessionHost()
+    }),
+    proposePatch: forgeInboxPatchProducerForRuntime({
+      runtime: {
+        ensureStructuredAgentSessionHost: () => runtime.ensureStructuredAgentSessionHost()
+      },
+      http: input.http
     })
   })
 }

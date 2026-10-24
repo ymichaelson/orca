@@ -1,17 +1,19 @@
 import { existsSync } from 'node:fs'
-import type { SecretStore } from '../../shared/secret-store'
 import {
   DEFAULT_FORGE_INBOX_CONFIG,
   FORGE_INBOX_CONFIG_SCHEMA_VERSION,
   type ForgeInboxConfigView
 } from '../../shared/forge-inbox-config'
 import type { ForgeInstanceScope } from '../../shared/forge-inbox-types'
-import type { MainHttpClient } from '../network/http-client'
-import type { ForgeCommentApprovalOutcome } from '../../shared/forge-inbox-rpc-types'
+import type {
+  ForgeCommentApprovalOutcome,
+  ForgeInboxPatchOutcome
+} from '../../shared/forge-inbox-rpc-types'
 import { approveAndPublishForgeComment } from './forge-inbox-comment-approval'
-import type { ForgeAnalysisRunner } from './forge-inbox-coordinator'
 import type { ForgeInboxDiscuss } from './forge-inbox-discuss'
 import type { ForgeInboxLedger } from './forge-inbox-ledger'
+import type { ForgeInboxOwnerServiceOptions } from './forge-inbox-owner-service-options'
+import type { ForgeInboxPatchProducer } from './forge-inbox-patch-produce'
 import { previewForgeProposal } from './forge-inbox-proposal-preview'
 import {
   ForgeInboxOwnerMismatchError,
@@ -26,33 +28,16 @@ import {
   openForgeOwnerRunning,
   type ForgeOwnerRunning
 } from './forge-inbox-owner-running'
-import type { ForgeNotificationSink } from './forge-inbox-notification-processor'
-import type { ForgeWebhookIngressOptions } from './forge-inbox-webhook-ingress'
 import {
   forgeOwnerIdle,
   forgeOwnerStatus,
   type ForgeOwnerServicePhase as Phase
 } from './forge-inbox-owner-service-status'
 
-/** Built once the ledger is open: the runner and the launch policy both read items from it. */
-export type ForgeAnalysisRunnerFactory = (ledger: ForgeInboxLedger) => ForgeAnalysisRunner
-
-export type ForgeInboxOwnerServiceOptions = {
-  dbPath: string
-  http: Pick<MainHttpClient, 'fetch'>
-  secretStore?: SecretStore
-  hostId?: string
-  now?: () => number
-  ingress?: ForgeWebhookIngressOptions
-  /** Gates only the worker's network use; a rejection counts as ready so the inbox never wedges. */
-  networkReady?: Promise<void>
-  /** Receive at-most-once attention notices; with none, the ledger's notification feed is never claimed. */
-  notificationSinks?: readonly ForgeNotificationSink[]
-  /** With none, queued analyses stay queued until a host that can run them opens this ledger. */
-  analyse?: ForgeAnalysisRunnerFactory
-  /** With none, Discuss is refused: a session this host cannot prove is never resumed elsewhere. */
-  discuss?: (ledger: ForgeInboxLedger) => ForgeInboxDiscuss
-}
+export type {
+  ForgeAnalysisRunnerFactory,
+  ForgeInboxOwnerServiceOptions
+} from './forge-inbox-owner-service-options'
 
 export type ForgeInboxOwnerService = ReturnType<typeof createForgeInboxOwnerService>
 
@@ -313,6 +298,16 @@ export function createForgeInboxOwnerService(options: ForgeInboxOwnerServiceOpti
       const state = fenced(running ?? (await ready()), expectedOwner)
       return state.discuss
         ? state.discuss(request, signal)
+        : { kind: 'refused' as const, reason: 'host-unavailable' as const }
+    },
+    async proposePatch(
+      request: Parameters<ForgeInboxPatchProducer>[0],
+      signal: AbortSignal,
+      expectedOwner?: string
+    ): Promise<ForgeInboxPatchOutcome> {
+      const state = fenced(running ?? (await ready()), expectedOwner)
+      return state.proposePatch
+        ? state.proposePatch(request, signal)
         : { kind: 'refused' as const, reason: 'host-unavailable' as const }
     },
     async settled(): Promise<void> {

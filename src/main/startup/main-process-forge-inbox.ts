@@ -1,6 +1,7 @@
 import { startForgeInboxForHost } from '../forge-inbox/forge-inbox-host-startup'
 import { forgeInboxAnalysisForRuntime } from '../forge-inbox/forge-inbox-analysis-runtime'
 import { forgeInboxDiscussForRuntime } from '../forge-inbox/forge-inbox-discuss-runtime'
+import { forgeInboxPatchProducerForRuntime } from '../forge-inbox/forge-inbox-patch-produce-runtime'
 import { getMainHttpClient } from '../network/http-client'
 import { mainProcessState as state } from './main-process-state'
 
@@ -28,6 +29,12 @@ export async function initializeMainProcessForgeInbox(): Promise<void> {
     }),
     discuss: forgeInboxDiscussForRuntime({
       ensureStructuredAgentSessionHost: () => runtime.ensureStructuredAgentSessionHost()
+    }),
+    proposePatch: forgeInboxPatchProducerForRuntime({
+      runtime: {
+        ensureStructuredAgentSessionHost: () => runtime.ensureStructuredAgentSessionHost()
+      },
+      http
     })
   })
 }

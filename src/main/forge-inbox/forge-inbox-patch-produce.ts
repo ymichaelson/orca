@@ -16,11 +16,12 @@ import {
 } from './forge-inbox-patch-prompt'
 import {
   FORGE_PATCH_REQUEST_FAILURE_REASONS,
+  FORGE_PATCH_REQUEST_INTERRUPTED,
+  type ForgePatchProduceRefusal,
   type ForgePatchRequestFailureReason,
   type ForgePatchRequestUnverifiableReason
-} from './forge-inbox-patch-request-completion'
-import { FORGE_PATCH_REQUEST_INTERRUPTED } from './forge-inbox-patch-request-record'
-import type { ForgePatchRequest, ForgePatchRequestRefusal } from './forge-inbox-patch-requests'
+} from '../../shared/forge-patch-request'
+import type { ForgePatchRequest } from './forge-inbox-patch-requests'
 import { verifyForgePatchTarget } from './forge-inbox-patch-target'
 import {
   isForgeProtectedSessionFor,
@@ -30,13 +31,6 @@ import {
   sendForgeProtectedSessionTurn,
   type ForgeProtectedSessionTurnHost
 } from './forge-inbox-protected-session-turn'
-
-export type ForgePatchProduceRefusal =
-  | ForgePatchRequestRefusal
-  | 'session-missing'
-  | 'session-not-protected'
-  | 'send-refused'
-  | 'finish-refused'
 
 export type ForgePatchProduceResult =
   | { kind: 'proposal'; proposalId: number; requestId: number }
@@ -118,7 +112,11 @@ function settledResult(request: ForgePatchRequest): ForgePatchProduceResult {
  */
 export function createForgeInboxPatchProducer(deps: {
   ledger: PatchProducerLedger
-  openReader: () => Promise<GitlabApiReader | null>
+  /** Opens the reader for the item's own configured instance and project, under the caller's signal. */
+  openReader: (
+    target: { instanceId: string; projectId: string },
+    signal: AbortSignal
+  ) => Promise<GitlabApiReader | null>
   ensureHost: () => Promise<ForgeProtectedSessionTurnHost>
   readRecord: (
     sessionId: string
@@ -206,7 +204,10 @@ export function createForgeInboxPatchProducer(deps: {
         return settleRefused(record ? 'session-not-protected' : 'session-missing')
       }
 
-      const reader = await deps.openReader()
+      const reader = await deps.openReader(
+        { instanceId: item.instanceId, projectId: item.projectId },
+        signal
+      )
       if (!reader) {
         return settleFailed('producer-failed')
       }

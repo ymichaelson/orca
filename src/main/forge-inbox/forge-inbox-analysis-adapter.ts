@@ -1,10 +1,8 @@
 import type { ForgeInstanceScope } from '../../shared/forge-inbox-types'
 import type { MainHttpClient } from '../network/http-client'
-import { ForgeCredentialUnavailableError } from './forge-inbox-credentials'
-import { createGitlabApiReader } from './forge-inbox-gitlab-api-client'
-import type { ForgeInboxConfig } from '../../shared/forge-inbox-config'
 import type { ForgeAnalysisTurn } from './forge-inbox-analysis-runner'
 import { createForgeAnalysisRunner } from './forge-inbox-analysis-runner'
+import { createForgeOwnerGitlabReader } from './forge-inbox-gitlab-owner-reader'
 import { takeGitlabSnapshot } from './forge-inbox-gitlab-snapshot'
 import type { ForgeInboxLedger } from './forge-inbox-ledger'
 
@@ -26,40 +24,18 @@ export function createForgeProtectedAnalysisRunner(deps: {
     ledger,
     scope,
     readSnapshot: async (item, signal) => {
-      const { configRevision, config } = ledger.getConfig()
-      const instance = config.instances.find((candidate) => candidate.id === item.instanceId)
-      if (!instance) {
-        throw new Error('forge_analysis_instance_missing')
-      }
-      const project = projectFor(instance, item.projectId)
-      if (!project) {
-        throw new Error('forge_analysis_project_missing')
-      }
-      // Read per run, like the webhook worker: a rotated credential or config revision applies to
-      // the next analysis rather than to whatever was current when the service opened.
-      const reader = createGitlabApiReader(
-        {
-          http,
-          signal,
-          readToken: () => {
-            try {
-              return ledger.readSecret(instance.id, 'api-read')?.secret ?? null
-            } catch (error) {
-              if (error instanceof ForgeCredentialUnavailableError) {
-                return null
-              }
-              throw error
-            }
-          },
-          readConfigRevision: () => ledger.getConfig().configRevision
-        },
-        {
-          baseUrl: instance.baseUrl,
-          projectId: project.projectId,
-          expectedConfigRevision: configRevision
-        }
+      const made = createForgeOwnerGitlabReader(
+        { ledger, http, signal },
+        { instanceId: item.instanceId, projectId: item.projectId }
       )
-      const taken = await takeGitlabSnapshot(reader, item.kind, item.iid)
+      if (!made.ok) {
+        throw new Error(
+          made.reason === 'instance-missing'
+            ? 'forge_analysis_instance_missing'
+            : 'forge_analysis_project_missing'
+        )
+      }
+      const taken = await takeGitlabSnapshot(made.reader, item.kind, item.iid)
       if (!taken.ok) {
         // The reason names the failure without carrying any credential or response body.
         throw new Error(`forge_analysis_snapshot_unavailable:${taken.code}`)
@@ -68,11 +44,4 @@ export function createForgeProtectedAnalysisRunner(deps: {
     },
     turn
   })
-}
-
-function projectFor(
-  instance: ForgeInboxConfig['instances'][number],
-  projectId: string
-): ForgeInboxConfig['instances'][number]['projects'][number] | undefined {
-  return instance.projects.find((candidate) => candidate.projectId === projectId)
 }
