@@ -897,11 +897,11 @@ async function packageMacTerminalHost(appPath, context, { canExecuteTargetArch }
     signCode: (path, { entitlements }) =>
       signMacStandaloneHelper(path, 'terminal host', context.packager, entitlements)
   })
-  // Only a slice this host can execute must serve a PTY; a cross-arch slice on CI
-  // is packaged but not bootable (same rule as the daemon entry above).
+  // Only a slice this host can execute must serve a PTY; a cross-arch slice is
+  // packaged but not bootable (same rule as the daemon entry above).
   await verifyPackagedMacTerminalHostBoots(appPath, {
     arch,
-    required: isMacRelease || (process.env.CI === 'true' && canExecuteTargetArch)
+    required: canExecuteTargetArch && (isMacRelease || process.env.CI === 'true')
   })
   await verifyMacTerminalHost({
     appPath,

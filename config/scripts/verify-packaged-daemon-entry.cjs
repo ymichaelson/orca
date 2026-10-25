@@ -296,9 +296,14 @@ async function verifyPackagedMacTerminalHostBoots(appPath, { arch, required }) {
       stderr
     })
   } catch (error) {
-    throw new Error(
-      `[verify-packaged-daemon-entry] the ${arch} terminal host did not serve a PTY: ${error.message}\n${stderr.join('').slice(-2000)}`
-    )
+    const message = `the ${arch} terminal host did not serve a PTY: ${error.message}\n${stderr.join('').slice(-2000)}`
+    // Why: a slice the packaging host cannot execute (x64 under Rosetta on an arm64
+    // runner) may start and still never answer, so only a runnable slice must pass.
+    if (!required) {
+      console.log(`[verify-packaged-daemon-entry] skipped boot check: ${message}`)
+      return
+    }
+    throw new Error(`[verify-packaged-daemon-entry] ${message}`)
   } finally {
     rmSync(isolated, { recursive: true, force: true })
   }
