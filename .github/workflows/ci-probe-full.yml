@@ -75,8 +75,11 @@ jobs:
       - name: Download pinned Node runtimes
         run: node --disable-warning=MODULE_TYPELESS_PACKAGE_JSON config/scripts/pinned-node-downloads.mjs darwin-arm64 darwin-x64
 
+      # Why arm64 only: CI marks the terminal-host boot as required for every slice,
+      # and a GitHub-hosted arm64 runner cannot boot the x64 slice (no Rosetta PTY),
+      # so packaging both arches fails there. Apple Silicon installers are enough here.
       - name: Build macOS installers
-        run: pnpm run build:mac
+        run: pnpm run build:mac -- --arm64
         env:
           NODE_OPTIONS: --max-old-space-size=4096
           ORCA_DIAGNOSTICS_TOKEN_URL: https://www.onorca.dev/diagnostics/token
