@@ -1,0 +1,94 @@
+name: macOS Test Build (unsigned)
+
+# Why: lets a fork cut a macOS test installer for one branch without the release
+# signing identity. The adhoc/daily workflows publish to stablyai/* with App
+# credentials and refuse non-upstream repos, so this is the fork-local path.
+#
+# The artifact is unsigned and unnotarized: Gatekeeper needs the user to open it
+# from the context menu (or `xattr -dr com.apple.quarantine`). It is a test build,
+# never a release channel, and it uploads as a workflow artifact rather than a
+# GitHub release so it expires with the run.
+
+on:
+  workflow_dispatch:
+  push:
+    branches:
+      - feat/gitlab-webhook-inbox
+
+permissions:
+  contents: read
+
+concurrency:
+  group: mac-test-build-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  ORCA_BACKGROUND_LAUNCH: '1'
+  CSC_IDENTITY_AUTO_DISCOVERY: 'false'
+
+jobs:
+  mac:
+    # Why arm64: the mac target packages x64 and arm64 slices from this runner.
+    runs-on: macos-15
+    timeout-minutes: 120
+    steps:
+      - uses: actions/checkout@v6
+
+      - name: Setup pnpm
+        uses: pnpm/setup@v2
+        with:
+          install: false
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v6
+        with:
+          node-version-file: package.json
+          cache: pnpm
+          cache-dependency-path: |
+            pnpm-lock.yaml
+            mobile/pnpm-lock.yaml
+
+      - name: Cache electron-builder downloads
+        uses: actions/cache@v5
+        with:
+          path: |
+            ~/Library/Caches/electron
+            ~/Library/Caches/electron-builder
+          key: electron-builder-mac-${{ hashFiles('pnpm-lock.yaml') }}
+          restore-keys: |
+            electron-builder-mac-
+
+      # Why both CPUs: the mac config packages x64 and arm64 from this runner, so
+      # the install must carry both variants of the native optional deps.
+      - name: Install dependencies
+        uses: nick-fields/retry@v4
+        with:
+          timeout_minutes: 15
+          max_attempts: 3
+          retry_wait_seconds: 30
+          command: pnpm install --frozen-lockfile --cpu=current,x64,arm64
+
+      - uses: ./.github/actions/install-mobile-dependencies
+
+      # Why: the packaged terminal host embeds the pinned Node runtime for both
+      # slices; fetching them up front keeps the packaging step off the network.
+      - name: Download pinned Node runtimes
+        run: node --disable-warning=MODULE_TYPELESS_PACKAGE_JSON config/scripts/pinned-node-downloads.mjs darwin-arm64 darwin-x64
+
+      - name: Build macOS installers
+        run: pnpm run build:mac
+        env:
+          NODE_OPTIONS: --max-old-space-size=4096
+          ORCA_DIAGNOSTICS_TOKEN_URL: https://www.onorca.dev/diagnostics/token
+
+      - name: List installers
+        run: ls -lh dist/*.dmg dist/*.zip
+
+      - uses: actions/upload-artifact@v7
+        with:
+          name: orca-macos-unsigned-${{ github.sha }}
+          path: |
+            dist/*.dmg
+            dist/*.zip
+          if-no-files-found: error
+          retention-days: 14
