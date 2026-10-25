@@ -545,7 +545,9 @@ module.exports = {
         'orca-keyboard-layout',
         context.packager
       )
-      await packageMacTerminalHost(join(resourcesDir, '..', '..'), context)
+      await packageMacTerminalHost(join(resourcesDir, '..', '..'), context, {
+        canExecuteTargetArch
+      })
     }
   },
   win: {
@@ -884,7 +886,7 @@ function macSliceArch(archEnum, purpose) {
 }
 
 // Why after the node_modules prune: the helper copies this slice's node-pty.
-async function packageMacTerminalHost(appPath, context) {
+async function packageMacTerminalHost(appPath, context, { canExecuteTargetArch }) {
   const arch = macSliceArch(context.arch, 'macOS terminal host')
   await buildMacTerminalHost({
     appPath,
@@ -895,10 +897,11 @@ async function packageMacTerminalHost(appPath, context) {
     signCode: (path, { entitlements }) =>
       signMacStandaloneHelper(path, 'terminal host', context.packager, entitlements)
   })
-  // Only a local build may skip a slice this host cannot run; a shipped slice must serve a PTY.
+  // Only a slice this host can execute must serve a PTY; a cross-arch slice on CI
+  // is packaged but not bootable (same rule as the daemon entry above).
   await verifyPackagedMacTerminalHostBoots(appPath, {
     arch,
-    required: isMacRelease || process.env.CI === 'true'
+    required: isMacRelease || (process.env.CI === 'true' && canExecuteTargetArch)
   })
   await verifyMacTerminalHost({
     appPath,
