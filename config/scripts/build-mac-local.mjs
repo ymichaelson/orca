@@ -34,9 +34,22 @@ if (process.argv[1] && resolve(process.argv[1]) === resolve(import.meta.filename
   // Why ORCA_MAC_ARCH: a host that cannot boot the other slice (CI marks every
   // slice's terminal-host boot as required) packages just the runnable one.
   const archArgs = process.env.ORCA_MAC_ARCH ? [`--${process.env.ORCA_MAC_ARCH}`] : []
+  // Why ORCA_MAC_PUBLISH: the config carries a GitHub publish provider, so a
+  // tokenless run fails at artifact time unless publishing is disabled.
+  const publishArgs = process.env.ORCA_MAC_PUBLISH
+    ? ['--publish', process.env.ORCA_MAC_PUBLISH]
+    : []
   execFileSync(
     process.platform === 'win32' ? 'pnpm.cmd' : 'pnpm',
-    ['exec', 'electron-builder', '--config', 'config/electron-builder.config.cjs', '--mac', ...archArgs],
+    [
+      'exec',
+      'electron-builder',
+      '--config',
+      'config/electron-builder.config.cjs',
+      '--mac',
+      ...archArgs,
+      ...publishArgs
+    ],
     {
       env: {
         ...process.env,

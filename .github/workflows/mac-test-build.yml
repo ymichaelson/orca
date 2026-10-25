@@ -84,6 +84,7 @@ jobs:
           NODE_OPTIONS: --max-old-space-size=4096
           ORCA_DIAGNOSTICS_TOKEN_URL: https://www.onorca.dev/diagnostics/token
           ORCA_MAC_ARCH: arm64
+          ORCA_MAC_PUBLISH: never
 
       - name: List installers
         run: ls -lh dist/*.dmg dist/*.zip
