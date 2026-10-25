@@ -79,10 +79,11 @@ jobs:
       # and a GitHub-hosted arm64 runner cannot boot the x64 slice (no Rosetta PTY),
       # so packaging both arches fails there. Apple Silicon installers are enough here.
       - name: Build macOS installers
-        run: pnpm run build:mac -- --arm64
+        run: pnpm run build:mac
         env:
           NODE_OPTIONS: --max-old-space-size=4096
           ORCA_DIAGNOSTICS_TOKEN_URL: https://www.onorca.dev/diagnostics/token
+          ORCA_MAC_ARCH: arm64
 
       - name: List installers
         run: ls -lh dist/*.dmg dist/*.zip

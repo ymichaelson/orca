@@ -31,11 +31,12 @@ export function getLocalBuildIdentity() {
 if (process.argv[1] && resolve(process.argv[1]) === resolve(import.meta.filename)) {
   const identity = getLocalBuildIdentity()
   console.log(`[build:mac] local update version ${identity.version}`)
+  // Why ORCA_MAC_ARCH: a host that cannot boot the other slice (CI marks every
+  // slice's terminal-host boot as required) packages just the runnable one.
+  const archArgs = process.env.ORCA_MAC_ARCH ? [`--${process.env.ORCA_MAC_ARCH}`] : []
   execFileSync(
     process.platform === 'win32' ? 'pnpm.cmd' : 'pnpm',
-    // Why pass args through: a cross-arch host slice cannot boot its terminal host
-    // under CI, so arm64 runners need `--arm64` to package only the runnable slice.
-    ['exec', 'electron-builder', '--config', 'config/electron-builder.config.cjs', '--mac', ...process.argv.slice(2)],
+    ['exec', 'electron-builder', '--config', 'config/electron-builder.config.cjs', '--mac', ...archArgs],
     {
       env: {
         ...process.env,
