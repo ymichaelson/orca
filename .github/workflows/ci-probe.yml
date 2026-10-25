@@ -1,0 +1,10 @@
+name: ci-probe
+on:
+  push:
+    branches:
+      - tmp/ci-probe
+jobs:
+  probe:
+    runs-on: ubuntu-latest
+    steps:
+      - run: echo probe
