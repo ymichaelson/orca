@@ -33,7 +33,9 @@ if (process.argv[1] && resolve(process.argv[1]) === resolve(import.meta.filename
   console.log(`[build:mac] local update version ${identity.version}`)
   execFileSync(
     process.platform === 'win32' ? 'pnpm.cmd' : 'pnpm',
-    ['exec', 'electron-builder', '--config', 'config/electron-builder.config.cjs', '--mac'],
+    // Why pass args through: a cross-arch host slice cannot boot its terminal host
+    // under CI, so arm64 runners need `--arm64` to package only the runnable slice.
+    ['exec', 'electron-builder', '--config', 'config/electron-builder.config.cjs', '--mac', ...process.argv.slice(2)],
     {
       env: {
         ...process.env,
