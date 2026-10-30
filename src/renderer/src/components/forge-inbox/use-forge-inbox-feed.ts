@@ -222,35 +222,35 @@ export function useForgeInboxFeed(target: RuntimeClientTarget = LOCAL_TARGET): F
       clearSelection()
       setUnreadOnlyPreference(unread)
     },
-    [setUnreadOnlyPreference]
+    [clearSelection, setUnreadOnlyPreference]
   )
   const setArchiveView = useCallback(
     (view: ForgeInboxArchiveView) => {
       clearSelection()
       setArchiveViewPreference(view)
     },
-    [setArchiveViewPreference]
+    [clearSelection, setArchiveViewPreference]
   )
   const setProjectFilter = useCallback(
     (projectId: string | null) => {
       clearSelection()
       narrowProject(projectId)
     },
-    [narrowProject]
+    [clearSelection, narrowProject]
   )
   const setKindFilter = useCallback(
     (kind: ForgeItemKind | null) => {
       clearSelection()
       narrowKind(kind)
     },
-    [narrowKind]
+    [clearSelection, narrowKind]
   )
   const setHandlingFilter = useCallback(
     (handling: ForgeItemHandlingState | null) => {
       clearSelection()
       narrowHandling(handling)
     },
-    [narrowHandling]
+    [clearSelection, narrowHandling]
   )
   const reload = useCallback(() => setReloadToken((token) => token + 1), [])
   const setItemArchived = useForgeInboxArchiveAction({
