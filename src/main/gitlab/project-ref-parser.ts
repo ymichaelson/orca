@@ -78,10 +78,15 @@ function makeProjectRef(
 ): ProjectRef | null {
   const normalizedHost = normalizeGitLabHost(host)
   const normalizedKnownHosts = knownHosts.map(normalizeGitLabHost)
-  if (!normalizedKnownHosts.some((knownHost) => knownHostMatches(normalizedHost, knownHost))) {
-    return null
+  if (normalizedKnownHosts.some((knownHost) => knownHostMatches(normalizedHost, knownHost))) {
+    return makeProjectRefForTrustedHost(normalizedHost, path)
   }
-  return makeProjectRefForTrustedHost(normalizedHost, path)
+  // Why: an ssh remote carries only the hostname (its port is transport), so a
+  // hostname with exactly one ported glab entry means that entry's web endpoint.
+  const ported = normalizedKnownHosts.filter(
+    (knownHost) => hostnameOf(knownHost) === normalizedHost && knownHost !== normalizedHost
+  )
+  return ported.length === 1 ? makeProjectRefForTrustedHost(ported[0], path) : null
 }
 
 export function parseRemoteProjectRefCandidate(remoteUrl: string): ProjectRef | null {

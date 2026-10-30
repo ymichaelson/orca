@@ -49,6 +49,28 @@ describe('gitlab project ref parsing', () => {
     ).toEqual({ host: 'gitlab.example.com', path: 'team/api' })
   })
 
+  it('recognizes a portless SSH remote for a glab host configured on a web port', () => {
+    // Why: a Docker GitLab serves SSH on its own port (e.g. :2224) while glab is
+    // logged in to the web port (:8929); the ssh remote carries no port, so the
+    // single ported host for that hostname is the instance it means.
+    expect(
+      parseGitLabProjectRef('ssh://git@gitlab.test:2224/root/aaa.git', ['gitlab.test:8929'])
+    ).toEqual({ host: 'gitlab.test:8929', path: 'root/aaa' })
+    expect(parseGitLabProjectRef('git@gitlab.test:root/aaa.git', ['gitlab.test:8929'])).toEqual({
+      host: 'gitlab.test:8929',
+      path: 'root/aaa'
+    })
+  })
+
+  it('does not guess between two ported hosts on the same hostname', () => {
+    expect(
+      parseGitLabProjectRef('ssh://git@gitlab.test:2224/root/aaa.git', [
+        'gitlab.test:8929',
+        'gitlab.test:9999'
+      ])
+    ).toBeNull()
+  })
+
   it('keeps the HTTP(S) port as part of the self-hosted GitLab host identity', () => {
     // Why: a self-hosted GitLab served on a non-default web port (e.g. :8443)
     // is identified by host:port end-to-end so `glab --hostname` targets it.
