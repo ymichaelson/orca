@@ -21036,8 +21036,7 @@
           "discussSessionMissing": "元のセッションが見つからず、再度開かれませんでした。",
           "discussSessionNotProtected": "元のセッションは保護された分析セッションではないため、再開されませんでした。",
           "discussHostUnavailable": "このホストは元のセッションを証明できないため、「相談」は利用できません。",
-          "discussSendRefused": "元のセッションがメッセージを拒否しました。",
-          "diffTooLarge": "この変更は大きすぎて正確に表示できません。何も書き込まれていません。"
+          "discussSendRefused": "元のセッションがメッセージを拒否しました。"
         },
         "ForgeInboxOwnerSelector": {
           "unavailable": "{{value0}} (利用不可)",
@@ -21051,11 +21050,11 @@
           "tooLong": "回答が長すぎます。",
           "sendFailed": "回答を送信できませんでした。再試行してください。入力したテキストは残っています。",
           "questionProject": "このプロジェクトの最新イベントを引き続き対応すべきか確認してください。",
+          "questionNoTitle": "{{kind}} {{reference}} の変更を引き続き対応すべきか確認してください。",
+          "questionWithTitle": "{{kind}} {{reference}}「{{title}}」の変更を引き続き対応すべきか確認してください。",
           "questionPolicy": "このリポジトリにはまだ Agent ポリシーがないため、このようなイベントは Agent に届きません。このプロジェクトのポリシーを有効にしますか？",
           "policyEnable": "有効にする",
-          "policyDecline": "今はしない",
-          "questionNoTitle": "{{kind}} {{reference}} の変更を引き続き対応すべきか確認してください。",
-          "questionWithTitle": "{{kind}} {{reference}}「{{title}}」の変更を引き続き対応すべきか確認してください。"
+          "policyDecline": "今はしない"
         },
         "ForgeInboxTimeline": {
           "pipelineStatus": "パイプライン {{status}}",
@@ -24826,6 +24825,304 @@
       "rateLimitedInMinuteSignedOut": "GitHub のレート制限に達しました。約 1 分後にもう一度試すか、`gh auth login` を実行して Orca がアカウントのより高い上限を利用できるようにしてください。",
       "rateLimitedInMinutes_other": "GitHub のレート制限に達しました。約 {{count}} 分後にもう一度お試しください。",
       "rateLimitedInMinutesSignedOut_other": "GitHub のレート制限に達しました。約 {{count}} 分後にもう一度試すか、`gh auth login` を実行して Orca がアカウントのより高い上限を利用できるようにしてください。"
+    }
+  },
+  "projectEventInbox": {
+    "repair": {
+      "project": "プロジェクトイベント設定を開く",
+      "projectUnavailable": "プロジェクト設定を利用できません：このホストはリンクされた Orca プロジェクトを特定していません。",
+      "decision": "イベント判断設定を開く",
+      "integrations": "連携を開く"
+    },
+    "errorProviderAuth": "イベント判断サービスがホストの認証情報を拒否しました。",
+    "errorAuth": "サービスがホストの認証情報を拒否しました。",
+    "errorProviderNetwork": "ホストからイベント判断サービスに接続できませんでした。",
+    "errorNetwork": "ホストからサービスに接続できませんでした。"
+  },
+  "webhook": {
+    "settings": {
+      "open": "設定 → 連携 → Webhook でレシーバーを構成",
+      "openShort": "Webhook 設定を開く",
+      "title": "Webhook",
+      "host": "{{host}} のイベントレシーバー",
+      "refresh": "更新 / 再試行",
+      "transport": "リスナーは TLS ではなく HTTP を使用します。HTTPS の外部アドレスには、別途構成したリバースプロキシが必要です。待機しているだけでは GitLab への接続は検証されません。",
+      "saved": "Webhook 設定を保存しました",
+      "enabled": "イベントレシーバーを有効にする",
+      "bind": "待ち受け IP アドレス",
+      "bindHelp": "IPv4 または IPv6 アドレスを使用してください。これは GitLab が使用するコールバックアドレスではありません。",
+      "port": "待ち受けポート (固定)",
+      "portHelp": "1～65535 を選択してください。ポートが使用中の場合は起動に失敗します。Orca は別のポートを選択しません。",
+      "external": "外部ベース URL",
+      "externalHelp": "GitLab から到達できる HTTP または HTTPS アドレスを設定してください。ワイルドカードのバインドアドレスは使用しないでください。空のままにすると、コールバックアドレスは未設定になります。",
+      "acknowledge": "外部 HTTP トラフィックが暗号化されず、リスナーをループバック外に公開するとイベントのペイロードが漏えいする可能性があることを理解しました。アクセスを制限するか、安全なリバースプロキシを構成します。",
+      "invalid": "有効な IP アドレス、ポート、外部 URL を入力し、有効にする前に外部への平文公開に同意してください。",
+      "save": "Webhook 設定を保存",
+      "missing": "このホストは Webhook 設定を返しませんでした。ホストを更新して再試行してください。",
+      "probeFailed": "このホストの Webhook サポートを確認できませんでした。再試行して再度確認してください。",
+      "unsupported": "このホストは Webhook 設定をサポートしていません。ホストを更新して再試行してください。"
+    },
+    "status": {
+      "loading": "読み込み中…",
+      "applying": "変更を適用中…",
+      "failure": "利用不可または失敗",
+      "callbackMissing": "ポート {{port}} で待機中ですが、外部コールバックアドレスが設定されていません",
+      "listening": "ポート {{port}} で待機中",
+      "starting": "起動中 / 未待機",
+      "disabled": "無効 — 受信していません",
+      "unknown": "状態不明"
+    },
+    "search": {
+      "description": "選択したホストのイベントレシーバー、待ち受けアドレス、固定ポート、外部ベース URL を構成します。",
+      "receiver": "レシーバー",
+      "http": "HTTP",
+      "port": "ポート",
+      "callback": "コールバック"
+    },
+    "error": {
+      "unknown": "リスナーの起動に失敗しました。",
+      "hostUnavailable": "リクエストを完了できませんでした。再試行してください。失敗し続ける場合は、ホストへの接続を確認してください。"
+    }
+  },
+  "projectEventAgent": {
+    "enabled": "プロジェクトイベント Agent を有効にする",
+    "enabledHelp": "オフの間もホストはイベントの受信を続けます。停止するのは Agent の処理だけです。",
+    "agent": "Agent",
+    "noAgent": "Agent なし",
+    "savedAgentMissing": "{{agentId}} (このアプリにはありません)",
+    "agentNotDetected": "{{label}} — このホストでは検出されません",
+    "agentHelp": "未検出の Agent も選択できます。イベントが届くと、ホストが実際の起動結果を報告します。",
+    "rules": "ルール",
+    "rulesHelp": "{{used}} / {{limit}} バイト",
+    "title": "プロジェクトイベント Agent",
+    "description": "このプロジェクトが Agent で GitLab のイベントに対応できるようにします：レビュー依頼、参加しているマージリクエスト、パイプラインの失敗、Issue でのメンションと割り当て。",
+    "unroutable": "このプロジェクトはこのアプリから直接到達できないホストに属しているため、ここではプロジェクトイベント設定を編集できません。",
+    "loading": "読み込み中…",
+    "unsupported": "このホストはプロジェクトイベント Agent をサポートしていない古い Orca ビルドで動作しています。これらの設定を編集するにはホストを更新してください。",
+    "unattached": "このホストでは受信トレイサービスが動作していないため、プロジェクトイベント設定を利用できません。",
+    "needAgent": "プロジェクトイベントを有効にする前に、既存の Agent を選択してください。",
+    "needAgentAndModel": "このプロジェクトでは自動分析がオンになっているため、保存する前に Agent とモデルを選択してください。",
+    "merged": "別のウィンドウがこれらの設定を変更しました。編集内容は保持されています。確定するにはもう一度保存してください。",
+    "save": "プロジェクトイベント設定を保存",
+    "activity": {
+      "lastProcessedReceived": "{{subject}} · {{time}} 受信",
+      "title": "最近のイベント",
+      "empty": "イベントはまだ受信していません。",
+      "lastProcessedLabel": "最後に完了した配信：",
+      "lastProcessedNone": "まだありません",
+      "recorded": "記録済み。通知は送信されませんでした。",
+      "notified": "記録して通知しました。",
+      "waiting": "判断する前に後続のイベントを待っています。",
+      "processing": "処理中。",
+      "needsUser": "受信トレイであなたの入力が必要です。",
+      "done": "対応済み。",
+      "failed": "失敗。",
+      "unknown": "状態不明。イベントは受信されました。"
+    },
+    "binding": {
+      "failedDuring": "{{phase}}に失敗しました：{{reason}}",
+      "notRetryable": "通常、再試行しても解決しません。先に構成を修正してください。",
+      "rejectedEvents": "GitLab は次のイベント種別を拒否しました：",
+      "gitlabProject": "GitLab プロジェクト",
+      "projectId": "プロジェクト ID",
+      "hookId": "フック ID",
+      "callbackUrl": "コールバック URL",
+      "none": "このプロジェクトにはまだコールバックが登録されていません。"
+    },
+    "rotate": {
+      "pending": "新しいシークレットが準備されています。GitLab がまだ確認していないため、現在のシークレットが引き続き使用されています。",
+      "action": "シークレットをローテーション",
+      "unprotectedTitle": "暗号化されない保存への同意",
+      "unprotectedBody": "このホストには使用できるキーリングがないため、新しいシークレットは暗号化されずに保存されます。このマシンでそれが許容される場合のみ続行してください。",
+      "unprotectedConsent": "シークレットがこのホストに暗号化されずに保存されることを受け入れます。",
+      "unprotectedAction": "暗号化されない保存でローテーション",
+      "confirmTitle": "Webhook シークレットをローテーションしますか?",
+      "confirmBody": "ローテーションするとコールバックシークレットが置き換わります。GitLab は受け入れた時点で新しいシークレットに切り替えます。",
+      "cancel": "キャンセル",
+      "confirmAction": "今すぐローテーション",
+      "done": "新しいシークレットが使用されています。"
+    },
+    "secretName": "Webhook シークレット",
+    "connection": {
+      "title": "Webhook 接続"
+    },
+    "retry": {
+      "busy": "再確認中…",
+      "action": "接続を再確認"
+    },
+    "gitlabProject": {
+      "title": "GitLab プロジェクト",
+      "saveFailed": "このフォルダーの GitLab プロジェクトを保存できませんでした。",
+      "description": "このフォルダーを GitLab プロジェクトに向けて、そのイベントが Agent に届くようにします。ホストは何かを登録する前にアドレスを検証します。",
+      "placeholder": "GitLab プロジェクトの URL または group/project を貼り付け",
+      "help": "このフィールドをクリアするとローカルの関連付けが削除されます。GitLab にすでに登録されている Webhook は、そちらで別途削除する必要があります。",
+      "saving": "保存中…",
+      "save": "GitLab プロジェクトを保存"
+    },
+    "modelStatus": {
+      "loading": "Agent のモデルを読み込み中…",
+      "empty": "このホストは Agent のモデルを一覧表示しませんでした。Agent の既定を使用するか、モデルを入力してください。",
+      "error": "このホストからモデル一覧を読み取れませんでした。Agent の既定を使用するか、モデルを入力してください。",
+      "unlisted": "この Agent で利用できるモデル一覧がありません。Agent の既定を使用するか、モデルを入力してください。",
+      "workspaceSpecific": "この一覧はワークスペースごとに異なる場合があります。モデルが見つからない場合は、カスタムモデルを選択して入力してください。"
+    },
+    "model": "モデル",
+    "modelPlaceholder": "Agent の既定",
+    "modelCustom": "カスタムモデル…",
+    "modelCustomInput": "カスタムモデル名",
+    "modelHelp": "Agent が使用するモデルを選択します。Agent の既定では Agent が選択します。",
+    "bindingState": {
+      "unconfigured": "コールバックはまだ登録されていません。",
+      "checking": "GitLab プロジェクトを確認中…",
+      "registering": "コールバックを登録中…",
+      "verifying": "コールバックを検証中…",
+      "connected": "コールバックを検証しました。",
+      "failed": "登録または検証に失敗しました。"
+    },
+    "bindingPhase": {
+      "checking": "プロジェクトの確認中",
+      "registering": "コールバックの登録中",
+      "verifying": "コールバックの検証中"
+    },
+    "bindingFailure": {
+      "notGitlab": "このホストはそのアドレスを GitLab プロジェクトとして認識しないか、その GitLab インスタンスにサインインしていません。",
+      "glabUnavailable": "このホストでは GitLab CLI (glab) を利用できません。",
+      "unauthenticated": "ホストがこの GitLab インスタンスにサインインしていません。",
+      "forbidden": "ホストにこの GitLab プロジェクトへの権限がありません。",
+      "projectNotFound": "GitLab がこのプロジェクトを見つけられませんでした。",
+      "noHookPermission": "サインイン中のアカウントはこのプロジェクトの Webhook を管理できません。",
+      "network": "ホストから GitLab に接続できませんでした。",
+      "aborted": "リクエストは完了前にキャンセルされました。",
+      "badResponse": "GitLab からホストが読み取れない応答が返されました。",
+      "invalidConfig": "受信トレイのレシーバー構成が無効です。",
+      "unauthorized": "GitLab がホストの認証情報を拒否しました。",
+      "notFound": "GitLab にはこのコールバックが指していたリソースがもうありません。",
+      "callbackBlocked": "GitLab は既定でローカルまたはプライベートアドレスへの Webhook をブロックします。GitLab 管理者は「Admin > Settings > Network > Outbound requests」でこのコールバックのホストまたはアドレスだけを許可できます。ローカルネットワーク全体で保護をオフにしないでください。",
+      "invalidRequest": "GitLab は Webhook リクエストを無効として拒否しました。",
+      "ownershipConflict": "別の連携が一致する Webhook をすでに管理しています。",
+      "tooManyHooks": "このプロジェクトは Webhook の最大数に達しています。",
+      "eventConfigurationRejected": "GitLab は Webhook を受け入れましたが、Orca が要求した一部のイベント種別を拒否しました。",
+      "rateLimited": "GitLab がこのホストをレート制限しています。後でもう一度お試しください。",
+      "unknownOutcome": "ホストは GitLab が変更を適用したか把握できませんでした。再試行する前に再確認してください。",
+      "interrupted": "ホストはリクエストを完了する前に停止しました。",
+      "unprotectedStorage": "このホストは明示的な同意なしに Webhook シークレットを暗号化できません。",
+      "secretUnavailable": "ローテーションできる読み取り可能なシークレットがありません。先にコールバックを再登録してください。",
+      "repoNotFound": "このプロジェクトはホスト上にもう存在しません。",
+      "noGitRemote": "ホストはこのプロジェクトの Git リモートを見つけられませんでした。",
+      "remoteHostRepo": "Git リモートが、この関連付けが管理しないホストを指しています。",
+      "receiverNotConfigured": "このホストでは受信トレイのレシーバーが構成されていません。",
+      "bindingConflict": "この GitLab プロジェクトはすでに別の Orca プロジェクトに関連付けられています。",
+      "cleanupFailed": "Orca は削除されたプロジェクトの GitLab Webhook を削除できませんでした。ホストの再起動時に再試行します。",
+      "generic": "登録または検証に失敗しました。再試行するか、ホストの GitLab 権限を確認してください。",
+      "eventConfigurationRejectedAfterRotate": "シークレットは更新されましたが、GitLab は Orca が要求した一部のイベント種別を拒否しました。"
+    },
+    "activityKind": {
+      "issue": "Issue",
+      "mergeRequest": "マージリクエスト",
+      "pipeline": "パイプライン",
+      "project": "プロジェクト",
+      "unknown": "イベント"
+    },
+    "secretProtection": {
+      "sealed": "暗号化して保存されています。",
+      "plaintext": "このホストに暗号化されずに保存されています。",
+      "unknown": "シークレットの保存方法は記録されていません。"
+    },
+    "keywordProjectEvent": "project event",
+    "keywordWebhook": "webhook",
+    "keywordAgent": "agent",
+    "keywordRules": "rules",
+    "keywordModel": "model",
+    "error": {
+      "hostUnavailable": "プロジェクトイベント設定を読み取れませんでした。再試行してください。失敗し続ける場合は、ホストへの接続を確認してください。",
+      "invalidPolicy": "ホストがこれらの設定を拒否しました。Agent、モデル、ルールを確認してから、もう一度保存してください。",
+      "saveFailed": "プロジェクトイベント設定を保存できませんでした。再試行してください。編集内容は残っています。"
+    },
+    "action": {
+      "failed": "ホストから応答がありませんでした。接続を確認して再試行してください。"
+    },
+    "addProject": {
+      "backToSetup": "プロジェクト設定に戻る",
+      "description": "このプロジェクトが Agent で GitLab のイベントに対応できるようにします。これはスキップして、後でプロジェクト設定で構成することもできます。",
+      "projectAdded": "プロジェクトを追加しました：{{name}}",
+      "continue": "続行",
+      "connecting": "GitLab に接続中…",
+      "connected": "イベント Agent を GitLab プロジェクト {{project}} に接続しました。",
+      "notGitlab": "このリポジトリには接続できる GitLab プロジェクトがないため、イベント Agent はオフのままです。プロジェクトは通常どおり追加されました。",
+      "notGitlabStillOn": "このリポジトリには接続できる GitLab プロジェクトがありませんが、イベント Agent をオフに戻せませんでした。プロジェクト設定でオフにしてください。",
+      "notConnected": "イベント Agent の設定は保存されましたが、GitLab Webhook が接続されていません：{{reason}}",
+      "notSaved": "イベント Agent の設定は保存されませんでした。入力内容は保持されています。",
+      "receiverHelp": "このホストでレシーバーを構成してから戻って再試行してください。プロジェクト設定は保持されています。",
+      "decisionRequired": "このホストではイベント判断モデルの準備ができていません。設定を開いて構成を完了するか、ホストの可用性を確認してください。プロジェクトの入力内容は保持されています。",
+      "setupDecision": "判断モデルを構成",
+      "openIntegrations": "連携設定を開く",
+      "reload": "再読み込み",
+      "continueWithout": "これなしで続行",
+      "skip": "今はスキップ",
+      "retry": "再試行"
+    }
+  },
+  "projectEventDecision": {
+    "keyMissingJev": "API キーが保存されていません。Jev では判断を実行する前に API キーが必要です。",
+    "keyMissingLaya": "API キーが保存されていません。Laya のデプロイで認証が必要な場合にのみ追加してください。",
+    "apiKey": "API キー",
+    "saveKey": "キーを保存",
+    "clearKey": "キーをクリア",
+    "keyPresent": "このホストにキーが保存されています。再表示されることはありません。置き換えるには新しいキーを保存してください。",
+    "keyUnreadable": "このホストにキーが保存されていますが、ここでは読み取れません。キーリングへのアクセスを復元するか、クリアして新しいキーを保存してください。",
+    "protectionUnavailable": "このホストは OS 保護の暗号化で認証情報を保護できないため、ここでは API キーの保存が無効です。ホストのキーリングサポートを修正してから再試行してください。",
+    "status": {
+      "loading": "読み込み中…",
+      "unsupported": "サポートされていないホスト",
+      "unattached": "プロジェクトイベントは動作していません",
+      "unavailable": "利用不可",
+      "ready": "準備完了",
+      "needsSetup": "セットアップが必要"
+    },
+    "title": "イベント判断モデル",
+    "host": "{{host}} のプロジェクトイベント Agent 向けの迅速な判断",
+    "refresh": "更新",
+    "intro": "判断モデルは各イベントの次のステップを選択します。シェル、リポジトリへの書き込みアクセス、GitLab の書き込み認証情報は不要です。送信されるのはプロジェクトのルールと、上限付きのイベント情報のみです。",
+    "unsupported": "このホストはイベント判断設定をサポートしていません。ホストを更新して再試行してください。",
+    "unattached": "このホストではプロジェクトイベントがまだ動作していないため、ここでは判断モデルを編集できません。このホストで Orca を起動して再試行してください。",
+    "saved": "イベント判断設定を保存しました",
+    "keySaved": "API キーをこのホストに保存しました",
+    "keyCleared": "API キーをこのホストから削除しました",
+    "provider": "プロバイダー",
+    "baseUrl": "Laya サービスアドレス",
+    "baseUrlHelp": "このアドレスはこのウィンドウではなくホストに属します。ループバックアドレスは、サービスがそのホストで動作していることを意味します。",
+    "model": "モデル",
+    "modelPlaceholder": "プロバイダーの既定",
+    "modelHelp": "モデル名を入力してください。どちらのプロバイダーでもモデルの自動検出はまだ利用できません。空のままにするとプロバイダーの既定を使用します。",
+    "invalid": "認証情報を含まない有効な HTTP または HTTPS アドレスと、制御文字を含まないモデル名を入力してください。",
+    "save": "モデル設定を保存",
+    "testing": "テスト中…",
+    "test": "接続をテスト",
+    "saveFirst": "テストする前に変更を保存してください。テストは保存済みの設定を使用します。",
+    "testHelp": "テストではこのホストから実際の小さな判断リクエストを 1 件送信します。プロバイダーのクォータに計上される場合があります。",
+    "disclosure": {
+      "jev": "次のステップを選択するため、イベントとプロジェクトのルールが TypeSafe (Jev) に送信されます。Orca が送信するのは上限付きのイベント情報とルールのテキストのみで、API 認証情報やリポジトリの内容は送信しません。",
+      "layaUnset": "Laya デプロイのアドレスを入力してください。このホストで動作するか別の場所で動作するかはそのアドレス次第です。Orca はローカルに留まると想定しません。",
+      "layaLocal": "判断はこのホスト自身の {{url}} に要求されます。そのサービスが転送しない限り、イベント情報とルールのテキストはこのマシンに留まります。",
+      "layaRemote": "判断はこのマシンではない {{url}} に要求されます。イベント情報とルールのテキストはそこに送信されます。"
+    },
+    "probe": {
+      "invalidConfig": "プロバイダー設定と API キーを確認し、保存してから再度テストしてください。",
+      "invalidInput": "サービスがテストリクエストを拒否しました。Jev/Laya の判断エンドポイントを実装しているか確認してください。",
+      "tooLarge": "サービスが Orca の許容範囲を超えるデータを返しました。アドレスが Jev/Laya 判断サービスを指しているか確認してください。",
+      "badResponse": "サービスが予期しない応答を返しました。アドレスが Jev/Laya 判断サービスを指しているか確認してください。",
+      "unauthorized": "サービスが保存された API キーを拒否しました。有効なキーを保存して再度テストしてください。",
+      "rateLimited": "サービスが現在リクエストをレート制限しています。後でもう一度お試しください。",
+      "overloaded": "サービスが一時的に過負荷です。後でもう一度お試しください。",
+      "aborted": "サービスが応答する前にテストがキャンセルされました。",
+      "timeout": "サービスが時間内に応答しませんでした。アドレスとネットワーク経路を確認してください。",
+      "network": "このホストからサービスに接続できませんでした。アドレス、ネットワーク、プロキシを確認してください。",
+      "connected": "接続しました。{{provider}} がモデル {{model}} で応答しました。",
+      "defaultModel": "モデルが保存されていないため、プロバイダーの既定が使用されました。"
+    },
+    "error": {
+      "hostUnavailable": "リクエストを完了できませんでした。再試行してください。失敗し続ける場合は、ホストへの接続を確認してください。",
+      "probeFailed": "このホストがイベント判断設定をサポートしているか確認できませんでした。再試行して再度確認してください。"
     }
   },
   "agentLaunch": {

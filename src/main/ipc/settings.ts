@@ -87,9 +87,7 @@ export function registerSettingsHandlers(
   })
 
   ipcMain.handle('settings:get', () =>
-    settingsWithoutDecisionKey(
-      readSettingsWithRuntimeEnvironmentPreference(store, registryRoot())
-    )
+    settingsWithoutDecisionKey(readSettingsWithRuntimeEnvironmentPreference(store, registryRoot()))
   )
 
   ipcMain.handle(

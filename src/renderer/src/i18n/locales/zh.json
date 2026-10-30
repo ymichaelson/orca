@@ -21036,8 +21036,7 @@
           "discussSessionMissing": "找不到原始会话，且未重新打开。",
           "discussSessionNotProtected": "原始会话不是受保护的分析会话，因此未恢复。",
           "discussHostUnavailable": "此主机无法证明原始会话，因此无法使用讨论。",
-          "discussSendRefused": "原始会话拒绝了该消息。",
-          "diffTooLarge": "此改动过大，无法在此精确显示。未写入任何内容。"
+          "discussSendRefused": "原始会话拒绝了该消息。"
         },
         "ForgeInboxOwnerSelector": {
           "unavailable": "{{value0}}（不可用）",
@@ -21051,11 +21050,11 @@
           "tooLong": "回答过长。",
           "sendFailed": "无法发送回答。请重试；你的文本仍在此处。",
           "questionProject": "确认是否仍应处理此项目中的最新事件。",
+          "questionNoTitle": "确认是否仍应处理 {{kind}} {{reference}} 中的变更。",
+          "questionWithTitle": "确认是否仍应处理 {{kind}} {{reference}}“{{title}}”中的变更。",
           "questionPolicy": "此仓库还没有 Agent 策略，这类事件暂时无法交给 Agent 处理。要为此项目开启策略吗？",
           "policyEnable": "开启",
-          "policyDecline": "暂不",
-          "questionNoTitle": "确认是否仍应处理 {{kind}} {{reference}} 中的变更。",
-          "questionWithTitle": "确认是否仍应处理 {{kind}} {{reference}}“{{title}}”中的变更。"
+          "policyDecline": "暂不"
         },
         "ForgeInboxTimeline": {
           "pipelineStatus": "流水线 {{status}}",
@@ -24827,6 +24826,304 @@
       "rateLimitedInMinuteSignedOut": "已达到 GitHub 速率限制。请约一分钟后重试，或运行 `gh auth login`，以便 Orca 使用你账户的更高限额。",
       "rateLimitedInMinutes_other": "已达到 GitHub 速率限制。请约 {{count}} 分钟后重试。",
       "rateLimitedInMinutesSignedOut_other": "已达到 GitHub 速率限制。请约 {{count}} 分钟后重试，或运行 `gh auth login`，以便 Orca 使用你账户的更高限额。"
+    }
+  },
+  "projectEventInbox": {
+    "repair": {
+      "project": "打开项目事件设置",
+      "projectUnavailable": "项目设置不可用：此主机未识别到关联的 Orca 项目。",
+      "decision": "打开事件决策设置",
+      "integrations": "打开集成"
+    },
+    "errorProviderAuth": "事件决策服务拒绝了主机凭据。",
+    "errorAuth": "服务拒绝了主机凭据。",
+    "errorProviderNetwork": "主机无法访问事件决策服务。",
+    "errorNetwork": "主机无法访问该服务。"
+  },
+  "webhook": {
+    "settings": {
+      "open": "在设置 → 集成 → Webhook 中配置接收器",
+      "openShort": "打开 Webhook 设置",
+      "title": "Webhook",
+      "host": "{{host}} 上的事件接收器",
+      "refresh": "刷新 / 重试",
+      "transport": "监听器使用 HTTP，而非 TLS。HTTPS 外部地址需要单独配置反向代理。监听并不会验证 GitLab 连通性。",
+      "saved": "Webhook 设置已保存",
+      "enabled": "启用事件接收器",
+      "bind": "监听 IP 地址",
+      "bindHelp": "使用 IPv4 或 IPv6 地址。这不是 GitLab 应使用的回调地址。",
+      "port": "精确监听端口",
+      "portHelp": "选择 1–65535。如果端口已被占用，启动将失败；Orca 不会选择其他端口。",
+      "external": "外部基础 URL",
+      "externalHelp": "设置 GitLab 可访问的 HTTP 或 HTTPS 地址。请勿使用通配符绑定地址。留空表示未配置回调地址。",
+      "acknowledge": "我了解外部 HTTP 流量未加密，将监听器暴露到回环之外可能导致事件载荷泄露。我会限制访问或配置安全的反向代理。",
+      "invalid": "请先输入有效的 IP 地址、端口和外部 URL，并确认外部明文暴露，然后再启用。",
+      "save": "保存 Webhook 设置",
+      "missing": "此主机未返回 Webhook 设置。请更新主机后重试。",
+      "probeFailed": "无法检查此主机的 Webhook 支持情况。请重试以再次检查。",
+      "unsupported": "此主机不支持 Webhook 设置。请更新主机后重试。"
+    },
+    "status": {
+      "loading": "正在加载…",
+      "applying": "正在应用更改…",
+      "failure": "不可用或失败",
+      "callbackMissing": "正在监听端口 {{port}}，但未配置外部回调地址",
+      "listening": "正在监听端口 {{port}}",
+      "starting": "正在启动 / 未监听",
+      "disabled": "已禁用 — 未接收",
+      "unknown": "状态未知"
+    },
+    "search": {
+      "description": "配置所选主机的事件接收器、监听地址、精确端口和外部基础 URL。",
+      "receiver": "接收器",
+      "http": "HTTP",
+      "port": "端口",
+      "callback": "回调"
+    },
+    "error": {
+      "unknown": "监听器启动失败。",
+      "hostUnavailable": "无法完成请求。请重试；如果持续失败，请检查与主机的连接。"
+    }
+  },
+  "projectEventAgent": {
+    "enabled": "启用项目事件智能体",
+    "enabledHelp": "关闭时，主机仍会继续接收事件；仅智能体工作会停止。",
+    "agent": "智能体",
+    "noAgent": "无智能体",
+    "savedAgentMissing": "{{agentId}}（此应用中不存在）",
+    "agentNotDetected": "{{label}} — 此主机上未检测到",
+    "agentHelp": "仍可选择未检测到的智能体；事件到达时，主机会报告实际启动结果。",
+    "rules": "规则",
+    "rulesHelp": "{{used}} / {{limit}} 字节",
+    "title": "项目事件智能体",
+    "description": "让此项目通过智能体响应 GitLab 事件：评审请求、你参与的合并请求、流水线失败、议题提及和分配。",
+    "unroutable": "此项目所属的主机无法由此应用直接访问，因此无法在此编辑其项目事件设置。",
+    "loading": "正在加载…",
+    "unsupported": "此主机运行的是较旧的 Orca 版本，不支持项目事件智能体。请更新主机后再编辑这些设置。",
+    "unattached": "此主机上未运行收件箱服务，因此项目事件设置不可用。",
+    "needAgent": "启用项目事件前，请选择一个现有智能体。",
+    "needAgentAndModel": "此项目已开启自动分析，因此保存前请选择智能体和模型。",
+    "merged": "另一个窗口更改了这些设置。你的编辑已保留；请再次保存以确认。",
+    "save": "保存项目事件设置",
+    "activity": {
+      "lastProcessedReceived": "{{subject}} · 接收于 {{time}}",
+      "title": "最近事件",
+      "empty": "尚未收到事件。",
+      "lastProcessedLabel": "最近完成的投递：",
+      "lastProcessedNone": "尚无",
+      "recorded": "已记录；未发送通知。",
+      "notified": "已记录并通知。",
+      "waiting": "等待后续事件后再决策。",
+      "processing": "处理中。",
+      "needsUser": "需要在收件箱中提供你的输入。",
+      "done": "已处理。",
+      "failed": "失败。",
+      "unknown": "状态未知；事件已收到。"
+    },
+    "binding": {
+      "failedDuring": "{{phase}}时失败：{{reason}}",
+      "notRetryable": "重试通常无济于事；请先修复配置。",
+      "rejectedEvents": "GitLab 拒绝了以下事件类型：",
+      "gitlabProject": "GitLab 项目",
+      "projectId": "项目 ID",
+      "hookId": "Hook ID",
+      "callbackUrl": "回调 URL",
+      "none": "此项目尚未注册回调。"
+    },
+    "rotate": {
+      "pending": "新密钥已暂存；GitLab 尚未确认，因此当前密钥仍在使用中。",
+      "action": "轮换密钥",
+      "unprotectedTitle": "未加密存储同意",
+      "unprotectedBody": "此主机没有可用的密钥环，因此新密钥将以未加密方式存储。仅当此机器上可以接受时才继续。",
+      "unprotectedConsent": "我接受该密钥在此主机上以未加密方式存储。",
+      "unprotectedAction": "使用未加密存储轮换",
+      "confirmTitle": "轮换 Webhook 密钥？",
+      "confirmBody": "轮换将替换回调密钥。GitLab 一旦接受新密钥，就会立即切换。",
+      "cancel": "取消",
+      "confirmAction": "立即轮换",
+      "done": "新密钥已在使用中。"
+    },
+    "secretName": "Webhook 密钥",
+    "connection": {
+      "title": "Webhook 连接"
+    },
+    "retry": {
+      "busy": "正在重新检查…",
+      "action": "重新检查连接"
+    },
+    "gitlabProject": {
+      "title": "GitLab 项目",
+      "saveFailed": "无法为此文件夹保存 GitLab 项目。",
+      "description": "将此文件夹指向一个 GitLab 项目，使其事件能够送达智能体。主机在注册任何内容前会验证该地址。",
+      "placeholder": "粘贴 GitLab 项目 URL 或 group/project",
+      "help": "清除此字段会移除本地关联；已在 GitLab 中注册的 Webhook 必须在那里单独移除。",
+      "saving": "正在保存…",
+      "save": "保存 GitLab 项目"
+    },
+    "modelStatus": {
+      "loading": "正在加载智能体的模型…",
+      "empty": "此主机未列出该智能体的模型。请使用智能体默认值或输入模型。",
+      "error": "无法从此主机读取模型列表。请使用智能体默认值或输入模型。",
+      "unlisted": "此智能体没有可用的模型列表。请使用智能体默认值或输入模型。",
+      "workspaceSpecific": "此列表可能因工作区而异。如果缺少你的模型，请选择“自定义模型”并输入。"
+    },
+    "model": "模型",
+    "modelPlaceholder": "智能体默认",
+    "modelCustom": "自定义模型…",
+    "modelCustomInput": "自定义模型名称",
+    "modelHelp": "选择智能体应使用的模型。智能体默认值由智能体自行选择。",
+    "bindingState": {
+      "unconfigured": "回调尚未注册。",
+      "checking": "正在检查 GitLab 项目…",
+      "registering": "正在注册回调…",
+      "verifying": "正在验证回调…",
+      "connected": "回调已验证。",
+      "failed": "注册或验证失败。"
+    },
+    "bindingPhase": {
+      "checking": "检查项目",
+      "registering": "注册回调",
+      "verifying": "验证回调"
+    },
+    "bindingFailure": {
+      "notGitlab": "此主机未将该地址识别为 GitLab 项目，或者未登录该 GitLab 实例。",
+      "glabUnavailable": "此主机上没有可用的 GitLab CLI（glab）。",
+      "unauthenticated": "主机未登录此 GitLab 实例。",
+      "forbidden": "主机没有此 GitLab 项目的权限。",
+      "projectNotFound": "GitLab 找不到此项目。",
+      "noHookPermission": "已登录的账号无法管理此项目的 Webhook。",
+      "network": "主机无法访问 GitLab。",
+      "aborted": "请求在完成前已取消。",
+      "badResponse": "GitLab 返回了主机无法读取的响应。",
+      "invalidConfig": "收件箱接收器配置无效。",
+      "unauthorized": "GitLab 拒绝了主机凭据。",
+      "notFound": "GitLab 已不再拥有此回调指向的资源。",
+      "callbackBlocked": "GitLab 默认阻止指向本地或私有地址的 Webhook。GitLab 管理员可以在“Admin > Settings > Network > Outbound requests”下仅允许此确切的回调主机或地址。请勿为整个本地网络关闭该保护。",
+      "invalidRequest": "GitLab 以请求无效为由拒绝了 Webhook 请求。",
+      "ownershipConflict": "另一个集成已在管理匹配的 Webhook。",
+      "tooManyHooks": "此项目的 Webhook 数量已达上限。",
+      "eventConfigurationRejected": "GitLab 接受了 Webhook，但拒绝了 Orca 请求的部分事件类型。",
+      "rateLimited": "GitLab 正在对此主机进行速率限制；请稍后重试。",
+      "unknownOutcome": "主机未能得知 GitLab 是否应用了更改；请先重新检查再重试。",
+      "interrupted": "主机在完成请求前已停止。",
+      "unprotectedStorage": "未经你明确同意，此主机无法加密 Webhook 密钥。",
+      "secretUnavailable": "没有可读取的密钥可供轮换；请先重新注册回调。",
+      "repoNotFound": "此项目已不在主机上。",
+      "noGitRemote": "主机未找到此项目的 Git 远程仓库。",
+      "remoteHostRepo": "Git 远程仓库指向此绑定不管理的主机。",
+      "receiverNotConfigured": "此主机未配置收件箱接收器。",
+      "bindingConflict": "此 GitLab 项目已绑定到其他 Orca 项目。",
+      "cleanupFailed": "Orca 无法为已移除的项目移除 GitLab Webhook。主机重启后将会重试。",
+      "generic": "注册或验证失败。请重试，或检查主机的 GitLab 权限。",
+      "eventConfigurationRejectedAfterRotate": "密钥已更新，但 GitLab 拒绝了 Orca 请求的部分事件类型。"
+    },
+    "activityKind": {
+      "issue": "议题",
+      "mergeRequest": "合并请求",
+      "pipeline": "流水线",
+      "project": "项目",
+      "unknown": "事件"
+    },
+    "secretProtection": {
+      "sealed": "已加密存储。",
+      "plaintext": "在此主机上以未加密方式存储。",
+      "unknown": "未记录密钥的存储方式。"
+    },
+    "keywordProjectEvent": "项目事件",
+    "keywordWebhook": "webhook",
+    "keywordAgent": "智能体",
+    "keywordRules": "规则",
+    "keywordModel": "模型",
+    "error": {
+      "hostUnavailable": "无法读取项目事件设置。请重试；如果持续失败，请检查与主机的连接。",
+      "invalidPolicy": "主机拒绝了这些设置。请检查智能体、模型和规则，然后再次保存。",
+      "saveFailed": "无法保存项目事件设置。请重试；你的编辑仍在此处。"
+    },
+    "action": {
+      "failed": "主机未应答。请检查连接并重试。"
+    },
+    "addProject": {
+      "backToSetup": "返回项目设置",
+      "description": "让此项目通过智能体响应 GitLab 事件。你可以跳过此步骤，稍后在项目设置中配置。",
+      "projectAdded": "项目已添加：{{name}}",
+      "continue": "继续",
+      "connecting": "正在连接 GitLab…",
+      "connected": "事件智能体已连接到 GitLab 项目 {{project}}。",
+      "notGitlab": "此仓库没有可连接的 GitLab 项目，因此未启用事件智能体。项目已正常添加。",
+      "notGitlabStillOn": "此仓库没有可连接的 GitLab 项目，但事件智能体无法重新关闭。请在项目设置中将其关闭。",
+      "notConnected": "事件智能体设置已保存，但 GitLab Webhook 未连接：{{reason}}",
+      "notSaved": "事件智能体设置未保存。你的输入已保留。",
+      "receiverHelp": "请在此主机上配置接收器，然后返回重试。你的项目设置已保留。",
+      "decisionRequired": "此主机上的事件决策模型尚未就绪。请打开其设置完成配置，或检查主机可用性。你的项目输入已保留。",
+      "setupDecision": "配置决策模型",
+      "openIntegrations": "打开集成设置",
+      "reload": "重新加载",
+      "continueWithout": "不启用并继续",
+      "skip": "暂时跳过",
+      "retry": "重试"
+    }
+  },
+  "projectEventDecision": {
+    "keyMissingJev": "未保存 API 密钥。Jev 需要密钥才能运行决策。",
+    "keyMissingLaya": "未保存 API 密钥。仅当你的 Laya 部署需要身份验证时才添加。",
+    "apiKey": "API 密钥",
+    "saveKey": "保存密钥",
+    "clearKey": "清除密钥",
+    "keyPresent": "此主机上已保存密钥。该密钥不会再次显示；保存新密钥即可替换。",
+    "keyUnreadable": "此主机上已保存密钥，但无法在此读取。请恢复密钥环访问权限，或清除后保存新密钥。",
+    "protectionUnavailable": "此主机无法使用操作系统保护的加密来封装凭据，因此此处禁用保存 API 密钥。请修复主机上的密钥环支持，然后重试。",
+    "status": {
+      "loading": "正在加载…",
+      "unsupported": "不支持的主机",
+      "unattached": "项目事件未运行",
+      "unavailable": "不可用",
+      "ready": "就绪",
+      "needsSetup": "需要配置"
+    },
+    "title": "事件决策模型",
+    "host": "{{host}} 上项目事件智能体的快速决策",
+    "refresh": "刷新",
+    "intro": "决策模型为每个事件选择下一步。它不需要 shell、仓库写入权限或 GitLab 写入凭据；只会发送你的项目规则和有限的事件事实。",
+    "unsupported": "此主机不支持事件决策设置。请更新主机后重试。",
+    "unattached": "此主机尚未运行项目事件，因此无法在此编辑其决策模型。请在此主机上启动 Orca 后重试。",
+    "saved": "事件决策设置已保存",
+    "keySaved": "API 密钥已保存到此主机",
+    "keyCleared": "API 密钥已从此主机移除",
+    "provider": "提供方",
+    "baseUrl": "Laya 服务地址",
+    "baseUrlHelp": "此地址属于主机，而非此窗口。回环地址表示服务运行在该主机上。",
+    "model": "模型",
+    "modelPlaceholder": "提供方默认",
+    "modelHelp": "请输入模型名称；两个提供方目前均不支持模型发现。留空将使用提供方默认值。",
+    "invalid": "请输入不含凭据的有效 HTTP 或 HTTPS 地址，以及不含控制字符的模型名称。",
+    "save": "保存模型设置",
+    "testing": "正在测试…",
+    "test": "测试连接",
+    "saveFirst": "测试前请先保存更改；测试使用已保存的设置。",
+    "testHelp": "测试会从此主机发送一个小的真实决策请求。这可能会计入你的提供方配额。",
+    "disclosure": {
+      "jev": "事件和你的项目规则会发送到 TypeSafe（Jev）以选择下一步。Orca 只发送有限的事件事实和规则文本，绝不会发送 API 凭据或仓库内容。",
+      "layaUnset": "输入你的 Laya 部署地址。它运行在此主机还是其他位置取决于该地址；Orca 不会假定其留在本地。",
+      "layaLocal": "决策请求发送到本机上的 {{url}}。事件事实和规则文本会留在这台机器上，除非该服务将其转发。",
+      "layaRemote": "决策请求发送到 {{url}}，该地址并非本机。事件事实和规则文本会发送到那里。"
+    },
+    "probe": {
+      "invalidConfig": "请检查提供方设置和 API 密钥，保存后再次测试。",
+      "invalidInput": "服务拒绝了测试请求。请检查其是否实现了 Jev/Laya 决策端点。",
+      "tooLarge": "服务返回的数据超出 Orca 接受的范围。请检查该地址是否指向 Jev/Laya 决策服务。",
+      "badResponse": "服务返回了意外的响应。请检查该地址是否指向 Jev/Laya 决策服务。",
+      "unauthorized": "服务拒绝了已保存的 API 密钥。请保存有效密钥后再次测试。",
+      "rateLimited": "服务当前正在对请求进行速率限制。请稍后重试。",
+      "overloaded": "服务暂时过载。请稍后重试。",
+      "aborted": "测试在服务应答前已取消。",
+      "timeout": "服务未及时应答。请检查地址和网络路径。",
+      "network": "无法从此主机访问服务。请检查地址、网络和代理。",
+      "connected": "已连接。{{provider}} 使用模型 {{model}} 作出了应答。",
+      "defaultModel": "未保存模型，因此使用了提供方默认值。"
+    },
+    "error": {
+      "hostUnavailable": "无法完成请求。请重试；如果持续失败，请检查与主机的连接。",
+      "probeFailed": "无法检查此主机是否支持事件决策设置。请重试以再次检查。"
     }
   },
   "agentLaunch": {

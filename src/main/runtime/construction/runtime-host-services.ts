@@ -287,7 +287,9 @@ export abstract class OrcaRuntimeWithPreservedBranchCleanup extends OrcaRuntimeW
     invalidateWorktreeScan: (repoId) => this.invalidateWorktreeScanCacheForRepo(repoId),
     notifyReposChanged: () => this.notifyReposChanged(),
     countLiveTerminalsForRepo: (repo) =>
-      countRepoTerminalsNotKnownExited(repo, this.ptysById.values(), (ptyId) => this.isPtyKnownExited(ptyId))
+      countRepoTerminalsNotKnownExited(repo, this.ptysById.values(), (ptyId) =>
+        this.isPtyKnownExited(ptyId)
+      )
   })
 
   protected readonly projectGroups = new RuntimeProjectGroupController({
