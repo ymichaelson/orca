@@ -147,6 +147,16 @@ test('launches a real agent for a dispatched project event', async () => {
       .slice(0, 40)
     expect(probe.length, 'the summary must have readable text').toBeGreaterThan(0)
     await expect(inbox).toContainText(probe)
+
+    // The design's continuation: the Inbox reopens the same session, not a fresh blank chat.
+    await inbox.getByRole('button', { name: 'Open original session' }).click()
+    // Leaving the Inbox is what proves the click navigated rather than matching the detail text.
+    await expect(second.page.getByRole('heading', { name: 'Inbox', exact: true })).toHaveCount(0, {
+      timeout: 30_000
+    })
+    await expect(second.page.getByText(probe).first()).toBeVisible({ timeout: 60_000 })
+    const continued = await capture(second.page, screenshots, 'session-continued')
+    await testInfo.attach('session-continued', { path: continued, contentType: 'image/png' })
   } finally {
     await session.dispose(running ?? undefined)
     rmSync(repoPath, { recursive: true, force: true })
