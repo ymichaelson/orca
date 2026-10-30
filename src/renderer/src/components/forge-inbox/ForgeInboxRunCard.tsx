@@ -1,6 +1,7 @@
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { openStructuredSessionById } from '@/lib/open-structured-session-by-id'
+import { useAppStore } from '@/store'
 import { translate } from '@/i18n/i18n'
 import type { ForgeRunView } from '../../../../shared/forge-inbox-rpc-types'
 import type { RuntimeClientTarget } from '../../../../shared/runtime-client-target'
@@ -67,7 +68,14 @@ export function ForgeInboxRunCard({
           variant="outline"
           size="xs"
           className="mt-2"
-          onClick={() => void openStructuredSessionById(originalSessionId, ownerTarget)}
+          onClick={() =>
+            // Why: the chat opens in a worktree tab, which an Inbox page still covers.
+            void openStructuredSessionById(originalSessionId, ownerTarget).then((opened) => {
+              if (opened) {
+                useAppStore.getState().closeInboxPage()
+              }
+            })
+          }
         >
           {translate(
             'auto.components.forge-inbox.display.openOriginalSession',
