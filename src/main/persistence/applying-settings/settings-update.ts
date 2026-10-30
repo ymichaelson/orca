@@ -30,17 +30,17 @@ import { normalizePRBotAuthorOverrides } from '../../../shared/pr-bot-author-ove
 import { normalizeMachineName } from '../../../shared/machine-name'
 import type { PersistedState } from '../../../shared/persisted-state-types'
 import {
-  addMobilePairingCustomAddress,
-  normalizeMobilePairingCustomAddress,
-  normalizeMobilePairingCustomAddresses
-} from '../../../shared/mobile-pairing-custom-address'
-import {
   mergeLegacyCommitMessageAiIntoSourceControlAi,
   normalizeSourceControlAiSettings,
   projectSourceControlAiToLegacyCommitMessageAi
 } from '../../../shared/source-control-ai'
 import type { ProtectedSecretPersistence } from '../../protected-secret-persistence'
 import { normalizeNotificationSettings } from './onboarding-normalization'
+import { normalizeMobilePairingSettingsUpdate } from './mobile-pairing-settings-update'
+import {
+  clearRetainedProjectEventKeys,
+  sanitizeProjectEventSettingsUpdate
+} from './project-event-settings-update'
 import { retireLegacyInstructionsForClearedTextActionRecipes } from './source-control-settings'
 import {
   buildWorkspaceDirHistoryForUpdate,
@@ -62,6 +62,7 @@ export function updateSettings(
   options: { notifyListeners?: boolean; originWebContentsId?: number } = {}
 ): GlobalSettings {
   const sanitizedUpdates = expandWorkspaceDirHome(stripRetiredGlobalSettings(updates))
+  sanitizeProjectEventSettingsUpdate(updates, sanitizedUpdates)
   const linkBehavior = updates.terminalLinkClickBehavior
   if (linkBehavior === 'actions' || linkBehavior === 'open' || linkBehavior === 'none') {
     // Loaded defaults are ambiguous; synchronize the legacy switch only on an explicit write.
@@ -206,33 +207,7 @@ export function updateSettings(
   if ('machineName' in updates) {
     sanitizedUpdates.machineName = normalizeMachineName(updates.machineName)
   }
-  if ('mobilePairingCustomAddress' in updates) {
-    sanitizedUpdates.mobilePairingCustomAddress = normalizeMobilePairingCustomAddress(
-      updates.mobilePairingCustomAddress
-    )
-  }
-  if ('mobilePairingCustomAddresses' in updates) {
-    sanitizedUpdates.mobilePairingCustomAddresses = normalizeMobilePairingCustomAddresses(
-      updates.mobilePairingCustomAddresses
-    )
-  }
-  if (
-    'mobilePairingCustomAddress' in sanitizedUpdates ||
-    'mobilePairingCustomAddresses' in sanitizedUpdates
-  ) {
-    const mobilePairingCustomAddress =
-      'mobilePairingCustomAddress' in sanitizedUpdates
-        ? sanitizedUpdates.mobilePairingCustomAddress
-        : operations.state.settings.mobilePairingCustomAddress
-    if (mobilePairingCustomAddress) {
-      sanitizedUpdates.mobilePairingCustomAddresses = addMobilePairingCustomAddress(
-        sanitizedUpdates.mobilePairingCustomAddresses ??
-          operations.state.settings.mobilePairingCustomAddresses ??
-          [],
-        mobilePairingCustomAddress
-      )
-    }
-  }
+  normalizeMobilePairingSettingsUpdate(updates, sanitizedUpdates, operations.state.settings)
   const historyWithPreviousLayout = buildWorkspaceDirHistoryForUpdate(
     operations.state.settings,
     sanitizedUpdates
@@ -275,6 +250,7 @@ export function updateSettings(
     }),
     ...(mergedTelemetry !== undefined ? { telemetry: mergedTelemetry } : {})
   }
+  clearRetainedProjectEventKeys(updates, (slot) => operations.removeRetainedBlob(slot))
   publishSettingsUpdate(operations, updates, sanitizedUpdates, previousSettings, options)
   return operations.state.settings
 }

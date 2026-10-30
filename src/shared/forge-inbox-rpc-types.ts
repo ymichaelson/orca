@@ -13,6 +13,14 @@ import type {
   ForgeCredentialStatus,
   ForgeInboxConfig
 } from './forge-inbox-config'
+import type { ForgeDispatchConfirmationView } from './forge-inbox-dispatch-confirmation'
+import type { ForgeRunCancellationView } from './forge-inbox-run-cancellation'
+import type { ForgeRunDispatchViewFields } from './forge-inbox-run-dispatch'
+import type { ForgeItemHandlingView } from './forge-inbox-item-handling'
+import type { ForgeItemTimelineEntry } from './forge-inbox-item-timeline'
+import type { ProjectEventActivityView } from './forge-inbox-project-event-activity'
+import type { ProjectEventBindingView } from './forge-inbox-project-binding'
+import type { ProjectEventPolicyView } from './forge-inbox-project-event-policy'
 import type {
   ForgePatchApplyFailureReason,
   ForgePatchApprovalRefusal,
@@ -56,11 +64,19 @@ export type ForgeInboxStatus =
       work: ForgeInboxWorkView
     }
 
+/** The project paths this host holds items for, so a client can offer the filter itself. */
+export type ForgeInboxProjectsView = { ownerHostId: string; projects: string[] }
+
 /** Run text can come from a backend, so only allowlisted reasons and error codes leave the host. */
-export type ForgeRunView = Omit<ForgeRun, 'error' | 'reason'> & {
-  reason: string | null
-  errorCode: string | null
-}
+export type ForgeRunView = Omit<ForgeRun, 'error' | 'reason'> &
+  ForgeRunDispatchViewFields & {
+    reason: string | null
+    errorCode: string | null
+    /** Absent from older hosts and from runs that dispatched nothing; absent never means confirmed. */
+    dispatchConfirmation?: ForgeDispatchConfirmationView
+    /** Absent from older hosts and from runs nobody asked to stop; a request is not a stop. */
+    cancellation?: ForgeRunCancellationView
+  }
 
 /** Raw proposal bodies hold generated text and tool input; clients get status and versions only. */
 export type ForgeProposalView = Omit<ForgeProposal, 'body'>
@@ -70,6 +86,12 @@ export type ForgeItemDetailView = {
   revisions: ForgeRevision[]
   runs: ForgeRunView[]
   proposals: ForgeProposalView[]
+  /** Absent from older hosts; unread does not imply a handling state. */
+  handling?: ForgeItemHandlingView
+  /** Absent from older hosts; clients may show their actual runs instead. */
+  timeline?: ForgeItemTimelineEntry[]
+  /** Owner-scoped Orca repository, only when the GitLab binding resolves unambiguously. */
+  repoId?: string | null
 }
 
 export type ForgeInboxItemsPage = ForgePage<ForgeItem> & { ownerHostId: string }
@@ -302,3 +324,48 @@ export type ForgeInboxPushApplyOutcome = { ownerHostId: string } & (
       receiptId?: number
     }
 )
+
+/** A repo's project event policy and the webhook binding that feeds it; both null until configured. */
+export type ForgeInboxProjectEventPolicyView = {
+  ownerHostId: string
+  repoId: string
+  policy: ProjectEventPolicyView | null
+  binding: ProjectEventBindingView | null
+}
+
+/** Mirrors the ledger's compare-and-set result; a stale generation still reports the current one. */
+export type ForgeInboxProjectEventPolicyWriteOutcome = {
+  ownerHostId: string
+  repoId: string
+} & (
+  | { ok: true; generation: number; policy: ProjectEventPolicyView }
+  | { ok: false; reason: 'stale-generation'; generation: number }
+  | { ok: false; reason: 'invalid-policy'; message: string }
+)
+
+/** The events a reconcile asked GitLab for, split by what it accepted; never the secret. */
+export type ForgeInboxProjectEventBindingEvents = {
+  enabledEvents: string[]
+  unsupportedEvents: string[]
+  rejectedEvents: string[]
+}
+
+/** A retry or rotation result: the binding GitLab actually has, and why it failed when it did. */
+export type ForgeInboxProjectEventBindingActionOutcome = {
+  ownerHostId: string
+  repoId: string
+} & (
+  | { ok: true; binding: ProjectEventBindingView; events?: ForgeInboxProjectEventBindingEvents }
+  | {
+      ok: false
+      binding: ProjectEventBindingView | null
+      events?: ForgeInboxProjectEventBindingEvents
+      code?: string
+      retryable?: boolean
+    }
+)
+
+export type ForgeInboxProjectEventActivityView = {
+  ownerHostId: string
+  repoId: string
+} & ProjectEventActivityView

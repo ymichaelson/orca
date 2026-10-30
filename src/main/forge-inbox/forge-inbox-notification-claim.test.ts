@@ -1,7 +1,13 @@
 import { afterEach, beforeEach, describe, expect, it } from 'vitest'
 import Database from '../sqlite/sync-database'
 import { rpcCallerOperationKey } from '../runtime/rpc/rpc-caller-identity'
+import {
+  createDispatchConfirmation,
+  finishDispatchConfirmation
+} from './forge-inbox-dispatch-confirmation'
 import type { ForgeInboxLedger } from './forge-inbox-ledger'
+import { isForgeNotificationCurrent } from './forge-inbox-notification-candidates'
+import { PROJECT_EVENT_DISPATCH_RUN_REASON } from './forge-inbox-project-event-action-dispatch'
 import {
   createWebhookHarness,
   INSTANCE_ID,
@@ -41,6 +47,7 @@ describe('forge inbox notification claim', () => {
       passive?: boolean
       pipeline?: unknown
       queueRun?: boolean
+      runReason?: string
       kind?: 'merge_request' | 'issue'
     } = {}
   ) {
@@ -65,7 +72,7 @@ describe('forge inbox notification claim', () => {
       sourceOrder: order,
       title: 'Add thing',
       itemState: 'opened',
-      ...(options.queueRun ? { queueRun: { reason: 'review-request' } } : {})
+      ...(options.queueRun ? { queueRun: { reason: options.runReason ?? 'review-request' } } : {})
     })
     if (result.duplicate) {
       throw new Error('fixture event was a duplicate')
@@ -214,6 +221,182 @@ describe('forge inbox notification claim', () => {
 
     ingest(7, { token: 'sha-7-1' })
     expect(ledger.notifications.claim().notifications).toEqual([])
+  })
+
+  it('requires a dispatch verdict even without confirmation metadata, but still announces ordinary success', () => {
+    const ordinary = ingest(10, { passive: true, queueRun: true })
+    const ordinaryRun = runningRun(ordinary.itemId)
+    ledger.transitionRun(ordinaryRun.id, { to: 'succeeded' })
+    const dispatched = ingest(11, {
+      passive: true,
+      queueRun: true,
+      runReason: PROJECT_EVENT_DISPATCH_RUN_REASON
+    })
+    const dispatchRun = runningRun(dispatched.itemId)
+    ledger.transitionRun(dispatchRun.id, { to: 'succeeded' })
+
+    expect(ledger.notifications.claim().notifications).toEqual([
+      expect.objectContaining({ reason: 'run-succeeded', runId: ordinaryRun.id })
+    ])
+    expect(ledger.notifications.claim().notifications).toEqual([])
+  })
+
+  it('holds the success alert of a dispatch run back while its effects are unconfirmed', () => {
+    const dispatched = ingest(11, {
+      passive: true,
+      queueRun: true,
+      runReason: PROJECT_EVENT_DISPATCH_RUN_REASON
+    })
+    const run = runningRun(dispatched.itemId)
+    createDispatchConfirmation(ledger.ledgerContext(), {
+      runId: run.id,
+      bindingId: 'binding-1',
+      gitlabHost: 'gitlab.test',
+      gitlabProjectId: 42,
+      itemKind: 'merge_request',
+      itemIid: 11,
+      expectedSha: null
+    })
+    ledger.transitionRun(run.id, { to: 'succeeded' })
+
+    expect(ledger.notifications.claim().notifications).toEqual([])
+
+    const failing = ingest(12, {
+      passive: true,
+      queueRun: true,
+      runReason: PROJECT_EVENT_DISPATCH_RUN_REASON
+    })
+    const failedRun = runningRun(failing.itemId)
+    createDispatchConfirmation(ledger.ledgerContext(), {
+      runId: failedRun.id,
+      bindingId: 'binding-1',
+      gitlabHost: 'gitlab.test',
+      gitlabProjectId: 42,
+      itemKind: 'merge_request',
+      itemIid: 12,
+      expectedSha: null
+    })
+    ledger.transitionRun(failedRun.id, { to: 'failed', error: 'agent-failure' })
+
+    expect(ledger.notifications.claim().notifications).toEqual([
+      expect.objectContaining({ reason: 'run-failed', runId: failedRun.id })
+    ])
+  })
+
+  function dispatchRun(iid: number) {
+    const dispatched = ingest(iid, {
+      passive: true,
+      queueRun: true,
+      runReason: PROJECT_EVENT_DISPATCH_RUN_REASON
+    })
+    const run = runningRun(dispatched.itemId)
+    createDispatchConfirmation(ledger.ledgerContext(), {
+      runId: run.id,
+      bindingId: 'binding-1',
+      gitlabHost: 'gitlab.test',
+      gitlabProjectId: 42,
+      itemKind: 'merge_request',
+      itemIid: iid,
+      expectedSha: null
+    })
+    return { runId: run.id, itemId: dispatched.itemId }
+  }
+
+  function conclude(
+    run: { runId: number; itemId: number },
+    state: 'confirmed' | 'contradicted' | 'unconfirmable' | 'no-claim'
+  ): void {
+    finishDispatchConfirmation(ledger.ledgerContext(), run, { state, evidenceJson: '{}' })
+  }
+
+  it.each(['contradicted', 'unconfirmable'] as const)(
+    'raises the existing project-event attention, not a success, when a dispatch ends %s',
+    (state) => {
+      const run = dispatchRun(21)
+      ledger.transitionRun(run.runId, { to: 'succeeded' })
+      conclude(run, state)
+
+      const claimed = ledger.notifications.claim().notifications
+
+      expect(claimed).toEqual([
+        expect.objectContaining({
+          reason: 'project-event',
+          runId: run.runId,
+          itemId: run.itemId
+        })
+      ])
+      expect(ledger.notifications.claim().notifications).toEqual([])
+    }
+  )
+
+  it('raises one attention when the success and the verdict are claimed apart', () => {
+    const run = dispatchRun(22)
+    ledger.transitionRun(run.runId, { to: 'succeeded' })
+    expect(ledger.notifications.claim().notifications).toEqual([])
+
+    conclude(run, 'contradicted')
+
+    expect(ledger.notifications.claim().notifications).toEqual([
+      expect.objectContaining({ reason: 'project-event', runId: run.runId })
+    ])
+  })
+
+  it.each(['confirmed', 'no-claim'] as const)(
+    'announces a dispatch that ends %s once, whichever change is claimed first',
+    (state) => {
+      const early = dispatchRun(23)
+      ledger.transitionRun(early.runId, { to: 'succeeded' })
+      conclude(early, state)
+      expect(ledger.notifications.claim().notifications).toEqual([
+        expect.objectContaining({ reason: 'run-succeeded', runId: early.runId })
+      ])
+
+      const late = dispatchRun(24)
+      ledger.transitionRun(late.runId, { to: 'succeeded' })
+      expect(ledger.notifications.claim().notifications).toEqual([])
+      conclude(late, state)
+      expect(ledger.notifications.claim().notifications).toEqual([
+        expect.objectContaining({ reason: 'run-succeeded', runId: late.runId })
+      ])
+    }
+  )
+
+  it('keeps a failed run a failure and never turns its confirmation into a success', () => {
+    const run = dispatchRun(25)
+    ledger.transitionRun(run.runId, { to: 'failed', error: 'agent-failure' })
+    expect(ledger.notifications.claim().notifications).toEqual([
+      expect.objectContaining({ reason: 'run-failed', runId: run.runId })
+    ])
+
+    conclude(run, 'confirmed')
+
+    expect(ledger.notifications.claim().notifications).toEqual([])
+  })
+
+  it('stays current for a claimed attention and stops once the policy moved', () => {
+    const run = dispatchRun(26)
+    ledger.transitionRun(run.runId, { to: 'succeeded' })
+    conclude(run, 'unconfirmable')
+    const [attention] = ledger.notifications.claim().notifications
+    if (!attention) {
+      throw new Error('expected the attention')
+    }
+    expect(attention.reason).toBe('project-event')
+    expect(isForgeNotificationCurrent(ledger.ledgerContext(), attention)).toBe(true)
+
+    ledger.bumpPolicyGeneration({ instanceId: INSTANCE_ID, projectId: PROJECT_ID })
+
+    expect(isForgeNotificationCurrent(ledger.ledgerContext(), attention)).toBe(false)
+  })
+
+  it('stays current for a claimed success of a confirmed dispatch', () => {
+    const run = dispatchRun(27)
+    ledger.transitionRun(run.runId, { to: 'succeeded' })
+    conclude(run, 'confirmed')
+    const [success] = ledger.notifications.claim().notifications
+
+    expect(success).toMatchObject({ reason: 'run-succeeded' })
+    expect(success && isForgeNotificationCurrent(ledger.ledgerContext(), success)).toBe(true)
   })
 
   it('alerts again for a new context on the same commit, across claims and a reopen, or a different category', () => {

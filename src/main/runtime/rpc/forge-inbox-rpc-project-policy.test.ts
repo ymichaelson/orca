@@ -9,7 +9,6 @@ import {
 import {
   CANARY,
   createForgeRpcHarness,
-  errorCodeOf,
   recordOf,
   recordsOf,
   type ForgeRpcHarness
@@ -24,24 +23,27 @@ const TARGET = {
 }
 const OTHER = { projectId: '43', repoId: 'repo-2', enabled: true, rules: 'other rules' }
 
-describe('forge inbox rpc project policy', () => {
+// The RPC that used to drive this policy was retired; the owner-service method it forwarded to survives,
+// so these cases drive that method directly with the same owner fence.
+describe('forge inbox project policy edit', () => {
   let harness: ForgeRpcHarness
   afterEach(() => harness.close())
 
   async function configured() {
     harness = await createForgeRpcHarness({ secretStore: fakeSecretStore() })
-    const view = await harness.ok('forgeInbox.getConfig', {})
-    const ownerHostId = String(view.ownerHostId)
-    await harness.ok('forgeInbox.updateConfig', {
-      ownerHostId,
-      expectedRevision: Number(view.configRevision),
-      config: webhookConfig([webhookInstance({ usernames: ['me'], projects: [TARGET, OTHER] })])
-    })
+    const ownerHostId = String((await harness.ok('forgeInbox.getStatus', {})).ownerHostId)
+    const service = harness.runtime.forgeInboxService()
+    const result = await service.updateConfig(
+      service.getConfig().configRevision,
+      webhookConfig([webhookInstance({ usernames: ['me'], projects: [TARGET, OTHER] })]),
+      ownerHostId
+    )
+    expect(result.ok).toBe(true)
     return ownerHostId
   }
 
   const projectsOf = async () => {
-    const view = await harness.ok('forgeInbox.getConfig', {})
+    const view = harness.runtime.forgeInboxService().getConfig()
     const instance = recordsOf(recordOf(view.config).instances)[0]!
     return {
       revision: Number(view.configRevision),
@@ -55,17 +57,13 @@ describe('forge inbox rpc project policy', () => {
     patch: unknown,
     projectId = '42'
   ) =>
-    harness.call(
-      'forgeInbox.updateProjectPolicy',
-      {
-        ownerHostId,
-        instanceId: INSTANCE_ID,
-        projectId,
+    harness.runtime
+      .forgeInboxService()
+      .updateProjectPolicy(
         expectedRevision,
-        patch
-      },
-      'paired-a'
-    )
+        { instanceId: INSTANCE_ID, projectId, patch },
+        ownerHostId
+      )
 
   it('edits one project, clears the model with null, and leaves the other project unchanged', async () => {
     const ownerHostId = await configured()
@@ -73,7 +71,7 @@ describe('forge inbox rpc project policy', () => {
 
     const response = await update(ownerHostId, before.revision, { model: null, rules: 'new rules' })
 
-    expect(response.ok && response.result).toMatchObject({ ok: true })
+    expect(response).toMatchObject({ ok: true })
     const after = await projectsOf()
     expect(after.revision).toBe(before.revision + 1)
     expect(after.projects[0]).not.toHaveProperty('model')
@@ -87,7 +85,7 @@ describe('forge inbox rpc project policy', () => {
 
     const response = await update(ownerHostId, before.revision - 1, { rules: 'late' })
 
-    expect(response.ok && response.result).toMatchObject({
+    expect(response).toMatchObject({
       ok: false,
       reason: 'stale-revision',
       configRevision: before.revision
@@ -104,8 +102,7 @@ describe('forge inbox rpc project policy', () => {
     const response = await update(ownerHostId, before.revision, { rules: 'be kind' })
     await new Promise<void>((resolve) => setImmediate(resolve))
 
-    expect(response.ok && response.result).toEqual({
-      ownerHostId,
+    expect(response).toEqual({
       ok: true,
       configRevision: before.revision
     })
@@ -125,7 +122,7 @@ describe('forge inbox rpc project policy', () => {
     const response = await update(ownerHostId, before.revision, patch)
 
     expect(JSON.stringify(response)).not.toContain(CANARY)
-    expect(response.ok ? response.result : errorCodeOf(response)).not.toMatchObject({ ok: true })
+    expect(response).not.toMatchObject({ ok: true })
     expect(await projectsOf()).toEqual(before)
   })
 
@@ -139,7 +136,7 @@ describe('forge inbox rpc project policy', () => {
     })
 
     expect(JSON.stringify(response)).not.toContain(CANARY)
-    expect(response.ok && response.result).toMatchObject({ ok: false, reason: 'invalid-config' })
+    expect(response).toMatchObject({ ok: false, reason: 'invalid-config' })
     expect(await projectsOf()).toEqual(before)
   })
 
@@ -149,6 +146,6 @@ describe('forge inbox rpc project policy', () => {
 
     const response = await update(ownerHostId, before.revision, { enabled: false }, '999')
 
-    expect(response.ok && response.result).toMatchObject({ ok: false, reason: 'project-not-found' })
+    expect(response).toMatchObject({ ok: false, reason: 'project-not-found' })
   })
 })

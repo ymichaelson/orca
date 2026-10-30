@@ -9,9 +9,7 @@ import {
   freePort,
   holdRequestMidBody,
   listenerOn,
-  ownerConfig,
   postHook,
-  provision,
   type OwnerFixture
 } from './forge-inbox-owner-service-test-kit'
 
@@ -61,25 +59,44 @@ describe('forge inbox owner service stop while a request holds the listener open
     await fx.dispose()
   })
 
-  async function withWorkerAndHeldRequest() {
+  async function withDecisionAndHeldRequest() {
     fx = createOwnerFixture()
     const portA = await freePort()
-    const service = fx.service({ ingress: SLOW_CLOSE })
+    let started!: () => void
+    let aborted!: () => void
+    const requestStarted = new Promise<void>((resolve) => (started = resolve))
+    const abortObserved = new Promise<void>((resolve) => (aborted = resolve))
+    const service = fx.service({
+      ingress: SLOW_CLOSE,
+      decideProjectEvent: async (_input, signal) => {
+        started()
+        await new Promise<void>((resolve) =>
+          signal?.addEventListener(
+            'abort',
+            () => {
+              aborted()
+              resolve()
+            },
+            { once: true }
+          )
+        )
+        return { ok: false, code: 'network' }
+      }
+    })
     await service.start()
-    await provision(service, listenerOn(portA))
-    fx.gate.hold()
+    await fx.provision(service, listenerOn(portA))
     await postHook(portA, mergeRequestHookBody({ reviewers: ['me'] }), 'm-1')
-    await within(fx.gate.requestBlocked(), 'worker request reached the API')
+    await within(requestStarted, 'decision request started')
     const held = await within(holdRequestMidBody(portA, 'm-held'), 'held request in flight')
-    return { service, portA, held }
+    return { service, portA, held, abortObserved }
   }
 
-  it('cancels the worker while the body is still held, keeps the ledger open, then closes it once', async () => {
-    const { service, held } = await withWorkerAndHeldRequest()
+  it('cancels the decision request while the body is still held, keeps the ledger open, then closes it once', async () => {
+    const { service, held, abortObserved } = await withDecisionAndHeldRequest()
     try {
       let stopped = false
       const stopping = service.stop().then(() => (stopped = true))
-      await within(fx.gate.abortObserved(), 'worker abort before the held body is released')
+      await within(abortObserved, 'decision abort before the held body is released')
 
       expect(stopped).toBe(false)
       expect(existsSync(`${fx.dbPath}-wal`)).toBe(true)
@@ -95,25 +112,22 @@ describe('forge inbox owner service stop while a request holds the listener open
     expect(reopened.getConfig().config.listener.enabled).toBe(true)
   })
 
-  it('cancels the worker during a listener reconcile and never binds the replacement port', async () => {
-    const { service, portA, held } = await withWorkerAndHeldRequest()
+  it('cancels the decision request during a listener reconcile and never binds the replacement port', async () => {
+    const { service, portA, held, abortObserved } = await withDecisionAndHeldRequest()
     const portB = await freePort()
     try {
-      const updating = service.updateConfig(
-        service.getConfig().configRevision,
-        ownerConfig(listenerOn(portB))
-      )
+      const updating = fx.configureReceiver(service, listenerOn(portB))
       await untilRefused(portA)
       const binds = spyOnBinds()
       const mark = binds.mark()
 
       const stopping = service.stop()
-      await within(fx.gate.abortObserved(), 'worker abort while the reconcile is blocked')
+      await within(abortObserved, 'decision abort while the reconcile is blocked')
       expect(await connectRefused(portB)).toBe(true)
 
       held.release()
       await within(Promise.all([updating, stopping]), 'reconcile and stop settle')
-      expect(await updating).toMatchObject({ ok: true })
+      expect(await updating).toBeUndefined()
 
       expect(binds.portsSince(mark)).toEqual([])
       expect(await connectRefused(portB)).toBe(true)
@@ -124,30 +138,23 @@ describe('forge inbox owner service stop while a request holds the listener open
   })
 
   it('keeps every queued or late config change from opening a port once stop was requested', async () => {
-    const { service, portA, held } = await withWorkerAndHeldRequest()
+    const { service, portA, held } = await withDecisionAndHeldRequest()
     const [portB, portC, portD] = [await freePort(), await freePort(), await freePort()]
     try {
-      const first = service.updateConfig(
-        service.getConfig().configRevision,
-        ownerConfig(listenerOn(portB))
-      )
-      const second = service.updateConfig(
-        service.getConfig().configRevision,
-        ownerConfig(listenerOn(portC))
-      )
+      const first = fx.configureReceiver(service, listenerOn(portB))
+      const second = fx.configureReceiver(service, listenerOn(portC))
       await untilRefused(portA)
       const binds = spyOnBinds()
       const mark = binds.mark()
 
-      const lateRevision = service.getConfig().configRevision
       const stopping = service.stop()
-      await expect(
-        service.updateConfig(lateRevision, ownerConfig(listenerOn(portD)))
-      ).rejects.toBeInstanceOf(ForgeInboxOwnerNotRunningError)
+      await expect(fx.configureReceiver(service, listenerOn(portD))).rejects.toBeInstanceOf(
+        ForgeInboxOwnerNotRunningError
+      )
 
       held.release()
       await within(Promise.all([first, second, stopping]), 'queued reconciles and stop settle')
-      expect([await first, await second]).toMatchObject([{ ok: true }, { ok: true }])
+      expect([await first, await second]).toEqual([undefined, undefined])
 
       expect(binds.portsSince(mark)).toEqual([])
       expect(existsSync(`${fx.dbPath}-wal`)).toBe(false)

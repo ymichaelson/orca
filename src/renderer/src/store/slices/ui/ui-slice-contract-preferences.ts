@@ -1,3 +1,4 @@
+import type { ForgeInboxArchiveView } from '../../../../../shared/forge-inbox-display-preferences'
 import type { PersistedUIState } from '../../../../../shared/persisted-ui-state-types'
 import type { BrowserDevToolsDockLayout } from '../../../../../shared/browser-devtools-dock'
 import type {
@@ -88,6 +89,12 @@ export type UISlicePreferences = {
   setAgentsReadFilter: (v: ThreadReadFilter) => void
   agentsGroupBy: ActivityGroupBy
   setAgentsGroupBy: (v: ActivityGroupBy) => void
+  forgeInboxUnreadOnly: boolean
+  setForgeInboxUnreadOnly: (v: boolean) => void
+  forgeInboxArchiveView: ForgeInboxArchiveView
+  setForgeInboxArchiveView: (v: ForgeInboxArchiveView) => void
+  forgeInboxCompact: boolean
+  setForgeInboxCompact: (v: boolean) => void
   collapsedGroups: Set<string>
   toggleCollapsedGroup: (key: string) => void
   worktreeCardProperties: WorktreeCardProperty[]

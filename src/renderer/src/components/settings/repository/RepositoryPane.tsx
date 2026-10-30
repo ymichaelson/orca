@@ -30,6 +30,7 @@ import { RepositoryWindowsRuntimeSection } from './execution/RepositoryWindowsRu
 import { matchesRepositoryIdentitySearch } from './identity/repository-identity-search'
 import { RepositoryWorktreeDefaultsSection } from './execution/RepositoryWorktreeDefaultsSection'
 import { RepositoryJiraProjectSection } from './RepositoryJiraProjectSection'
+import { ProjectEventAgentSettingsSection } from '../ProjectEventAgentSettingsSection'
 import { getProjectRuntimeSessionSummary } from './execution/repository-runtime-session-summary'
 import { getRepoOwnerWorktreeVisibilityDefaults } from '../../../store/worktree-visibility-defaults-by-host'
 
@@ -199,6 +200,9 @@ export function RepositoryPane({
   const sourceControlAiEntries = allEntries.filter((entry) => entry.title === 'Git AI Author')
   const hostSetupEntries = allEntries.filter((entry) => entry.title === 'Available Hosts')
   const projectRuntimeEntries = allEntries.filter((entry) => entry.title === 'Project Runtime')
+  const projectEventAgentEntries = allEntries.filter(
+    (entry) => entry.title === translate('projectEventAgent.title', 'Project event agent')
+  )
 
   const hooksSection =
     !isFolder && (forceFullPaneForRepoMatch || matchesSettingsSearch(searchQuery, hooksEntries)) ? (
@@ -359,6 +363,14 @@ export function RepositoryPane({
           </>
         ) : null}
       </section>
+    ) : null,
+    forceFullPaneForRepoMatch || matchesSettingsSearch(searchQuery, projectEventAgentEntries) ? (
+      <ProjectEventAgentSettingsSection
+        key="project-event-agent"
+        repo={repo}
+        updateRepo={updateSelectedRepo}
+        forceVisible={forceFullPaneForRepoMatch}
+      />
     ) : null,
     hooksSection,
     !isFolder &&

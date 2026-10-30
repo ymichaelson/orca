@@ -1,12 +1,25 @@
 import { runForgeTransaction } from './forge-inbox-database'
 import { recordForgeChange, type ForgeLedgerContext } from './forge-inbox-context'
+import { BINDING_INSTANCE_PREFIX } from './forge-inbox-project-binding'
 import { rowNumber } from './forge-inbox-rows'
 import { applyTransition, readForgeRun } from './forge-inbox-runs'
-import type { ForgeInstanceScope, ForgeRun } from './forge-inbox-types'
+import {
+  FORGE_ANALYSIS_ITEM_KINDS,
+  type ForgeInstanceScope,
+  type ForgeRun
+} from './forge-inbox-types'
 
 /** A queued run is runnable only while its project has no live run and the host has capacity. */
 const POLICY_GENERATION_SQL = `COALESCE((SELECT p.generation FROM policies p
   WHERE p.instance_id = i.instance_id AND p.project_id = i.project_id), 0)`
+
+// A project item's dispatch runs are launched by the project event flow, never by this scheduler.
+const ANALYSIS_KINDS_SQL = FORGE_ANALYSIS_ITEM_KINDS.map((kind) => `'${kind}'`).join(', ')
+
+// Binding items follow the project event policy and launch their own agents; this retired
+// scheduler's generation (0 for them) would otherwise supersede or cancel their live runs.
+const LEGACY_ITEM_SQL = `NOT EXISTS (SELECT 1 FROM project_bindings pb
+  WHERE i.instance_id = '${BINDING_INSTANCE_PREFIX}' || pb.gitlab_host AND i.project_id = pb.gitlab_path)`
 
 export type ForgeRunSchedulingLimits = { maxConcurrentRuns: number }
 
@@ -21,7 +34,8 @@ export function claimNextRunnableForgeRun(
         `SELECT r.id FROM runs r
            JOIN items i ON i.id = r.item_id
            JOIN item_revisions head ON head.item_id = i.id AND head.revision = i.current_revision
-          WHERE r.state = 'queued' AND i.host_id = ?
+          WHERE r.state = 'queued' AND i.host_id = ? AND i.kind IN (${ANALYSIS_KINDS_SQL})
+            AND ${LEGACY_ITEM_SQL}
             AND (? IS NULL OR i.instance_id = ?)
             AND r.context_digest = head.version_token
             AND r.policy_generation = ${POLICY_GENERATION_SQL}
@@ -105,7 +119,8 @@ function retireRuns(
       `SELECT r.id, r.item_id, r.generation FROM runs r
          JOIN items i ON i.id = r.item_id
          JOIN item_revisions head ON head.item_id = i.id AND head.revision = i.current_revision
-        WHERE i.host_id = ? AND (? IS NULL OR i.instance_id = ?) AND ${predicate}`
+        WHERE i.host_id = ? AND (? IS NULL OR i.instance_id = ?) AND ${LEGACY_ITEM_SQL}
+          AND ${predicate}`
     )
     .all(ctx.hostId, scope.instanceId ?? null, scope.instanceId ?? null)
   let retired = 0

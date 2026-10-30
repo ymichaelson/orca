@@ -10,40 +10,50 @@ import {
 import { openForgeInboxDatabase } from './forge-inbox-database'
 import { bumpForgePolicyGeneration } from './forge-inbox-policy'
 import { listForgeEvents } from './forge-inbox-events'
+import { isForgeDispatchedAgent } from './forge-inbox-dispatched-agent-ownership'
+import { archiveForgeItem, unarchiveForgeItem } from './forge-inbox-item-archive'
 import { ingestForgeEvent } from './forge-inbox-ingest'
 import { createForgeNotificationFeed } from './forge-inbox-notification-feed'
 import { ingestForgeObservation, type ForgeObservationInput } from './forge-inbox-observation'
 import { ForgeProposalLedger } from './forge-inbox-ledger-proposals'
 import {
-  getForgeClientCursor,
   getForgeItemDetail,
   readForgeItem,
-  listForgeChanges,
+  listForgeItemProjects,
   listForgeItems,
   listForgeRuns,
-  markForgeItemRead,
+  markForgeItemRead
+} from './forge-inbox-queries'
+import {
+  getForgeClientCursor,
+  listForgeChanges,
   readForgeChangeHead,
   setForgeClientCursor
-} from './forge-inbox-queries'
+} from './forge-inbox-change-cursors'
 import type { ForgeEventIngest, ForgeInstanceScope } from './forge-inbox-types'
 import {
-  admitForgeWebhookDelivery,
   FORGE_WEBHOOK_DEFAULT_QUEUE_LIMITS,
-  getForgeWebhookQueueStatus,
-  listForgeWebhookDeliveries,
-  type ForgeWebhookAdmission,
   type ForgeWebhookQueueLimits
 } from './forge-inbox-webhook-queue'
 import {
-  claimNextForgeWebhookDelivery,
-  getForgeWebhookWorkSchedule,
-  markForgeWebhookDeliveryDone,
-  markForgeWebhookDeliveryFailed,
-  markForgeWebhookDeliveryNeedsAuth,
-  pruneFinishedForgeWebhookDeliveries,
-  requeueForgeWebhookNeedsAuth
-} from './forge-inbox-webhook-delivery-state'
+  createForgeWebhookLedgerMethods,
+  type ForgeWebhookLedgerMethods
+} from './forge-inbox-ledger-webhook-methods'
 import { updateForgeProjectPolicy } from './forge-inbox-project-policy-update'
+import {
+  getProjectEventPolicy,
+  listProjectEventPolicies,
+  updateProjectEventPolicy
+} from './forge-inbox-project-event-policy'
+import { readProjectEventActivity } from './forge-inbox-project-event-activity'
+import {
+  ensureProjectBinding,
+  removeProjectBinding as removeProjectBindingRemote
+} from './forge-inbox-project-binding-reconcile'
+import { getProjectBinding as readProjectBinding } from './forge-inbox-project-binding'
+import { getProjectEventRepoLink as readProjectEventRepoLink } from './forge-inbox-project-event-link'
+import { resumeProjectEventDeliveriesForRepo } from './forge-inbox-project-event-receive'
+import { rotateProjectBindingSecret } from './forge-inbox-project-binding-rotation'
 import { claimForgePatchRequest, readForgePatchRequest } from './forge-inbox-patch-requests'
 import { recoverInterruptedForgeWork } from './forge-inbox-interrupted-work'
 import {
@@ -65,21 +75,28 @@ import {
   supersedeStaleForgeRuns
 } from './forge-inbox-run-scheduling'
 
+// SAFETY: composition installs these methods per instance; the interface only types them.
+// oxlint-disable-next-line typescript/no-unsafe-declaration-merging typescript/consistent-type-definitions
+export interface ForgeInboxLedger extends ForgeWebhookLedgerMethods {}
+
 /** Durable forge-inbox ledger. Callers pass hostId/instanceId on every read; nothing is global. */
 export class ForgeInboxLedger extends ForgeProposalLedger {
-  private readonly webhookLimits: ForgeWebhookQueueLimits
   readonly notifications: ReturnType<typeof createForgeNotificationFeed>
+  readonly dbPath: string
+  private closed = false
 
   private constructor(
     db: Database.Database,
     hostId: string,
     now: () => number,
     secretStore: () => SecretStore,
-    webhookLimits: ForgeWebhookQueueLimits
+    webhookLimits: ForgeWebhookQueueLimits,
+    dbPath: string
   ) {
     super({ db, hostId, now, secretStore })
-    this.webhookLimits = webhookLimits
+    this.dbPath = dbPath
     this.notifications = createForgeNotificationFeed(this.ctx)
+    Object.assign(this, createForgeWebhookLedgerMethods(this.ctx, webhookLimits))
   }
 
   /**
@@ -102,7 +119,8 @@ export class ForgeInboxLedger extends ForgeProposalLedger {
       hostId,
       options.now ?? Date.now,
       secretStore ? () => secretStore : getSecretStore,
-      options.webhookQueueLimits ?? FORGE_WEBHOOK_DEFAULT_QUEUE_LIMITS
+      options.webhookQueueLimits ?? FORGE_WEBHOOK_DEFAULT_QUEUE_LIMITS,
+      dbPath
     )
     recoverInterruptedForgeWork(ledger.ctx)
     return ledger
@@ -113,8 +131,14 @@ export class ForgeInboxLedger extends ForgeProposalLedger {
   }
 
   close(): void {
+    this.closed = true
     forgeCommitSignal(this.ctx.db).close()
     this.ctx.db.close()
+  }
+
+  /** Tells a detached subscriber whether its failures mean "gone" or "try again". */
+  isClosed(): boolean {
+    return this.closed
   }
 
   /** Metadata hint after each committed write; never inside a transaction and never a failure of it. */
@@ -131,6 +155,49 @@ export class ForgeInboxLedger extends ForgeProposalLedger {
     input: Parameters<typeof updateForgeProjectPolicy>[2]
   ) {
     return updateForgeProjectPolicy(this.ctx, expectedRevision, input)
+  }
+
+  getProjectEventPolicy(repoId: string) {
+    return getProjectEventPolicy(this.ctx, repoId)
+  }
+
+  listProjectEventPolicies() {
+    return listProjectEventPolicies(this.ctx)
+  }
+
+  getProjectEventActivity(repoId: string, limit?: number) {
+    return readProjectEventActivity(this.ctx, {
+      repoId,
+      ...(limit === undefined ? {} : { limit })
+    })
+  }
+
+  updateProjectEventPolicy(repoId: string, expectedGeneration: number, patch: unknown) {
+    const result = updateProjectEventPolicy(this.ctx, { repoId, expectedGeneration, patch })
+    if (result.ok && result.policy.enabled) {
+      resumeProjectEventDeliveriesForRepo(this.ctx, repoId)
+    }
+    return result
+  }
+
+  ensureProjectBinding(input: Parameters<typeof ensureProjectBinding>[1]) {
+    return ensureProjectBinding(this.ctx, input)
+  }
+
+  getProjectBinding(bindingId: string) {
+    return readProjectBinding(this.ctx, bindingId)
+  }
+
+  getProjectEventRepoLink(repoId: string) {
+    return readProjectEventRepoLink(this.ctx, repoId)
+  }
+
+  removeProjectBinding(input: Parameters<typeof removeProjectBindingRemote>[1]) {
+    return removeProjectBindingRemote(this.ctx, input)
+  }
+
+  rotateProjectBindingSecret(input: Parameters<typeof rotateProjectBindingSecret>[1]) {
+    return rotateProjectBindingSecret(this.ctx, input)
   }
 
   getConfig() {
@@ -180,52 +247,13 @@ export class ForgeInboxLedger extends ForgeProposalLedger {
       expectedInvalidationGeneration
     )
   }
-  admitWebhookDelivery(input: ForgeWebhookAdmission) {
-    return admitForgeWebhookDelivery(this.ctx, this.webhookLimits, input)
-  }
-
-  getWebhookQueueStatus() {
-    return getForgeWebhookQueueStatus(this.ctx, this.webhookLimits)
-  }
-
-  /** Host-private raw bodies for the trusted worker; never expose over RPC. */
-  claimNextWebhookDelivery(nowMs: number) {
-    return claimNextForgeWebhookDelivery(this.ctx, nowMs)
-  }
-
-  getWebhookWorkSchedule() {
-    return getForgeWebhookWorkSchedule(this.ctx)
-  }
-
-  markWebhookDeliveryDone(id: number) {
-    return markForgeWebhookDeliveryDone(this.ctx, id)
-  }
-
-  markWebhookDeliveryFailed(
-    id: number,
-    failure: Parameters<typeof markForgeWebhookDeliveryFailed>[2]
-  ) {
-    return markForgeWebhookDeliveryFailed(this.ctx, id, failure)
-  }
-
-  markWebhookDeliveryNeedsAuth(id: number) {
-    return markForgeWebhookDeliveryNeedsAuth(this.ctx, id)
-  }
-
-  requeueNeedsAuthWebhookDeliveries(instanceId: string) {
-    return requeueForgeWebhookNeedsAuth(this.ctx, instanceId)
-  }
-
-  pruneFinishedWebhookDeliveries(query: Parameters<typeof pruneFinishedForgeWebhookDeliveries>[1]) {
-    return pruneFinishedForgeWebhookDeliveries(this.ctx, query)
+  /** Host-private ledger context for the trusted receiver; never expose over RPC. */
+  ledgerContext() {
+    return this.ctx
   }
 
   readItemWatermark(key: Parameters<typeof readForgeItemWatermark>[1]) {
     return readForgeItemWatermark(this.ctx, key)
-  }
-
-  listWebhookDeliveries(query: Parameters<typeof listForgeWebhookDeliveries>[1]) {
-    return listForgeWebhookDeliveries(this.ctx, query)
   }
 
   claimNextQueuedRun(scope: ForgeInstanceScope) {
@@ -287,6 +315,10 @@ export class ForgeInboxLedger extends ForgeProposalLedger {
     return listForgeItems(this.ctx, query)
   }
 
+  listItemProjects() {
+    return listForgeItemProjects(this.ctx)
+  }
+
   getItem(scope: ForgeInstanceScope, itemId: number) {
     return readForgeItem(this.ctx, scope, itemId)
   }
@@ -309,6 +341,18 @@ export class ForgeInboxLedger extends ForgeProposalLedger {
 
   markRead(scope: ForgeInstanceScope, input: Parameters<typeof markForgeItemRead>[2]) {
     return markForgeItemRead(this.ctx, scope, input)
+  }
+
+  isDispatchedAgent(identity: Parameters<typeof isForgeDispatchedAgent>[1]) {
+    return isForgeDispatchedAgent(this.ctx, identity)
+  }
+
+  archiveItem(scope: ForgeInstanceScope, input: Parameters<typeof archiveForgeItem>[2]) {
+    return archiveForgeItem(this.ctx, scope, input)
+  }
+
+  unarchiveItem(scope: ForgeInstanceScope, input: Parameters<typeof unarchiveForgeItem>[2]) {
+    return unarchiveForgeItem(this.ctx, scope, input)
   }
 
   setClientCursor(input: Parameters<typeof setForgeClientCursor>[1]) {

@@ -15,6 +15,7 @@ import type { ShowNestedRepoReviewArgs } from './useAddRepoNestedReviewState'
 import { createNestedRepoScanId } from './add-repo-dialog-types'
 import { translate } from '@/i18n/i18n'
 import { worktreeRefreshOptions } from './add-repo-runtime-owner'
+import type { GitRepoBatchHandoff } from './use-add-repo-project-event-setup'
 import type { ExecutionHostId } from '../../../../shared/execution-host'
 import { addRepoBusyLabels } from './add-repo-busy-labels'
 import { showSkippedBatchFoldersToast } from './add-repo-skipped-folders-toast'
@@ -38,6 +39,7 @@ export function useAddRepoLocalFolderFlow({
   setNestedScanInProgress,
   showNestedRepoReview,
   onGitRepoReady,
+  onGitRepoBatchReady,
   setIsAdding,
   setAddProjectBusyLabel,
   offerWslHost
@@ -58,6 +60,7 @@ export function useAddRepoLocalFolderFlow({
     source: AddRepoExistingWorkspaceSource,
     executionHostId?: ExecutionHostId
   ) => Promise<void>
+  onGitRepoBatchReady: (handoff: GitRepoBatchHandoff) => Promise<void>
   setIsAdding: (isAdding: boolean) => void
   setAddProjectBusyLabel: (label: string | null) => void
   /** True when it held this single local path to offer running its WSL distro as a host. */
@@ -261,14 +264,11 @@ export function useAddRepoLocalFolderFlow({
         showSkippedBatchFoldersToast()
       }
       if (shouldDeferGitRepoReady && gitRepoIds.length > 0) {
-        await onGitRepoReady(
-          gitRepoIds[0],
-          source,
-          worktreeRefreshOptions(activeRuntimeEnvironmentId ?? null).executionHostId
-        )
+        const { executionHostId } = worktreeRefreshOptions(activeRuntimeEnvironmentId ?? null)
+        await onGitRepoBatchReady({ repoIds: gitRepoIds, source, executionHostId })
       }
     },
-    [activeRuntimeEnvironmentId, addLocalPathForGeneration, onGitRepoReady]
+    [activeRuntimeEnvironmentId, addLocalPathForGeneration, onGitRepoBatchReady]
   )
 
   useEffect(() => {

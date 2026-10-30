@@ -123,6 +123,7 @@ describe('useIpcEvents browser tab close routing', () => {
         ui: {
           onStateChanged: () => () => {},
           onOpenSettings: () => () => {},
+          onOpenForgeInboxItem: () => () => {},
           consumePendingOpenSettings: () => Promise.resolve(false),
           onOpenFeatureTour: () => () => {},
           onToggleLeftSidebar: () => () => {},
@@ -352,6 +353,7 @@ describe('useIpcEvents browser tab close routing', () => {
         ui: {
           onStateChanged: () => () => {},
           onOpenSettings: () => () => {},
+          onOpenForgeInboxItem: () => () => {},
           consumePendingOpenSettings: () => Promise.resolve(false),
           onOpenFeatureTour: () => () => {},
           onToggleLeftSidebar: () => () => {},
@@ -576,6 +578,7 @@ describe('useIpcEvents browser tab close routing', () => {
         ui: {
           onStateChanged: () => () => {},
           onOpenSettings: () => () => {},
+          onOpenForgeInboxItem: () => () => {},
           consumePendingOpenSettings: () => Promise.resolve(false),
           onOpenFeatureTour: () => () => {},
           onToggleLeftSidebar: () => () => {},

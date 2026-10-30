@@ -1,71 +1,50 @@
-import { useState } from 'react'
 import { Badge } from '@/components/ui/badge'
-import { Button } from '@/components/ui/button'
 import { translate } from '@/i18n/i18n'
-import type { ForgeEvent, ForgeEventSummary } from '../../../../shared/forge-inbox-types'
-import type {
-  ForgeItemDetailView,
-  ForgeProposalView
-} from '../../../../shared/forge-inbox-rpc-types'
+import type { ProjectEventQuestionView } from '../../../../shared/forge-inbox-project-event-question'
+import type { ForgeItemDetailView } from '../../../../shared/forge-inbox-rpc-types'
+import type { RuntimeClientTarget } from '../../../../shared/runtime-client-target'
 import {
-  forgeItemKindLabel,
-  forgeRunStateLabel,
-  forgeRunStateVariant,
+  forgeItemHandlingLabel,
+  forgeItemHandlingVariant,
+  forgeItemIdentityParts,
   formatForgeDateTime
 } from './forge-inbox-display'
-import { ForgeInboxProposalDialog } from './ForgeInboxProposalDialog'
+import { ForgeInboxError, type ForgeInboxRepairActions } from './ForgeInboxError'
+import { ForgeInboxArchiveButton } from './ForgeInboxArchiveButton'
+import { ForgeInboxQuestionPanel } from './ForgeInboxQuestionPanel'
+import { ForgeInboxTimeline } from './ForgeInboxTimeline'
 
 const SECTION_LABEL_CLASS =
   'text-2xs font-semibold uppercase tracking-[0.05em] text-muted-foreground'
 
-function eventDescription(event: ForgeEvent): string {
-  const summary: ForgeEventSummary = event.summary
-  const parts: string[] = []
-  if (summary.category !== undefined) {
-    parts.push(summary.category)
-  }
-  if (summary.pipeline?.observed?.status !== undefined) {
-    parts.push(`pipeline ${summary.pipeline.observed.status}`)
-  }
-  const completeness = summary.completeness
-  if (completeness !== undefined && !completeness.complete) {
-    const missing = [
-      completeness.notes === false ? 'notes' : null,
-      completeness.diffs === false ? 'diffs' : null,
-      completeness.ci === false ? 'ci' : null
-    ].filter((part): part is string => part !== null)
-    parts.push(
-      translate(
-        'auto.components.forge-inbox.ForgeInboxDetail.missingContext',
-        'incomplete: {{missing}}',
-        { missing: missing.join(', ') }
-      )
-    )
-  }
-  return parts.join(' · ')
-}
-
 /** Model output is rendered as plain text on purpose: it must never become clickable HTML. */
 export function ForgeInboxDetail({
   ownerHostId,
+  ownerTarget,
   detail,
-  events,
+  questions,
   loading,
   error,
-  onChanged
+  onChanged,
+  repairActions,
+  archiveSupported = false,
+  onSetArchived
 }: {
   ownerHostId: string | null
+  ownerTarget: RuntimeClientTarget
   detail: ForgeItemDetailView | null
-  events: ForgeEvent[]
+  questions: ProjectEventQuestionView[]
   loading: boolean
   error: string | null
   onChanged: () => void
+  repairActions?: ForgeInboxRepairActions
+  archiveSupported?: boolean
+  onSetArchived?: (itemId: number, archived: boolean) => Promise<boolean>
 }): React.JSX.Element {
-  const [reviewing, setReviewing] = useState<ForgeProposalView | null>(null)
   if (error !== null) {
     return <p className="px-4 py-4 text-xs text-destructive">{error}</p>
   }
-  if (loading && detail === null) {
+  if (loading) {
     return (
       <p className="px-4 py-4 text-xs text-muted-foreground">
         {translate('auto.components.forge-inbox.ForgeInboxDetail.loading', 'Loading item…')}
@@ -77,108 +56,82 @@ export function ForgeInboxDetail({
       <p className="px-4 py-4 text-xs text-muted-foreground">
         {translate(
           'auto.components.forge-inbox.ForgeInboxDetail.selectItem',
-          'Select an item to see its analysis, runs and approvals.'
+          'Select an item to see its activity, runs and questions.'
         )}
       </p>
     )
   }
 
-  const { item, runs, proposals, revisions } = detail
+  const { item, runs, proposals, revisions, handling, timeline } = detail
   return (
     <div className="scrollbar-sleek flex min-h-0 flex-1 flex-col overflow-y-auto px-4 py-4">
       <header className="flex flex-col gap-1">
-        <h2 className="text-sm font-semibold leading-6 text-foreground">{item.title}</h2>
+        <div className="flex items-start gap-2">
+          <h2 className="min-w-0 flex-1 text-sm font-semibold leading-6 text-foreground">
+            {item.title}
+          </h2>
+          {archiveSupported && onSetArchived ? (
+            <ForgeInboxArchiveButton
+              itemId={item.id}
+              archived={item.archived === true}
+              onSetArchived={onSetArchived}
+            />
+          ) : null}
+        </div>
+        {handling !== undefined ? (
+          <div className="flex flex-wrap items-center gap-2">
+            <Badge variant={forgeItemHandlingVariant(handling.state)}>
+              {forgeItemHandlingLabel(handling.state, handling.stopping === true)}
+            </Badge>
+            {handling.errorCode !== null ? (
+              <ForgeInboxError
+                code={handling.errorCode}
+                source={handling.errorSource}
+                repairActions={repairActions}
+              />
+            ) : null}
+          </div>
+        ) : null}
         <p className="text-xs text-muted-foreground">
-          {forgeItemKindLabel(item.kind)} #{item.iid} · {item.state} ·{' '}
-          {translate(
-            'auto.components.forge-inbox.ForgeInboxDetail.project',
-            'project {{projectId}}',
-            { projectId: item.projectId }
-          )}
+          {[
+            ...forgeItemIdentityParts(item),
+            translate(
+              'auto.components.forge-inbox.ForgeInboxDetail.project',
+              'project {{projectId}}',
+              {
+                projectId: item.projectId
+              }
+            )
+          ].join(' · ')}
         </p>
       </header>
 
-      <section className="mt-5">
-        <h3 className={SECTION_LABEL_CLASS}>
-          {translate('auto.components.forge-inbox.ForgeInboxDetail.runs', 'Agent runs')}
-        </h3>
-        {runs.length === 0 ? (
-          <p className="mt-1 text-xs text-muted-foreground">
-            {translate('auto.components.forge-inbox.ForgeInboxDetail.noRuns', 'No analysis yet.')}
-          </p>
-        ) : (
-          <ul className="mt-2 flex flex-col gap-2">
-            {runs.map((run) => (
-              <li key={run.id} className="rounded-md border border-border px-3 py-2">
-                <div className="flex flex-wrap items-center gap-2">
-                  <Badge variant={forgeRunStateVariant(run.state)}>
-                    {forgeRunStateLabel(run.state)}
-                  </Badge>
-                  <span className="text-xs text-muted-foreground">
-                    {translate(
-                      'auto.components.forge-inbox.ForgeInboxDetail.revision',
-                      'revision {{revision}}',
-                      { revision: run.revision }
-                    )}
-                  </span>
-                  <span className="text-2xs text-muted-foreground">
-                    {formatForgeDateTime(run.updatedAt)}
-                  </span>
-                  {run.reason !== null ? (
-                    <span className="text-2xs text-muted-foreground">{run.reason}</span>
-                  ) : null}
-                  {run.errorCode !== null ? (
-                    <span className="text-2xs text-destructive">{run.errorCode}</span>
-                  ) : null}
-                </div>
-                {run.result !== null ? (
-                  <div className="mt-2 flex flex-col gap-1">
-                    <p className="whitespace-pre-wrap text-xs leading-5 text-foreground/85">
-                      {run.result.summary}
-                    </p>
-                    {run.result.concerns.length > 0 ? (
-                      <ul className="list-disc pl-4 text-xs leading-5 text-muted-foreground">
-                        {run.result.concerns.map((concern) => (
-                          <li key={`${run.id}:${concern}`} className="whitespace-pre-wrap">
-                            {concern}
-                          </li>
-                        ))}
-                      </ul>
-                    ) : null}
-                  </div>
-                ) : null}
-              </li>
-            ))}
-          </ul>
-        )}
-      </section>
+      <ForgeInboxQuestionPanel
+        ownerHostId={ownerHostId}
+        ownerTarget={ownerTarget}
+        questions={questions}
+        onAnswered={onChanged}
+      />
 
       <section className="mt-5">
         <h3 className={SECTION_LABEL_CLASS}>
-          {translate('auto.components.forge-inbox.ForgeInboxDetail.events', 'Events')}
+          {translate('auto.components.forge-inbox.ForgeInboxDetail.timeline', 'Timeline')}
         </h3>
-        {events.length === 0 ? (
-          <p className="mt-1 text-xs text-muted-foreground">
-            {translate('auto.components.forge-inbox.ForgeInboxDetail.noEvents', 'No events yet.')}
-          </p>
-        ) : (
-          <ul className="mt-2 flex flex-col gap-1">
-            {events.map((event) => (
-              <li
-                key={event.id}
-                className="flex flex-wrap items-baseline gap-2 border-b border-border/60 pb-1 text-xs"
-              >
-                <span className="font-mono text-2xs text-foreground/80">{event.eventKind}</span>
-                <span className="min-w-0 flex-1 truncate text-muted-foreground">
-                  {eventDescription(event)}
-                </span>
-                <span className="text-2xs text-muted-foreground">
-                  {formatForgeDateTime(event.receivedAt)}
-                </span>
-              </li>
-            ))}
-          </ul>
-        )}
+        <ForgeInboxTimeline
+          entries={
+            timeline ??
+            runs.map((run) => ({
+              kind: 'run',
+              id: `run:${run.id}`,
+              at: run.updatedAt,
+              state: run.state,
+              reason: run.reason
+            }))
+          }
+          runs={runs}
+          ownerTarget={ownerTarget}
+          repairActions={repairActions}
+        />
       </section>
 
       <section className="mt-5">
@@ -215,14 +168,6 @@ export function ForgeInboxDetail({
                     }
                   )}
                 </span>
-                {proposal.status === 'pending' && ownerHostId !== null ? (
-                  <Button size="xs" variant="outline" onClick={() => setReviewing(proposal)}>
-                    {translate(
-                      'auto.components.forge-inbox.ForgeInboxDetail.reviewProposal',
-                      'Review'
-                    )}
-                  </Button>
-                ) : null}
               </li>
             ))}
           </ul>
@@ -240,16 +185,6 @@ export function ForgeInboxDetail({
             }
           )}
         </p>
-      ) : null}
-
-      {ownerHostId !== null ? (
-        <ForgeInboxProposalDialog
-          ownerHostId={ownerHostId}
-          instanceId={item.instanceId}
-          proposal={reviewing}
-          onClose={() => setReviewing(null)}
-          onChanged={onChanged}
-        />
       ) : null}
     </div>
   )

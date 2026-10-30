@@ -4,15 +4,16 @@ const MAX_TIMER_MS = 2 ** 31 - 1
 const STILL_DUE_FLOOR_MS = 1000
 
 export type ForgeWorkerSchedulerDeps = {
-  readSchedule: () => ForgeWebhookWorkSchedule
+  readSchedule: () => Pick<ForgeWebhookWorkSchedule, 'pending' | 'nextAttemptAtMs'>
   /** `capped` means the drain stopped at its batch limit with work possibly left. */
-  drain: () => Promise<{ capped?: boolean } | void>
+  drain: (stopping: AbortSignal) => Promise<{ capped?: boolean } | void>
   now: () => number
   onError?: (error: unknown) => void
 }
 
 /** One drain at a time, wakes coalesce, and a single timer follows the durable earliest attempt. */
 export function createForgeWorkerScheduler(deps: ForgeWorkerSchedulerDeps) {
+  const stopping = new AbortController()
   let timer: ReturnType<typeof setTimeout> | null = null
   let timerAtMs: number | null = null
   let running: Promise<void> | null = null
@@ -45,7 +46,7 @@ export function createForgeWorkerScheduler(deps: ForgeWorkerSchedulerDeps) {
     if (stopped) {
       return
     }
-    let schedule: ForgeWebhookWorkSchedule
+    let schedule: Pick<ForgeWebhookWorkSchedule, 'pending' | 'nextAttemptAtMs'>
     try {
       schedule = deps.readSchedule()
     } catch (error) {
@@ -79,7 +80,7 @@ export function createForgeWorkerScheduler(deps: ForgeWorkerSchedulerDeps) {
         rerun = false
         failed = false
         try {
-          const outcome = await deps.drain()
+          const outcome = await deps.drain(stopping.signal)
           if (outcome?.capped === true) {
             rerun = true
           }
@@ -117,6 +118,7 @@ export function createForgeWorkerScheduler(deps: ForgeWorkerSchedulerDeps) {
     status: () => ({ draining: running !== null, timerAtMs }),
     async stop(): Promise<void> {
       stopped = true
+      stopping.abort()
       clearTimer()
       await running
     }

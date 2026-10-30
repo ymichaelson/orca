@@ -129,10 +129,13 @@ function readQueueStatus(
   ctx: ForgeLedgerContext,
   limits: ForgeWebhookQueueLimits
 ): ForgeWebhookQueueStatus {
+  // Parked deliveries keep their body, so they share the byte budget without counting as pending work.
   const row = ctx.db
     .prepare(
-      `SELECT COUNT(*) AS pending, COALESCE(SUM(LENGTH(body)), 0) AS bytes
-       FROM webhook_deliveries WHERE host_id = ? AND state IN ('pending', 'needs-auth')`
+      `SELECT COALESCE(SUM(state IN ('pending', 'needs-auth')), 0) AS pending,
+         COALESCE(SUM(CASE WHEN state IN ('pending', 'needs-auth', 'parked') THEN LENGTH(body) END), 0)
+           AS bytes
+       FROM webhook_deliveries WHERE host_id = ?`
     )
     .get(ctx.hostId)
   return {
@@ -157,7 +160,8 @@ export function listForgeWebhookDeliveries(
   const limit = Math.min(Math.max(Math.trunc(query.limit), 1), MAX_LIST_LIMIT)
   return ctx.db
     .prepare(
-      `SELECT * FROM webhook_deliveries WHERE host_id = ? AND state = 'pending' ORDER BY id LIMIT ?`
+      `SELECT * FROM webhook_deliveries
+       WHERE host_id = ? AND instance_id IS NOT NULL AND state = 'pending' ORDER BY id LIMIT ?`
     )
     .all(ctx.hostId, limit)
     .map((row) => {

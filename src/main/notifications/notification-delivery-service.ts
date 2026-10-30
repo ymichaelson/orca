@@ -11,6 +11,7 @@ import { translateMain } from '../i18n/main-i18n'
 import { reserveNotificationCooldown } from '../../shared/notification-burst-cooldown'
 import { toHostSessionPaneKey } from '../../shared/terminal-surface-id'
 import { isNotificationSourceEnabled } from '../../shared/notification-source-gate'
+import type { ForgeDispatchedAgentCompletion } from './forge-dispatched-agent-completion'
 
 export type NotificationDeliveryDependencies = {
   readNotificationSettings: () => NotificationSettings
@@ -32,6 +33,8 @@ export type NotificationDeliveryDependencies = {
   now: () => number
   /** Called for each actual desktop banner or mobile alert. */
   recordAnnounced?: (request: NotificationDispatchRequest) => void
+  /** Absent when no Forge inbox is wired; completions of an agent it dispatched are announced by Forge instead. */
+  forgeDispatchedAgent?: ForgeDispatchedAgentCompletion
 }
 
 export type NotificationDeliveryService = {
@@ -67,6 +70,16 @@ export function createNotificationDeliveryService(
 
   return {
     dispatch: (request) => {
+      if (
+        request.source === 'agent-task-complete' &&
+        deps.forgeDispatchedAgent?.defersToForge({
+          state: request.agentState,
+          sessionId: request.structuredOrigin?.sessionId,
+          paneKey: request.paneKey
+        })
+      ) {
+        return { delivered: false, reason: 'source-disabled' }
+      }
       // Desktop gates must not suppress tray attention.
       if (request.source === 'agent-task-complete' || request.source === 'terminal-bell') {
         if (!deps.isWindowVisible(deps.findActiveWindow())) {
@@ -82,7 +95,8 @@ export function createNotificationDeliveryService(
       const desktopAllowed = isNotificationSourceEnabled(
         settings,
         request.source,
-        request.agentState
+        request.agentState,
+        request.forgeInbox?.subject.reason
       )
 
       const notificationOptions = buildNotificationOptions(request, translateMain)

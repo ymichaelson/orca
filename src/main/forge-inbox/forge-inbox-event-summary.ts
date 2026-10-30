@@ -61,7 +61,9 @@ export function summarizeForgeEventPayload(payloadJson: string): ForgeEventSumma
   if (!payload) {
     return {}
   }
-  const category = GITLAB_RELEVANCE_CATEGORIES.find((known) => known === payload.category)
+  const category = [...GITLAB_RELEVANCE_CATEGORIES, 'project-event'].find(
+    (known) => known === payload.category
+  )
   const completeness = completenessOf(payload.completeness)
   const pipeline = pipelineOf(payload.pipeline)
   return {

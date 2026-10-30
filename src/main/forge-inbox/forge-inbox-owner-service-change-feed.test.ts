@@ -1,6 +1,7 @@
 import { existsSync } from 'node:fs'
 import { afterEach, describe, expect, it } from 'vitest'
 import { mergeRequestHookBody } from './forge-inbox-gitlab-fake-server'
+import type { ProjectEventDecisionResult } from '../../shared/project-event-decision'
 import {
   ForgeInboxInvalidCursorError,
   ForgeInboxOwnerMismatchError,
@@ -11,14 +12,29 @@ import {
   freePort,
   listenerOn,
   postHook,
-  provision,
   type OwnerFixture
 } from './forge-inbox-owner-service-test-kit'
 import { ForgeInboxLedger } from './forge-inbox-ledger'
 import type { ForgeOwnerChangeHint } from './forge-inbox-owner-hints'
 import { INSTANCE_ID } from './forge-inbox-webhook-test-harness'
 
-const SCOPE = { instanceId: INSTANCE_ID }
+const SCOPE = { instanceId: 'gitlab:gitlab.example.com' }
+const decision: ProjectEventDecisionResult = {
+  ok: true,
+  provider: 'jev',
+  model: 'jev-1',
+  action: 'notify',
+  confidence: 0.9,
+  probabilities: {
+    record_only: 0.02,
+    notify: 0.9,
+    wait: 0.02,
+    fetch_context: 0.02,
+    dispatch_agent: 0.02,
+    ask_user: 0.02
+  },
+  usage: { inputTokens: 12, outputTokens: 3 }
+}
 const settle = () => new Promise<void>((resolve) => setImmediate(resolve))
 
 describe('forge inbox owner service change feed', () => {
@@ -27,7 +43,7 @@ describe('forge inbox owner service change feed', () => {
 
   async function ingestOne(service: ReturnType<OwnerFixture['service']>, id = 'm-1') {
     const port = await freePort()
-    await provision(service, listenerOn(port))
+    await fx.provision(service, listenerOn(port))
     await postHook(port, mergeRequestHookBody({ reviewers: ['me'] }), id)
     await service.settled()
   }
@@ -35,7 +51,7 @@ describe('forge inbox owner service change feed', () => {
   describe('commit hints', () => {
     it('lets a dormant subscriber attach without a file and hear the first-use commits', async () => {
       fx = createOwnerFixture()
-      const service = fx.service()
+      const service = fx.service({ decideProjectEvent: async () => decision })
       await service.start()
       const hints: ForgeOwnerChangeHint[] = []
 
@@ -66,7 +82,7 @@ describe('forge inbox owner service change feed', () => {
 
     it('ends subscribers on stop, delivers nothing afterwards and refuses new subscriptions', async () => {
       fx = createOwnerFixture()
-      const service = fx.service()
+      const service = fx.service({ decideProjectEvent: async () => decision })
       await service.start()
       await ingestOne(service)
       const hints: unknown[] = []
@@ -85,7 +101,7 @@ describe('forge inbox owner service change feed', () => {
 
     it('gives nothing to a listener unsubscribed by an earlier listener during the same dispatch', async () => {
       fx = createOwnerFixture()
-      const service = fx.service()
+      const service = fx.service({ decideProjectEvent: async () => decision })
       await service.start()
       const received: ForgeOwnerChangeHint[] = []
       let unsubscribeSecond: () => void = () => undefined
@@ -100,7 +116,7 @@ describe('forge inbox owner service change feed', () => {
 
     it('does not deliver a later unsubscribed or throwing listener into write failures', async () => {
       fx = createOwnerFixture()
-      const service = fx.service()
+      const service = fx.service({ decideProjectEvent: async () => decision })
       await service.start()
       const survivor: unknown[] = []
       service.subscribeChangeHints(() => {
@@ -159,7 +175,7 @@ describe('forge inbox owner service change feed', () => {
 
     it('rejects unsafe or future sequences before writing and acks monotonically per reader and scope', async () => {
       fx = createOwnerFixture()
-      const service = fx.service()
+      const service = fx.service({ decideProjectEvent: async () => decision })
       await service.start()
       await ingestOne(service)
       const head = service.readChangeHead(SCOPE)
@@ -186,7 +202,7 @@ describe('forge inbox owner service change feed', () => {
 
     it('keeps the cursor across reopen and never marks items read or moves the feed', async () => {
       fx = createOwnerFixture()
-      const first = fx.service()
+      const first = fx.service({ decideProjectEvent: async () => decision })
       await first.start()
       await ingestOne(first)
       const head = first.readChangeHead(SCOPE)
@@ -220,7 +236,7 @@ describe('forge inbox owner service change feed', () => {
   describe('project policy', () => {
     it('applies a patch after the owner fence and wakes subscribers only for the successful write', async () => {
       fx = createOwnerFixture()
-      const service = fx.service()
+      const service = fx.service({ decideProjectEvent: async () => decision })
       await service.start()
       await ingestOne(service)
       const hints: unknown[] = []

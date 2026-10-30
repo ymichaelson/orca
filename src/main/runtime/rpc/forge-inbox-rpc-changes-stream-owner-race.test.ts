@@ -14,7 +14,7 @@ describe('forge inbox rpc changes stream owner race', () => {
     'serves no rows labelled with the old owner when a lazy open changes the owner (%s)',
     async (_name, extra) => {
       harness = await createStreamHarness()
-      const dormantOwner = String((await harness.ok('forgeInbox.getConfig', {})).ownerHostId)
+      const dormantOwner = String((await harness.ok('forgeInbox.getStatus', {})).ownerHostId)
       const other = harness.openLedger('another-owner')
       seedItem(other, 'another-owner', 1)
       const service = harness.runtime.forgeInboxService()

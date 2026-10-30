@@ -48,6 +48,7 @@ export type RepoUpdate = Partial<
     | 'symlinkPaths'
     | 'issueSourcePreference'
     | 'defaultJiraProject'
+    | 'projectEventGitlabProject'
     | 'forkSyncMode'
     | 'externalWorktreeVisibilityPromptDismissedAt'
     | 'externalWorktreeInboxBaselinePaths'

@@ -1,95 +1,129 @@
-import { useCallback, useEffect, useRef, useState } from 'react'
-import type { ForgeEvent, ForgeItem } from '../../../../shared/forge-inbox-types'
-import type {
-  ForgeInboxStatus,
-  ForgeItemDetailView
-} from '../../../../shared/forge-inbox-rpc-types'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import { useAppStore } from '@/store'
+import { forgeGenericErrorLabel } from './forge-inbox-error-code-copy'
+import type { ExecutionHostId } from '../../../../shared/execution-host'
+import type { ForgeInboxArchiveView } from '../../../../shared/forge-inbox-display-preferences'
+import type { ForgeItemHandlingState } from '../../../../shared/forge-inbox-item-handling'
+import type { ForgeItem, ForgeItemKind } from '../../../../shared/forge-inbox-types'
+import type { ForgeInboxStatus } from '../../../../shared/forge-inbox-rpc-types'
+import type { RuntimeClientTarget } from '../../../../shared/runtime-client-target'
 import {
-  listForgeInboxEvents,
-  listForgeInboxItems,
-  markForgeInboxItemRead,
-  readForgeInboxItemDetail,
-  readForgeInboxStatus
-} from '@/runtime/forge-inbox-client'
+  getRuntimeTargetHostId,
+  runtimeTargetEnvironmentId,
+  runtimeTargetForOwnerEnvironment
+} from '@/runtime/runtime-client-target'
+import { listForgeInboxItems, readForgeInboxStatus } from '@/runtime/forge-inbox-client'
+import { useForgeInboxArchiveSupport } from './use-forge-inbox-archive-support'
+import { useForgeInboxItemDetail } from './use-forge-inbox-item-detail'
+import { useForgeInboxArchiveAction } from './use-forge-inbox-archive-action'
+import { useForgeInboxNarrowing } from './use-forge-inbox-narrowing'
+import { useForgeInboxSelection } from './use-forge-inbox-selection'
+import { listFilter } from './forge-inbox-list-filter'
+import type { ForgeInboxFeed } from './forge-inbox-feed-state'
+
+export type { ForgeInboxFeed } from './forge-inbox-feed-state'
 
 const PAGE_LIMIT = 50
+const LOCAL_TARGET: RuntimeClientTarget = { kind: 'local' }
 
-export type ForgeInboxFeed = {
-  status: ForgeInboxStatus | null
-  statusError: string | null
-  items: ForgeItem[]
-  itemsError: string | null
-  loadingStatus: boolean
-  loadingItems: boolean
-  loadingMore: boolean
-  hasMore: boolean
-  unreadOnly: boolean
-  selectedItemId: number | null
-  detail: ForgeItemDetailView | null
-  events: ForgeEvent[]
-  detailError: string | null
-  loadingDetail: boolean
-  reload: () => void
-  loadMore: () => void
-  setUnreadOnly: (unread: boolean) => void
-  selectItem: (itemId: number | null) => void
-}
-
-/** Owner-qualified reads for the host this window is attached to; every failure stays visible. */
-export function useForgeInboxFeed(): ForgeInboxFeed {
-  const [status, setStatus] = useState<ForgeInboxStatus | null>(null)
+/** Owner-qualified reads for one runtime target; every failure stays visible. */
+export function useForgeInboxFeed(target: RuntimeClientTarget = LOCAL_TARGET): ForgeInboxFeed {
+  // Why: a fresh target object per render must not refetch; only its environment matters.
+  const environmentId = runtimeTargetEnvironmentId(target)
+  const requestTarget = useMemo(
+    () => runtimeTargetForOwnerEnvironment(environmentId),
+    [environmentId]
+  )
+  const targetHostId = getRuntimeTargetHostId(requestTarget)
+  const [statusState, setStatusState] = useState<{
+    hostId: ExecutionHostId
+    status: ForgeInboxStatus | null
+  } | null>(null)
   const [statusError, setStatusError] = useState<string | null>(null)
   const [loadingStatus, setLoadingStatus] = useState(true)
   const [items, setItems] = useState<ForgeItem[]>([])
+  const [listOwner, setListOwner] = useState<string | null>(null)
   const [itemsError, setItemsError] = useState<string | null>(null)
   const [loadingItems, setLoadingItems] = useState(false)
   const [loadingMore, setLoadingMore] = useState(false)
   const [nextCursor, setNextCursor] = useState<number | null>(null)
-  const [unreadOnly, setUnreadOnlyState] = useState(false)
-  const [selectedItemId, setSelectedItemId] = useState<number | null>(null)
-  const [detail, setDetail] = useState<ForgeItemDetailView | null>(null)
-  const [events, setEvents] = useState<ForgeEvent[]>([])
-  const [detailError, setDetailError] = useState<string | null>(null)
-  const [loadingDetail, setLoadingDetail] = useState(false)
+  const unreadOnly = useAppStore((state) => state.forgeInboxUnreadOnly)
+  const storedArchiveView = useAppStore((state) => state.forgeInboxArchiveView)
+  const setUnreadOnlyPreference = useAppStore((state) => state.setForgeInboxUnreadOnly)
+  const setArchiveViewPreference = useAppStore((state) => state.setForgeInboxArchiveView)
   const [reloadToken, setReloadToken] = useState(0)
-  // Why: a slower response for a previous owner, filter or item must not overwrite the current one.
+  const archiveSupported = useForgeInboxArchiveSupport(requestTarget, reloadToken)
+  const archiveView: ForgeInboxArchiveView =
+    archiveSupported === true ? storedArchiveView : 'active'
+  // Why: a slower response for a previous owner or filter must not overwrite the current one.
   const statusRequest = useRef(0)
   const listRequest = useRef(0)
-  const detailRequest = useRef(0)
 
-  const ownerHostId = status?.ownerHostId ?? null
+  // Why: the previous target's owner must not stand in while the new host answers.
+  const statusIsCurrent = statusState?.hostId === targetHostId
+  const currentStatus = statusIsCurrent ? statusState.status : null
+  const ownerHostId = currentStatus?.ownerHostId ?? null
+  const { selectedItemId, selectItem, clearSelection } = useForgeInboxSelection(
+    ownerHostId,
+    targetHostId
+  )
 
   useEffect(() => {
     const request = ++statusRequest.current
     setLoadingStatus(true)
     setStatusError(null)
-    readForgeInboxStatus()
+    readForgeInboxStatus(requestTarget)
       .then((next) => {
         if (request !== statusRequest.current) {
           return
         }
-        setStatus(next)
+        setStatusState({ hostId: targetHostId, status: next })
         setLoadingStatus(false)
       })
-      .catch((error: unknown) => {
+      .catch(() => {
         if (request !== statusRequest.current) {
           return
         }
-        setStatusError(error instanceof Error ? error.message : String(error))
+        // Why: keep a same-host status through a failed reload, but never another host's.
+        setStatusState((previous) =>
+          previous?.hostId === targetHostId ? previous : { hostId: targetHostId, status: null }
+        )
+        setStatusError(forgeGenericErrorLabel())
         setLoadingStatus(false)
       })
-  }, [reloadToken])
+  }, [requestTarget, targetHostId, reloadToken])
+
+  const {
+    projects,
+    projectFilter,
+    kindFilter,
+    handlingFilter,
+    setProjectFilter: narrowProject,
+    setKindFilter: narrowKind,
+    setHandlingFilter: narrowHandling
+  } = useForgeInboxNarrowing(ownerHostId, requestTarget, reloadToken)
 
   useEffect(() => {
+    const request = ++listRequest.current
+    setLoadingMore(false)
+    setNextCursor(null)
+    setListOwner(ownerHostId)
+    setItems([])
     if (ownerHostId === null) {
-      setItems([])
-      setNextCursor(null)
+      setLoadingItems(false)
+      setItemsError(null)
       return
     }
-    const request = ++listRequest.current
     setLoadingItems(true)
     setItemsError(null)
-    listForgeInboxItems(ownerHostId, { unreadOnly, limit: PAGE_LIMIT })
+    listForgeInboxItems(
+      ownerHostId,
+      {
+        ...listFilter(unreadOnly, archiveView, projectFilter, kindFilter, handlingFilter),
+        limit: PAGE_LIMIT
+      },
+      requestTarget
+    )
       .then((page) => {
         if (request !== listRequest.current) {
           return
@@ -98,105 +132,169 @@ export function useForgeInboxFeed(): ForgeInboxFeed {
         setNextCursor(page.nextCursor)
         setLoadingItems(false)
       })
-      .catch((error: unknown) => {
+      .catch(() => {
         if (request !== listRequest.current) {
           return
         }
-        setItemsError(error instanceof Error ? error.message : String(error))
+        setItemsError(forgeGenericErrorLabel())
         setLoadingItems(false)
       })
-  }, [ownerHostId, unreadOnly, reloadToken])
+  }, [
+    ownerHostId,
+    unreadOnly,
+    archiveView,
+    projectFilter,
+    kindFilter,
+    handlingFilter,
+    requestTarget,
+    reloadToken
+  ])
 
-  useEffect(() => {
-    if (selectedItemId === null || ownerHostId === null) {
-      setDetail(null)
-      setEvents([])
-      setDetailError(null)
-      return
-    }
-    const request = ++detailRequest.current
-    const itemId = selectedItemId
-    setLoadingDetail(true)
-    setDetailError(null)
-    void Promise.all([
-      readForgeInboxItemDetail(ownerHostId, itemId),
-      listForgeInboxEvents(ownerHostId, itemId, { limit: PAGE_LIMIT })
-    ])
-      .then(([detailResult, eventPage]) => {
-        if (request !== detailRequest.current) {
-          return
-        }
-        setDetail(detailResult.detail)
-        setEvents(eventPage.rows)
-        setLoadingDetail(false)
-        // Why: opening an item is the read mark; a failure here must not hide the loaded detail.
-        void markForgeInboxItemRead(ownerHostId, itemId)
-          .then(() => {
-            setItems((current) =>
-              current.map((item) => (item.id === itemId ? { ...item, unread: false } : item))
-            )
-          })
-          .catch(() => undefined)
-      })
-      .catch((error: unknown) => {
-        if (request !== detailRequest.current) {
-          return
-        }
-        setDetailError(error instanceof Error ? error.message : String(error))
-        setLoadingDetail(false)
-      })
-  }, [ownerHostId, selectedItemId, reloadToken])
+  const markItemRead = useCallback((itemId: number) => {
+    setItems((current) =>
+      current.map((item) => (item.id === itemId ? { ...item, unread: false } : item))
+    )
+  }, [])
+  const { detail, questions, detailError, loadingDetail, updateDetail } = useForgeInboxItemDetail({
+    ownerHostId,
+    itemId: selectedItemId,
+    targetHostId,
+    requestTarget,
+    reloadToken,
+    onMarkedRead: markItemRead
+  })
 
   const loadMore = useCallback(() => {
-    if (ownerHostId === null || nextCursor === null || loadingMore) {
+    if (
+      ownerHostId === null ||
+      ownerHostId !== listOwner ||
+      nextCursor === null ||
+      loadingItems ||
+      loadingMore
+    ) {
       return
     }
     const request = ++listRequest.current
     setLoadingMore(true)
-    listForgeInboxItems(ownerHostId, { unreadOnly, limit: PAGE_LIMIT, cursor: nextCursor })
+    listForgeInboxItems(
+      ownerHostId,
+      {
+        ...listFilter(unreadOnly, archiveView, projectFilter, kindFilter, handlingFilter),
+        limit: PAGE_LIMIT,
+        cursor: nextCursor
+      },
+      requestTarget
+    )
       .then((page) => {
         if (request !== listRequest.current) {
           return
         }
-        const known = new Set(items.map((item) => item.id))
-        setItems([...items, ...page.rows.filter((item) => !known.has(item.id))])
+        setItems((current) => {
+          const known = new Set(current.map((item) => item.id))
+          return [...current, ...page.rows.filter((item) => !known.has(item.id))]
+        })
         setNextCursor(page.nextCursor)
         setLoadingMore(false)
       })
-      .catch((error: unknown) => {
+      .catch(() => {
         if (request !== listRequest.current) {
           return
         }
-        setItemsError(error instanceof Error ? error.message : String(error))
+        setItemsError(forgeGenericErrorLabel())
         setLoadingMore(false)
       })
-  }, [items, loadingMore, nextCursor, ownerHostId, unreadOnly])
-
-  const selectItem = useCallback((itemId: number | null) => setSelectedItemId(itemId), [])
-  const setUnreadOnly = useCallback((unread: boolean) => {
-    setSelectedItemId(null)
-    setUnreadOnlyState(unread)
-  }, [])
-  const reload = useCallback(() => setReloadToken((token) => token + 1), [])
-
-  return {
-    status,
-    statusError,
-    items,
-    itemsError,
-    loadingStatus,
+  }, [
     loadingItems,
     loadingMore,
-    hasMore: nextCursor !== null,
+    nextCursor,
+    ownerHostId,
+    listOwner,
     unreadOnly,
+    archiveView,
+    projectFilter,
+    kindFilter,
+    handlingFilter,
+    requestTarget
+  ])
+
+  const setUnreadOnly = useCallback(
+    (unread: boolean) => {
+      clearSelection()
+      setUnreadOnlyPreference(unread)
+    },
+    [setUnreadOnlyPreference]
+  )
+  const setArchiveView = useCallback(
+    (view: ForgeInboxArchiveView) => {
+      clearSelection()
+      setArchiveViewPreference(view)
+    },
+    [setArchiveViewPreference]
+  )
+  const setProjectFilter = useCallback(
+    (projectId: string | null) => {
+      clearSelection()
+      narrowProject(projectId)
+    },
+    [narrowProject]
+  )
+  const setKindFilter = useCallback(
+    (kind: ForgeItemKind | null) => {
+      clearSelection()
+      narrowKind(kind)
+    },
+    [narrowKind]
+  )
+  const setHandlingFilter = useCallback(
+    (handling: ForgeItemHandlingState | null) => {
+      clearSelection()
+      narrowHandling(handling)
+    },
+    [narrowHandling]
+  )
+  const reload = useCallback(() => setReloadToken((token) => token + 1), [])
+  const setItemArchived = useForgeInboxArchiveAction({
+    ownerHostId,
+    archiveSupported,
+    archiveView,
+    requestTarget,
+    listRequest,
+    setItems,
+    updateDetail,
+    setLoadingMore,
+    setNextCursor,
+    reload
+  })
+
+  return {
+    status: currentStatus,
+    statusError: statusIsCurrent ? statusError : null,
+    items: listOwner === ownerHostId ? items : [],
+    itemsError: listOwner === ownerHostId ? itemsError : null,
+    loadingStatus,
+    loadingItems: listOwner === ownerHostId ? loadingItems : ownerHostId !== null,
+    loadingMore: listOwner === ownerHostId && loadingMore,
+    hasMore: listOwner === ownerHostId && nextCursor !== null,
+    unreadOnly,
+    archiveView,
+    archiveSupported,
+    projectFilter,
+    kindFilter,
+    handlingFilter,
+    projects,
     selectedItemId,
     detail,
-    events,
+    questions,
     detailError,
     loadingDetail,
     reload,
     loadMore,
     setUnreadOnly,
+    setArchiveView,
+    setProjectFilter,
+    setKindFilter,
+    setHandlingFilter,
+    setItemArchived,
     selectItem
   }
 }

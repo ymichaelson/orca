@@ -1,4 +1,6 @@
 import { z } from 'zod'
+import { projectEventReceiverSettingsSchema } from '../project-event-receiver-settings'
+import { projectEventDecisionSettingsSchema } from '../project-event-decision-settings'
 import { isTaskProvider } from '../task-providers'
 import type { TaskProvider } from '../task-providers'
 import { isTuiAgent } from '../tui-agent-config'
@@ -86,6 +88,8 @@ export const GitHubProjectSettings = z
 
 export const SettingsUpdate = z
   .object({
+    projectEventReceiver: projectEventReceiverSettingsSchema.optional(),
+    projectEventDecision: projectEventDecisionSettingsSchema.optional(),
     machineName: z.string().trim().max(MACHINE_NAME_MAX_LENGTH).optional(),
     worktreeVisibilityDefaults: WorktreeVisibilityDefaultsUpdate.optional(),
     defaultTuiAgent: z

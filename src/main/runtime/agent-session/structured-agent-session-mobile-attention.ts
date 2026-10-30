@@ -41,6 +41,8 @@ export type StructuredAttentionMobileDeliveryDeps = {
   /** Withdraws a notification this host delivered; a no-op for one it never sent. */
   reconcile: (state: StructuredAttentionState) => void
   now: () => number
+  /** Completions of an agent a project event dispatch started are announced by Forge, not here. */
+  forgeDispatchedAgent?: ForgeDispatchedAgentCompletion
 }
 
 export type StructuredAttentionMobileDelivery = {
@@ -99,6 +101,9 @@ export function createStructuredAttentionMobileDelivery(
         deps.isWorkspaceMuted(scope) ||
         isCoordinatorOnlyChatNews(edge, news.agentState, () => deps.readOrchestration(paneKey))
       ) {
+        return
+      }
+      if (deps.forgeDispatchedAgent?.defersToForge({ state: news.agentState, sessionId })) {
         return
       }
       const settings = deps.readNotificationSettings()!

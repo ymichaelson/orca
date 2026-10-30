@@ -27,7 +27,8 @@ import {
   type GitlabApiDeps,
   type GitlabApiRequester,
   type GitlabApiResult,
-  type GitlabApiScope
+  type GitlabApiScope,
+  type GitlabApiTextRequester
 } from './forge-inbox-gitlab-api-request'
 import { readBoundedPages } from './forge-inbox-gitlab-api-pages'
 
@@ -121,13 +122,31 @@ async function getOne<T>(
     : { ok: false, code: 'bad-response' }
 }
 
+export type GitlabApiRequesters = {
+  requester: GitlabApiRequester
+  textRequester: GitlabApiTextRequester
+  instanceRequester: GitlabApiRequester
+}
+
 export function createGitlabApiReader(deps: GitlabApiDeps, scope: GitlabApiScope): GitlabApiReader {
-  const requester = createGitlabApiRequester(deps, scope)
-  const textRequester = createGitlabApiTextRequester(deps, scope)
-  const instanceRequester = createGitlabApiInstanceRequester(deps, {
-    baseUrl: scope.baseUrl,
-    expectedConfigRevision: scope.expectedConfigRevision
-  })
+  return createGitlabApiReaderWithRequesters(
+    {
+      requester: createGitlabApiRequester(deps, scope),
+      textRequester: createGitlabApiTextRequester(deps, scope),
+      instanceRequester: createGitlabApiInstanceRequester(deps, {
+        baseUrl: scope.baseUrl,
+        expectedConfigRevision: scope.expectedConfigRevision
+      })
+    },
+    scope
+  )
+}
+
+export function createGitlabApiReaderWithRequesters(
+  requesters: GitlabApiRequesters,
+  scope: GitlabApiScope
+): GitlabApiReader {
+  const { requester, textRequester, instanceRequester } = requesters
   return {
     listRepositoryTree(ref) {
       if (!PINNED_REF.test(ref)) {

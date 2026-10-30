@@ -1,3 +1,9 @@
+import { PROJECT_EVENT_RECEIVER_LISTENER_ERROR_CODES as LISTENER_ERROR_CODES } from '../../shared/project-event-receiver-listener-error-codes'
+import {
+  normalizeProjectEventReceiverSettings,
+  receiverRequiresPlaintextAcknowledgement
+} from '../../shared/project-event-receiver-settings'
+import type { ProjectEventReceiverSettingsSource } from '../project-events/project-event-receiver-settings-source'
 import type { ForgeInboxLedger } from './forge-inbox-ledger'
 import { ForgeWebhookIngress, type ForgeWebhookIngressOptions } from './forge-inbox-webhook-ingress'
 
@@ -13,13 +19,14 @@ type Target = { host: string; port: number }
 function errorCode(error: unknown): string {
   return error instanceof Error && 'code' in error && typeof error.code === 'string'
     ? error.code
-    : 'listen-failed'
+    : LISTENER_ERROR_CODES.listenFailed
 }
 
 /** Keeps the bound socket equal to the persisted listener tuple; a bind failure never picks another port. */
 export function createForgeOwnerListener(
   ledger: ForgeInboxLedger,
-  options: ForgeWebhookIngressOptions
+  options: ForgeWebhookIngressOptions,
+  receiverSettings: ProjectEventReceiverSettingsSource | undefined
 ) {
   let ingress: ForgeWebhookIngress | null = null
   let bound: Target | null = null
@@ -40,9 +47,11 @@ export function createForgeOwnerListener(
       if (stopped) {
         return
       }
-      const { listener } = ledger.getConfig().config
+      const listener = normalizeProjectEventReceiverSettings(receiverSettings?.read())
       enabled = listener.enabled
-      const desired = enabled ? { host: listener.bindAddress, port: listener.port } : null
+      const blocked = receiverRequiresPlaintextAcknowledgement(listener)
+      const desired =
+        enabled && !blocked ? { host: listener.bindAddress, port: listener.port } : null
       const unchanged =
         desired !== null &&
         bound?.host === desired.host &&
@@ -55,7 +64,7 @@ export function createForgeOwnerListener(
       if (stopped) {
         return
       }
-      error = null
+      error = blocked ? LISTENER_ERROR_CODES.externalPlaintextNotAcknowledged : null
       if (desired === null) {
         return
       }
@@ -81,7 +90,9 @@ export function createForgeOwnerListener(
         enabled,
         listening,
         port: listening ? (live?.port ?? null) : null,
-        error: error ?? (enabled && bound !== null && !listening ? 'listener-stopped' : null)
+        error:
+          error ??
+          (enabled && bound !== null && !listening ? LISTENER_ERROR_CODES.listenerStopped : null)
       }
     },
     /** Final: a reconcile that is queued or mid-await after this can no longer bind or admit. */

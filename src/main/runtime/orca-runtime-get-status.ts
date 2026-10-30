@@ -1,5 +1,6 @@
 import { BROWSER_GOOGLE_COOKIE_CLEAR_CAPABILITY } from '../../shared/browser-runtime-capabilities'
 import { OrcaRuntimeWithPtyController } from './orca-runtime-pty-controller'
+import { PROJECT_EVENT_DECISION_SETTINGS_CAPABILITY } from '../../shared/project-event-decision-settings'
 import type { RuntimeDegradation, RuntimeStatus } from '../../shared/runtime-types'
 import {
   runtimeBrowserCommandsFactoryIsHeadless,
@@ -103,6 +104,9 @@ export abstract class OrcaRuntimeWithGetStatus extends OrcaRuntimeWithPtyControl
         (capability !== USAGE_CREDENTIALS_RUNTIME_CAPABILITY ||
           statusHost.getUsageRateLimits() !== null)
     )
+    if (this.supportsDecisionSettingsManagement() && this.forgeInboxServiceIfAttached()) {
+      capabilities.push(PROJECT_EVENT_DECISION_SETTINGS_CAPABILITY)
+    }
     if (hasOffscreen || hasHeadlessCommands) {
       capabilities.push(BROWSER_HEADLESS_RUNTIME_CAPABILITY)
     }

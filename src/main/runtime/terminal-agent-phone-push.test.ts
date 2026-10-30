@@ -8,6 +8,7 @@ import type {
   MobileNotificationEvent
 } from './runtime-mobile-notification-controller'
 import { createNotificationDeliveryService } from '../notifications/notification-delivery-service'
+import { createForgeDispatchedAgentCompletion } from '../notifications/forge-dispatched-agent-completion'
 import { TerminalAgentPhonePush } from './terminal-agent-phone-push'
 
 const WT = 'repo-1::/tmp/wt'
@@ -49,6 +50,7 @@ function harness(
     hookRow?: AgentStatusIpcPayload | null
     dispatched?: boolean
     title?: string
+    dispatchedPaneKeys?: readonly string[]
   } = {}
 ) {
   const clock = { now: 10_000 }
@@ -89,7 +91,19 @@ function harness(
       timers.push(timer)
       return { cancel: () => (timer.cancelled = true) }
     },
-    now: () => clock.now
+    now: () => clock.now,
+    ...(options.dispatchedPaneKeys
+      ? {
+          forgeDispatchedAgent: createForgeDispatchedAgentCompletion({
+            forgeInbox: () => ({
+              isDispatchedAgent: ({ terminalHandle }) =>
+                terminalHandle !== undefined && terminalHandle === `handle:${PANE}`
+            }),
+            terminalHandleForPaneKey: (paneKey) =>
+              options.dispatchedPaneKeys?.includes(paneKey) ? `handle:${paneKey}` : null
+          })
+        }
+      : {})
   })
   const advance = (ms: number): void => {
     clock.now += ms
@@ -125,6 +139,17 @@ function harness(
 const ID = `agent:${encodeURIComponent(WT)}:${encodeURIComponent(PANE)}:5000`
 
 describe('TerminalAgentPhonePush', () => {
+  it('leaves the finish of a Forge dispatched terminal to Forge, but pushes an unrelated pane', () => {
+    const dispatched = harness({ dispatchedPaneKeys: [PANE] })
+    dispatched.finish()
+    dispatched.advance(AGENT_DONE_QUIET_MS)
+    expect(dispatched.sent).toEqual([])
+
+    const unrelated = harness({ dispatchedPaneKeys: ['tab-9:other'] })
+    unrelated.finish()
+    expect(unrelated.sent).toHaveLength(1)
+  })
+
   it('pushes a finish that followed live work once its quiet window passes, worded as the window', () => {
     const { push, sent, advance, working, finish } = harness()
     working()

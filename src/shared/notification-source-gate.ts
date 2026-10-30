@@ -3,20 +3,27 @@ import type { NotificationSettings } from './notification-settings-types'
 
 type SourceGateSettings = Pick<
   NotificationSettings,
-  'enabled' | 'agentTaskComplete' | 'agentNeedsInput' | 'terminalBell' | 'forgeInboxCompletedRuns'
+  | 'enabled'
+  | 'agentTaskComplete'
+  | 'agentNeedsInput'
+  | 'terminalBell'
+  | 'forgeInbox'
+  | 'forgeInboxCompletedRuns'
 >
 
 /** Ordinary success is recorded in the Inbox; it only interrupts once completed runs are opted in. */
 function forgeInboxAllowed(
-  settings: Pick<SourceGateSettings, 'forgeInboxCompletedRuns'>,
+  settings: Pick<SourceGateSettings, 'forgeInbox' | 'forgeInboxCompletedRuns'>,
   source: string,
   subjectReason: string | undefined
 ): boolean {
-  return (
-    source !== 'forge-inbox' ||
-    subjectReason !== 'run-succeeded' ||
-    settings.forgeInboxCompletedRuns === true
-  )
+  if (source !== 'forge-inbox') {
+    return true
+  }
+  if (!settings.forgeInbox) {
+    return false
+  }
+  return subjectReason !== 'run-succeeded' || settings.forgeInboxCompletedRuns === true
 }
 
 /** The desktop's per-source preferences; paired phones receive an alert only when this allows it. */

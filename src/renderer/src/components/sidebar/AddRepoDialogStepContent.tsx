@@ -7,12 +7,18 @@ import { AddRepoLocalStartStep } from './AddRepoStartSteps'
 import { AddRepoServerPathStartStep } from './AddRepoServerStartStep'
 import { AddRepoNestedImportStep } from './AddRepoNestedImportStep'
 import type { AddRepoDialogStep } from './add-repo-dialog-types'
+import {
+  AddRepoProjectEventStep,
+  type AddRepoProjectEventStepProps
+} from './AddRepoProjectEventStep'
 import type { NestedRepoScanResult } from '../../../../shared/project-group-types'
 import type { SshConnectionState, SshTarget } from '../../../../shared/ssh-types'
 import type { GitAvailability } from './create-project-defaults'
 
 type AddRepoDialogStepContentProps = {
   step: AddRepoDialogStep
+  /** Set while a just-added Git project is held for its event agent setup. */
+  projectEventStep?: AddRepoProjectEventStepProps | null
   isRuntimeEnvironmentActive: boolean
   activeRuntimeEnvironmentId: string | null | undefined
   repoCount: number
@@ -79,6 +85,7 @@ type AddRepoDialogStepContentProps = {
 
 export function AddRepoDialogStepContent({
   step,
+  projectEventStep = null,
   isRuntimeEnvironmentActive,
   activeRuntimeEnvironmentId,
   repoCount,
@@ -146,6 +153,9 @@ export function AddRepoDialogStepContent({
     selectedHostLabel ?? null,
     onOpenRemoteStep
   )
+  if (projectEventStep) {
+    return <AddRepoProjectEventStep {...projectEventStep} />
+  }
   // Server-owned SSH hosts need their paired server; return to Start if it disappears.
   if (step === 'add' || (step === 'remote' && !serverSsh)) {
     return (

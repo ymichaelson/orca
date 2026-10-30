@@ -17,6 +17,14 @@ describe('isForgeInboxNotificationClickTarget', () => {
     expect(isForgeInboxNotificationClickTarget(valid)).toBe(true)
   })
 
+  it('accepts a project event with its trigger and refuses a non-text trigger', () => {
+    const project = { ...valid.subject, reason: 'project-event', trigger: 'push:refs/heads/a:bbbb' }
+    expect(isForgeInboxNotificationClickTarget({ ...valid, subject: project })).toBe(true)
+    expect(
+      isForgeInboxNotificationClickTarget({ ...valid, subject: { ...project, trigger: 7 } })
+    ).toBe(false)
+  })
+
   it('rejects a payload that names no openable item', () => {
     expect(isForgeInboxNotificationClickTarget(null)).toBe(false)
     expect(isForgeInboxNotificationClickTarget('forge')).toBe(false)

@@ -1,6 +1,6 @@
 import { existsSync, readFileSync } from 'node:fs'
 import { join } from 'node:path'
-import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
+import { afterEach, describe, expect, it, vi } from 'vitest'
 import {
   connectRefused,
   createOwnerFixture,
@@ -8,20 +8,32 @@ import {
   seedLedger,
   freePort,
   listenerOn,
-  postHook,
-  provision,
   type OwnerFixture
 } from '../forge-inbox/forge-inbox-owner-service-test-kit'
-import { mergeRequestHookBody } from '../forge-inbox/forge-inbox-gitlab-fake-server'
+import { createForgeProjectEventAgentLaunch } from '../forge-inbox/forge-inbox-project-event-agent-launch'
+import {
+  emptyProbe,
+  launchPorts
+} from '../forge-inbox/forge-inbox-project-event-agent-launch-test-kit'
+import {
+  createFakeTerminalRuntime,
+  PTY_A,
+  seedCommittedTerminalStop
+} from '../forge-inbox/forge-inbox-project-event-terminal-test-kit'
+import {
+  HOST_TEST_SESSION,
+  installRegistryHost,
+  openRealCancelHost
+} from '../forge-inbox/forge-inbox-project-event-run-cancel-host-kit'
+import { projectEventRunCancelRuntimeFor } from '../forge-inbox/forge-inbox-project-event-run-cancel-runtime'
+import {
+  CANCEL_MESSAGE,
+  createFakeCancelHost,
+  seedCommittedStop
+} from '../forge-inbox/forge-inbox-project-event-run-cancel-test-kit'
 import { RuntimeForgeInboxController } from '../runtime/runtime-forge-inbox-controller'
 import type { ProtectedClaudeAuthDeps } from '../claude/claude-protected-auth'
 import { startOrcadForgeInbox } from './orcad-forge-inbox'
-
-const { analysis } = vi.hoisted(() => ({ analysis: { build: vi.fn() } }))
-// Why: the real factory founds a protected Claude session; this file only proves the shell wires it.
-vi.mock('../forge-inbox/forge-inbox-analysis-runtime', () => ({
-  forgeInboxAnalysisForRuntime: analysis.build
-}))
 
 function runtimeStub(settings: ReturnType<ProtectedClaudeAuthDeps['getSettings']> = {}) {
   const controller = new RuntimeForgeInboxController()
@@ -34,7 +46,7 @@ function runtimeStub(settings: ReturnType<ProtectedClaudeAuthDeps['getSettings']
         controller.attach(service),
       stopForgeInboxService: () => controller.stopForgeInboxService(),
       dispatchMobileNotification: () => undefined,
-      requireStore: () => ({ getSettings: () => settings }),
+      requireStore: () => ({ getSettings: () => settings, getRepo: () => undefined }),
       resolveRuntimeFileTarget: async (selector: string) => ({
         worktree: { path: `/work/${selector}` },
         executionHostId: 'local' as const
@@ -48,13 +60,7 @@ describe('orcad forge inbox startup', () => {
   let fx: OwnerFixture
   afterEach(() => {
     vi.restoreAllMocks()
-    analysis.build.mockReset()
-    analysis.build.mockReturnValue(undefined)
     return fx.dispose()
-  })
-  beforeEach(() => {
-    analysis.build.mockReset()
-    analysis.build.mockReturnValue(undefined)
   })
 
   it('registers its stop before the start settles, and the stop closes the ledger', async () => {
@@ -66,6 +72,7 @@ describe('orcad forge inbox startup', () => {
     const starting = startOrcadForgeInbox({
       runtime,
       profileDirectory: fx.root,
+      receiverSettings: fx.receiverSettings,
       http: fx.gate.http,
       registerCleanup: (cleanup) => cleanups.push(cleanup)
     })
@@ -79,12 +86,86 @@ describe('orcad forge inbox startup', () => {
     expect(existsSync(join(fx.root, 'forge-inbox.db-wal'))).toBe(false)
   })
 
+  it('delivers a stop committed before the restart through the launcher it is given', async () => {
+    fx = createOwnerFixture()
+    await seedLedger(fx)
+    const { runId, operationId } = seedCommittedStop(fx.dbPath, fx.store, {
+      sessionId: HOST_TEST_SESSION
+    })
+    const journal = createFakeCancelHost()
+    journal.startTurn({ messageId: CANCEL_MESSAGE, turnId: 'turn-1' })
+    const real = await openRealCancelHost(journal)
+    const uninstall = installRegistryHost(real.host)
+    const { controller, runtime } = runtimeStub()
+    const probe = emptyProbe()
+
+    try {
+      await startOrcadForgeInbox({
+        runtime,
+        profileDirectory: fx.root,
+        receiverSettings: fx.receiverSettings,
+        http: fx.gate.http,
+        launchProjectEventAgent: (ledger) =>
+          createForgeProjectEventAgentLaunch(ledger, {
+            ...launchPorts(probe),
+            cancel: projectEventRunCancelRuntimeFor(runtime)
+          }),
+        registerCleanup: () => undefined
+      })
+      await vi.waitFor(() => expect(real.cancels).toHaveBeenCalledTimes(1))
+    } finally {
+      uninstall()
+      await controller.stopForgeInboxService()
+    }
+
+    expect(real.cancels.mock.calls[0]?.[0]).toEqual({ callerKey: `forge-dispatch:${runId}` })
+    expect(real.cancels.mock.calls[0]?.[1]).toMatchObject({
+      turnId: 'turn-1',
+      envelope: { clientOperationId: operationId }
+    })
+    expect(probe).toEqual(emptyProbe())
+    expect(fx.rows('SELECT id, state FROM runs')).toEqual([{ id: runId, state: 'unverifiable' }])
+  })
+
+  it('closes the exact terminal a committed stop names through the launcher it is given', async () => {
+    fx = createOwnerFixture()
+    await seedLedger(fx)
+    const runId = seedCommittedTerminalStop(fx.dbPath, fx.store)
+    const terminals = createFakeTerminalRuntime()
+    terminals.terminals.set('handle-1', PTY_A)
+    const { controller, runtime } = runtimeStub()
+    const probe = emptyProbe()
+
+    try {
+      await startOrcadForgeInbox({
+        runtime,
+        profileDirectory: fx.root,
+        receiverSettings: fx.receiverSettings,
+        http: fx.gate.http,
+        launchProjectEventAgent: (ledger) =>
+          createForgeProjectEventAgentLaunch(ledger, {
+            ...launchPorts(probe),
+            terminals: terminals.runtime
+          }),
+        registerCleanup: () => undefined
+      })
+      await vi.waitFor(() => expect(terminals.closes).toEqual(['handle-1']))
+    } finally {
+      await controller.stopForgeInboxService()
+    }
+
+    expect(probe).toEqual(emptyProbe())
+    expect(fx.rows('SELECT state FROM runs WHERE id = ?', runId)).toEqual([
+      { state: 'unverifiable' }
+    ])
+  })
+
   it('a shutdown during the start still closes the ledger and the listener', async () => {
     fx = createOwnerFixture()
     const port = await freePort()
     const seed = fx.service()
     await seed.start()
-    await provision(seed, listenerOn(port))
+    await fx.provision(seed, listenerOn(port))
     await seed.stop()
     const { controller, runtime } = runtimeStub()
     const cleanups: (() => void | Promise<void>)[] = []
@@ -92,6 +173,7 @@ describe('orcad forge inbox startup', () => {
     const starting = startOrcadForgeInbox({
       runtime,
       profileDirectory: fx.root,
+      receiverSettings: fx.receiverSettings,
       http: fx.gate.http,
       registerCleanup: (cleanup) => cleanups.push(cleanup)
     })
@@ -101,50 +183,6 @@ describe('orcad forge inbox startup', () => {
     expect(await connectRefused(port)).toBe(true)
     expect(existsSync(join(fx.root, 'forge-inbox.db-wal'))).toBe(false)
     expect(controller.service().status().running).toBe(false)
-  })
-
-  it('builds the analysis factory from this host runtime and runs a queued analysis', async () => {
-    const settings = { agentDefaultEnv: { claude: { ANTHROPIC_API_KEY: 'test-key' } } }
-    const { controller, runtime, sessionHost } = runtimeStub(settings)
-    const kinds: string[] = []
-    analysis.build.mockImplementation(
-      () =>
-        (ledger: { getConfig(): { configRevision: number } }) =>
-        async ({
-          run,
-          bindSession
-        }: {
-          run: { analysisKind: string }
-          bindSession: (id: string) => void
-        }) => {
-          expect(ledger.getConfig().configRevision).toBeGreaterThan(0)
-          kinds.push(run.analysisKind)
-          bindSession('session-1')
-          return { kind: 'analysed', result: { summary: 'Looks fine', concerns: [] } }
-        }
-    )
-    fx = createOwnerFixture()
-    const port = await freePort()
-
-    await startOrcadForgeInbox({
-      runtime,
-      profileDirectory: fx.root,
-      http: fx.gate.http,
-      registerCleanup: () => undefined
-    })
-    const input = analysis.build.mock.calls[0]![0]
-    expect(input.runtime.requireStore().getSettings()).toBe(settings)
-    await input.runtime.ensureStructuredAgentSessionHost()
-    expect(sessionHost).toHaveBeenCalledOnce()
-
-    await provision(controller.service(), listenerOn(port), {
-      project: { automaticAnalysis: true, agentId: 'claude', model: 'claude-test' }
-    })
-    await postHook(port, mergeRequestHookBody({ reviewers: ['me'] }), 'm-1')
-    await controller.service().settled()
-
-    expect(kinds).toEqual(['merge_request'])
-    expect(fx.rows('SELECT state FROM runs')).toEqual([{ state: 'succeeded' }])
   })
 
   it('logs a failed start, leaves the host starting, and the registered stop still resolves', async () => {
@@ -159,6 +197,7 @@ describe('orcad forge inbox startup', () => {
       startOrcadForgeInbox({
         runtime,
         profileDirectory: fx.root,
+        receiverSettings: fx.receiverSettings,
         http: fx.gate.http,
         registerCleanup: (cleanup) => cleanups.push(cleanup)
       })
@@ -181,5 +220,8 @@ describe('orcad forge inbox startup', () => {
       /await startOrcadForgeInbox\(\{[^}]*runtime,[^}]*profileDirectory,[^}]*registerCleanup[^}]*\}\)/
     )
     expect(entry).toContain('forgeInboxBusy: () => runtime.forgeInboxKeepsHostBusy()')
+    expect(entry).toContain(
+      'launchProjectEventAgent: forgeInboxProjectEventAgentLaunchForRuntime(runtime)'
+    )
   })
 })

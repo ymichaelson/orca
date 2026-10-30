@@ -1,9 +1,20 @@
 import { getSecretStore } from '../shared/secret-store'
 
+export function protectedSecretStorageAvailable(): boolean {
+  try {
+    const secrets = getSecretStore()
+    return secrets.isEncryptionAvailable() && secrets.describeProtectionGap() === null
+  } catch {
+    return false
+  }
+}
+
 export const PROTECTED_SECRET_SLOT = {
   opencodeSessionCookie: 'settings.opencodeSessionCookie',
   httpProxyUrl: 'settings.httpProxyUrl',
-  browserKagiSessionLink: 'ui.browserKagiSessionLink'
+  browserKagiSessionLink: 'ui.browserKagiSessionLink',
+  projectEventDecisionKey: 'settings.projectEventDecisionKey',
+  projectEventDecisionLayaKey: 'settings.projectEventDecisionLayaKey'
 } as const
 
 export function sshPtyOwnerLeaseSecretSlot(targetId: string): string {

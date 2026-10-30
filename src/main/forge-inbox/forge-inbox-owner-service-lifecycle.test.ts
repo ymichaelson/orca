@@ -8,18 +8,53 @@ import {
   createOwnerFixture,
   freePort,
   listenerOn,
+  postHook,
   holdRequestMidBody,
   ownerConfig,
-  postHook,
-  provision,
   type OwnerFixture
 } from './forge-inbox-owner-service-test-kit'
-import {
-  createWorkerRig,
-  mergeRequestHookBody as rigBody
-} from './forge-inbox-webhook-worker-test-kit'
 
 const tick = () => new Promise<void>((resolve) => setImmediate(resolve))
+
+function decisionGate() {
+  let started!: () => void
+  let aborted!: () => void
+  let release!: () => void
+  const requestStarted = new Promise<void>((resolve) => (started = resolve))
+  const abortObserved = new Promise<void>((resolve) => (aborted = resolve))
+  const released = new Promise<void>((resolve) => (release = resolve))
+  let calls = 0
+  return {
+    decide: async (_input: unknown, signal?: AbortSignal) => {
+      calls += 1
+      started()
+      signal?.addEventListener('abort', aborted, { once: true })
+      await released
+      return { ok: false, code: 'network' } as const
+    },
+    requestStarted,
+    abortObserved,
+    release,
+    calls: () => calls
+  }
+}
+
+const notifyDecision = () => ({
+  ok: true as const,
+  provider: 'jev' as const,
+  model: 'jev-1',
+  action: 'notify' as const,
+  confidence: 0.9,
+  probabilities: {
+    record_only: 0.02,
+    notify: 0.9,
+    wait: 0.02,
+    fetch_context: 0.02,
+    dispatch_agent: 0.02,
+    ask_user: 0.02
+  },
+  usage: { inputTokens: 12, outputTokens: 3 }
+})
 
 describe('forge inbox owner service stop and restart', () => {
   let fx: OwnerFixture
@@ -28,20 +63,19 @@ describe('forge inbox owner service stop and restart', () => {
     return fx.dispose()
   })
 
-  it('stops admission, then aborts API work, then waits for the worker before closing the ledger', async () => {
+  it('stops admission, then aborts the decision request, then waits for it before closing the ledger', async () => {
     fx = createOwnerFixture()
     const port = await freePort()
-    const service = fx.service()
+    const gate = decisionGate()
+    const service = fx.service({ decideProjectEvent: gate.decide })
     await service.start()
-    await provision(service, listenerOn(port))
-    fx.gate.hold()
-    fx.gate.delayAbortCompletion()
+    await fx.provision(service, listenerOn(port))
     await postHook(port, mergeRequestHookBody({ reviewers: ['me'] }), 'm-1')
-    await fx.gate.requestBlocked()
+    await gate.requestStarted
 
     let stopped = false
     const stopping = service.stop().then(() => (stopped = true))
-    await fx.gate.abortObserved()
+    await gate.abortObserved
 
     expect(await connectRefused(port)).toBe(true)
     for (let i = 0; i < 5; i++) {
@@ -50,7 +84,7 @@ describe('forge inbox owner service stop and restart', () => {
     expect(stopped).toBe(false)
     expect(existsSync(`${fx.dbPath}-wal`)).toBe(true)
 
-    fx.gate.releaseAbortedRequests()
+    gate.release()
     await stopping
 
     expect(service.status().running).toBe(false)
@@ -63,26 +97,23 @@ describe('forge inbox owner service stop and restart', () => {
   it('leaves no wal file behind and fires nothing after stop, and the data reopens intact', async () => {
     fx = createOwnerFixture()
     const port = await freePort()
-    const first = fx.service()
+    const gate = decisionGate()
+    const first = fx.service({ decideProjectEvent: gate.decide })
     await first.start()
-    await provision(first, listenerOn(port))
-    fx.gate.hold()
-    fx.gate.delayAbortCompletion()
+    await fx.provision(first, listenerOn(port))
     await postHook(port, mergeRequestHookBody({ reviewers: ['me'] }), 'm-1')
-    await fx.gate.requestBlocked()
+    await gate.requestStarted
     const stopping = first.stop()
-    await fx.gate.abortObserved()
-    fx.gate.releaseAbortedRequests()
+    await gate.abortObserved
+    gate.release()
     await stopping
-    const requestsAtStop = fx.gitlab.requests.length
+    const requestsAtStop = gate.calls()
 
-    fx.gate.release()
     await tick()
-    expect(fx.gitlab.requests).toHaveLength(requestsAtStop)
+    expect(gate.calls()).toBe(requestsAtStop)
     expect(existsSync(`${fx.dbPath}-wal`)).toBe(false)
 
-    // The cancelled row keeps a durable 30s lease, so the reopened service runs past it.
-    const second = fx.service({ now: () => Date.now() + 60_000 })
+    const second = fx.service({ decideProjectEvent: async () => notifyDecision() })
     await second.start()
     await second.settled()
 
@@ -95,7 +126,7 @@ describe('forge inbox owner service stop and restart', () => {
     fx = createOwnerFixture()
     const seeded = fx.service()
     await seeded.start()
-    await provision(seeded, { enabled: false, bindAddress: '127.0.0.1', port: await freePort() })
+    await fx.provision(seeded, { enabled: false, bindAddress: '127.0.0.1', port: await freePort() })
     await seeded.stop()
     const damage = new Database(fx.dbPath)
     damage.prepare("UPDATE meta SET value = 'not json' WHERE key = 'config_json'").run()
@@ -114,22 +145,26 @@ describe('forge inbox owner service stop with a listener that is slow to close',
   let fx: OwnerFixture
   afterEach(() => fx.dispose())
 
-  it('cancels the worker without waiting for the listener to finish closing', async () => {
+  it('cancels the decision request without waiting for the listener to finish closing', async () => {
     fx = createOwnerFixture()
     const port = await freePort()
-    const service = fx.service({ ingress: { requestDeadlineMs: 30_000, shutdownGraceMs: 20_000 } })
+    const gate = decisionGate()
+    const service = fx.service({
+      ingress: { requestDeadlineMs: 30_000, shutdownGraceMs: 20_000 },
+      decideProjectEvent: gate.decide
+    })
     await service.start()
-    await provision(service, listenerOn(port))
-    fx.gate.hold()
+    await fx.provision(service, listenerOn(port))
     await postHook(port, mergeRequestHookBody({ reviewers: ['me'] }), 'm-1')
-    await fx.gate.requestBlocked()
+    await gate.requestStarted
     // Provably in flight: the server has already answered 100 Continue for this request.
     const slow = await holdRequestMidBody(port, 'm-2')
 
     const stopping = service.stop()
     try {
-      await fx.gate.abortObserved()
+      await gate.abortObserved
     } finally {
+      gate.release()
       slow.release()
     }
     await stopping
@@ -141,20 +176,17 @@ describe('forge inbox owner service start racing stop', () => {
   let fx: OwnerFixture
   afterEach(() => fx.dispose())
 
-  it('returns the committed config result when stop lands during the reconcile', async () => {
+  it('finishes a receiver reconcile without binding when stop wins', async () => {
     fx = createOwnerFixture()
     const service = fx.service()
     await service.start()
     const port = await freePort()
     await service.updateConfig(0, ownerConfig({ enabled: false, bindAddress: '127.0.0.1', port }))
 
-    const updating = service.updateConfig(
-      service.getConfig().configRevision,
-      ownerConfig(listenerOn(port))
-    )
+    const updating = fx.configureReceiver(service, listenerOn(port))
     const stopping = service.stop()
 
-    await expect(updating).resolves.toMatchObject({ ok: true })
+    await expect(updating).resolves.toBeUndefined()
     await expect(stopping).resolves.toBeUndefined()
     expect(await connectRefused(port)).toBe(true)
   })
@@ -178,7 +210,7 @@ describe('forge inbox owner service start racing stop', () => {
     fx = createOwnerFixture()
     const seeded = fx.service()
     await seeded.start()
-    await provision(seeded, { enabled: false, bindAddress: '127.0.0.1', port: await freePort() })
+    await fx.provision(seeded, { enabled: false, bindAddress: '127.0.0.1', port: await freePort() })
     await seeded.stop()
     const damage = new Database(fx.dbPath)
     damage.prepare("UPDATE meta SET value = 'not json' WHERE key = 'config_json'").run()
@@ -204,73 +236,50 @@ describe('forge inbox owner service start racing stop', () => {
 })
 
 describe('forge inbox owner service retry scheduling', () => {
-  let rig: ReturnType<typeof createWorkerRig>
-  afterEach(() => {
+  let fx: OwnerFixture | undefined
+  afterEach(async () => {
     vi.useRealTimers()
-    rig.dispose()
-  })
-
-  it('keeps draining a backlog beyond one batch without waiting for a timer', async () => {
-    rig = createWorkerRig()
-    for (let i = 0; i < 101; i++) {
-      rig.admit('push', null, JSON.stringify({ object_kind: 'push' }))
-    }
-    rig.ledger.close()
-    const { createForgeInboxOwnerService } = await import('./forge-inbox-owner-service')
-    const service = createForgeInboxOwnerService({
-      dbPath: rig.harness.dbPath,
-      http: { fetch: (url) => rig.gitlab.fetch(url) },
-      secretStore: rig.harness.store
-    })
-
-    await service.start()
-    await service.settled()
-
-    expect(service.status().work.pending).toBe(0)
-    await service.stop()
+    await fx?.dispose()
+    fx = undefined
   })
 
   it('retries at the persisted next_attempt_at, also after the service is reopened', async () => {
+    fx = createOwnerFixture()
+    const port = await freePort()
+    let requests = 0
+    const first = fx.service({
+      decideProjectEvent: async () => {
+        requests += 1
+        return { ok: false, code: 'network' }
+      }
+    })
+    await first.start()
+    await fx.provision(first, listenerOn(port))
     vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout', 'Date'] })
     vi.setSystemTime(new Date('2026-10-22T00:00:00.000Z'))
-    rig = createWorkerRig({ apiToken: null })
-    rig.writeApiToken('glpat-service-read')
-    rig.admit('merge_request', rigBody({ reviewers: ['me'] }))
-    rig.ledger.close()
-    rig.gitlab.state.override = () => new Response('{}', { status: 500 })
-    const open = () =>
-      import('./forge-inbox-owner-service').then(({ createForgeInboxOwnerService }) =>
-        createForgeInboxOwnerService({
-          dbPath: rig.harness.dbPath,
-          http: { fetch: (url) => rig.gitlab.fetch(url) },
-          secretStore: rig.harness.store
-        })
-      )
-
-    const first = await open()
-    await first.start()
+    await postHook(port, mergeRequestHookBody({ reviewers: ['me'] }), 'retry')
     await first.settled()
-    const afterFailure = rig.gitlab.requests.length
+    const afterFailure = requests
     expect(afterFailure).toBeGreaterThan(0)
-    const [row] = new Database(rig.harness.dbPath)
-      .prepare('SELECT next_attempt_at FROM webhook_deliveries')
-      .all()
+    const [row] = fx.rows('SELECT next_attempt_at FROM webhook_deliveries')
     const retryAt = Number(row.next_attempt_at)
     expect(retryAt).toBeGreaterThan(Date.now())
     await first.stop()
 
-    rig.gitlab.state.override = () => null
-    const second = await open()
+    const second = fx.service({
+      decideProjectEvent: async () => {
+        requests += 1
+        return notifyDecision()
+      }
+    })
     await second.start()
     await second.settled()
     await vi.advanceTimersByTimeAsync(retryAt - Date.now() - 1)
-    expect(rig.gitlab.requests).toHaveLength(afterFailure)
+    expect(requests).toBe(afterFailure)
     await vi.advanceTimersByTimeAsync(1)
     await second.settled()
 
-    const check = new Database(rig.harness.dbPath)
-    expect(check.prepare('SELECT iid FROM items').all()).toHaveLength(1)
-    check.close()
+    expect(fx.items()).toHaveLength(1)
     await second.stop()
   })
 })

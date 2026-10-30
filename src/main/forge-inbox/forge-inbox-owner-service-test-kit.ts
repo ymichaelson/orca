@@ -1,10 +1,15 @@
-import http from 'node:http'
-import net from 'node:net'
 import { mkdtempSync, rmSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import Database from '../sqlite/sync-database'
+import { normalizeProjectEventReceiverSettings } from '../../shared/project-event-receiver-settings'
+import { createReceiverSettingsFixture } from '../project-events/project-event-receiver-settings-test-fixture'
 import { createFakeGitlab, type FakeGitlab } from './forge-inbox-gitlab-fake-server'
+import {
+  ensureOwnerFixtureBinding,
+  HOOK_PATH,
+  PROJECT_EVENT_BINDING_ID
+} from './forge-inbox-owner-fixture-binding'
 import { createForgeInboxOwnerService } from './forge-inbox-owner-service'
 import {
   fakeSecretStore,
@@ -22,8 +27,8 @@ import {
 } from './forge-inbox-owner-service-test-ports'
 
 export { connectRefused, freePort, holdPort, openIdleSocket }
+export { HOOK_PATH, PROJECT_EVENT_BINDING_ID }
 
-export const HOOK_PATH = `/webhooks/gitlab/${INSTANCE_ID}`
 export const API_READ_TOKEN = 'glpat-owner-read'
 
 type OwnerService = ReturnType<typeof createForgeInboxOwnerService>
@@ -68,51 +73,9 @@ export function ownerConfig(
   )
 }
 
-export function hookHeaders(
-  id: string,
-  token = WEBHOOK_TOKEN,
-  event = 'Merge Request Hook'
-): Record<string, string> {
-  return {
-    'content-type': 'application/json',
-    'x-gitlab-token': token,
-    'x-gitlab-event': event,
-    'webhook-id': id,
-    'x-gitlab-webhook-uuid': 'cfg-1',
-    'x-gitlab-event-uuid': `evt-${id}`
-  }
-}
+import { hookHeaders, holdRequestMidBody, postHook } from './forge-inbox-owner-hook-request'
 
-export function postHook(
-  port: number,
-  body: unknown,
-  id: string,
-  token = WEBHOOK_TOKEN,
-  event = 'Merge Request Hook'
-): Promise<{ status: number; text: string }> {
-  return new Promise((resolve, reject) => {
-    const req = http.request(
-      {
-        host: '127.0.0.1',
-        port,
-        path: HOOK_PATH,
-        method: 'POST',
-        headers: hookHeaders(id, token, event),
-        agent: false
-      },
-      (res) => {
-        const chunks: Buffer[] = []
-        res.on('data', (chunk: Buffer) => chunks.push(chunk))
-        res.on('end', () =>
-          resolve({ status: res.statusCode ?? 0, text: Buffer.concat(chunks).toString('utf8') })
-        )
-      }
-    )
-    req.on('error', reject)
-    req.end(JSON.stringify(body))
-  })
-}
-
+export { hookHeaders, holdRequestMidBody, postHook }
 /** Fake GitLab transport that can hold requests open and honours the caller's abort signal. */
 export function createGateHttp(gitlab: FakeGitlab) {
   let held = false
@@ -178,8 +141,32 @@ export function createOwnerFixture() {
   const gitlab = createFakeGitlab()
   const gate = createGateHttp(gitlab)
   const services: OwnerService[] = []
+  const receiverSettings = createReceiverSettingsFixture()
+  let bindingReady = false
+  const ensureBinding = (): void => {
+    if (bindingReady) {
+      return
+    }
+    ensureOwnerFixtureBinding(dbPath, store)
+    bindingReady = true
+  }
   return {
     root,
+    receiverSettings,
+    async configureReceiver(service: OwnerService, listener: Record<string, unknown>) {
+      receiverSettings.update(normalizeProjectEventReceiverSettings(listener))
+      await service.reconcileReceiverSettings()
+    },
+    async provision(
+      service: OwnerService,
+      listener: Record<string, unknown>,
+      options: { apiRead?: string | null; project?: Record<string, unknown> } = {}
+    ) {
+      await provision(service, listener, options)
+      ensureBinding()
+      receiverSettings.update(normalizeProjectEventReceiverSettings(listener))
+      await service.reconcileReceiverSettings()
+    },
     dbPath,
     store,
     gitlab,
@@ -189,6 +176,7 @@ export function createOwnerFixture() {
         dbPath,
         http: gate.http,
         secretStore: store,
+        receiverSettings,
         ingress: { requestDeadlineMs: 30_000, shutdownGraceMs: 200 },
         ...options
       })
@@ -263,7 +251,7 @@ export async function seedLedger(
   const port = await freePort()
   const seed = fx.service()
   await seed.start()
-  await provision(seed, listener ?? { enabled: false, bindAddress: '127.0.0.1', port })
+  await fx.provision(seed, listener ?? { enabled: false, bindAddress: '127.0.0.1', port })
   await seed.stop()
   return { port }
 }
@@ -273,35 +261,4 @@ export function damageLedger(fx: OwnerFixture): void {
   const damage = new Database(fx.dbPath)
   damage.prepare("UPDATE meta SET value = 'not json' WHERE key = 'config_json'").run()
   damage.close()
-}
-
-/**
- * Opens an authenticated hook request whose body never arrives. Resolves only once the server
- * has answered `100 Continue`, i.e. after it began handling the request, so the request is
- * provably in flight rather than still in the accept queue.
- */
-export async function holdRequestMidBody(
-  port: number,
-  id: string
-): Promise<{ release: () => void }> {
-  const socket = net.connect({ host: '127.0.0.1', port })
-  socket.on('error', () => undefined)
-  const headers = Object.entries({
-    ...hookHeaders(id),
-    host: 'forge-test',
-    expect: '100-continue',
-    'content-length': '1000'
-  })
-    .map(([name, value]) => `${name}: ${value}`)
-    .join('\r\n')
-  await new Promise<void>((resolve, reject) => {
-    socket.once('connect', () => socket.write(`POST ${HOOK_PATH} HTTP/1.1\r\n${headers}\r\n\r\n`))
-    socket.on('data', (chunk: Buffer) => {
-      if (chunk.toString('latin1').startsWith('HTTP/1.1 100')) {
-        resolve()
-      }
-    })
-    socket.once('close', () => reject(new Error('closed before 100 Continue')))
-  })
-  return { release: () => socket.destroy() }
 }

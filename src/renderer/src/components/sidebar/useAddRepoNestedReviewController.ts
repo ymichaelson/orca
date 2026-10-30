@@ -1,11 +1,10 @@
 import type { Dispatch, SetStateAction } from 'react'
-import type { AddRepoExistingWorkspaceSource } from '../../../../shared/telemetry-events'
 import type { ProjectGroupImportResult } from '../../../../shared/project-group-types'
 import type { WorktreeFetchOptions } from '@/store/slices/worktree-helpers'
 import { useAddRepoNestedImportFlow } from './useAddRepoNestedImportFlow'
 import { useAddRepoNestedReviewState } from './useAddRepoNestedReviewState'
 import type { AddRepoDialogStep } from './add-repo-dialog-types'
-import type { ExecutionHostId } from '../../../../shared/execution-host'
+import type { GitRepoBatchHandoff } from './use-add-repo-project-event-setup'
 
 export function useAddRepoNestedReviewController({
   activeRuntimeEnvironmentId,
@@ -13,7 +12,7 @@ export function useAddRepoNestedReviewController({
   closeModal,
   fetchWorktrees,
   importNestedRepos,
-  onGitRepoReady,
+  onGitRepoBatchReady,
   setIsAdding,
   setStep,
   reviewRuntimeEnvironmentId
@@ -35,11 +34,7 @@ export function useAddRepoNestedReviewController({
     runtimeEnvironmentId: string | null
     mode: 'group' | 'separate'
   }) => Promise<ProjectGroupImportResult | null>
-  onGitRepoReady: (
-    repoId: string,
-    source: AddRepoExistingWorkspaceSource,
-    executionHostId?: ExecutionHostId
-  ) => Promise<void>
+  onGitRepoBatchReady: (handoff: GitRepoBatchHandoff) => Promise<void>
   setIsAdding: (isAdding: boolean) => void
   setStep: Dispatch<SetStateAction<AddRepoDialogStep>>
 }): ReturnType<typeof useAddRepoNestedReviewState> &
@@ -60,7 +55,7 @@ export function useAddRepoNestedReviewController({
     closeModal,
     fetchWorktrees,
     importNestedRepos,
-    onGitRepoReady,
+    onGitRepoBatchReady,
     setIsAdding,
     nestedAttemptId: review.nestedAttemptId,
     nestedScan: review.nestedScan,

@@ -76,6 +76,38 @@ describe('gitlab client — MR operations', () => {
       })
     })
 
+    it('keeps hosts glab printed when another configured host fails', async () => {
+      glabExecFileAsyncMock.mockRejectedValueOnce(
+        Object.assign(new Error('Command failed: glab auth status'), {
+          stdout: '✓ Logged in to gitlab.test:8929 as root (oauth_token)\n',
+          stderr: 'x gitlab.com\n  X API call failed: 401 Unauthorized\n'
+        })
+      )
+
+      await expect(diagnoseAuth()).resolves.toMatchObject({
+        glabAvailable: true,
+        authenticated: true,
+        hosts: ['gitlab.test:8929'],
+        activeHost: 'gitlab.test:8929'
+      })
+    })
+
+    it('reports no host when glab printed none', async () => {
+      glabExecFileAsyncMock.mockRejectedValueOnce(
+        Object.assign(new Error('Command failed: glab auth status'), {
+          stdout: '',
+          stderr: 'Not logged in to any GitLab hosts.\n'
+        })
+      )
+
+      await expect(diagnoseAuth()).resolves.toMatchObject({
+        glabAvailable: true,
+        authenticated: false,
+        hosts: [],
+        activeHost: null
+      })
+    })
+
     it('merges many authenticated hosts with one cache scan', async () => {
       const hostCount = 256
       glabExecFileAsyncMock.mockResolvedValueOnce({

@@ -287,9 +287,7 @@ export abstract class OrcaRuntimeWithPreservedBranchCleanup extends OrcaRuntimeW
     invalidateWorktreeScan: (repoId) => this.invalidateWorktreeScanCacheForRepo(repoId),
     notifyReposChanged: () => this.notifyReposChanged(),
     countLiveTerminalsForRepo: (repo) =>
-      countRepoTerminalsNotKnownExited(repo, this.ptysById.values(), (ptyId) =>
-        this.isPtyKnownExited(ptyId)
-      )
+      countRepoTerminalsNotKnownExited(repo, this.ptysById.values(), (ptyId) => this.isPtyKnownExited(ptyId))
   })
 
   protected readonly projectGroups = new RuntimeProjectGroupController({
@@ -340,7 +338,8 @@ export abstract class OrcaRuntimeWithPreservedBranchCleanup extends OrcaRuntimeW
     resolveRepo: (selector) => this.resolveRepoSelector(selector),
     forgetTerminalTopology: (repoId) => this.terminalTopologyRevisionByRepoId.delete(repoId),
     stopProjectTerminals: (repo, options) => this.stopTerminalsForProject(repo, options),
-    notifyWorktreesChanged: (repoId, options) => this.notifyWorktreesChanged(repoId, options)
+    notifyWorktreesChanged: (repoId, options) => this.notifyWorktreesChanged(repoId, options),
+    releaseProjectEvents: (repo) => this.forgeInbox.removeProjectEvent(repo.id)
   })
 
   protected readonly repositorySparsePresets = new RuntimeRepositorySparsePresets({

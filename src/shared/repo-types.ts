@@ -62,6 +62,11 @@ export type Repo = {
   issueSourcePreference?: IssueSourcePreference
   /** Host-owned Jira project default; users can override it in each composer. */
   defaultJiraProject?: JiraProjectReference | null
+  /**
+   * GitLab project the user typed for a folder workspace's event binding (`group/proj` or URL).
+   * The chat host parses it at bind time; a folder has no remote to infer one from.
+   */
+  projectEventGitlabProject?: string | null
   /** Bind host/login only; resolve a short-lived gh token at spawn and inject into that child’s environment. */
   ghAccount?: GhAccountBinding
   /** Controls Orca's fork-default-branch sync offer for repos with upstream metadata. */

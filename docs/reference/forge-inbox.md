@@ -1,12 +1,39 @@
-# GitLab inbox: deployment, permissions and limits
+# GitLab inbox: historical implementation reference
 
-The inbox (`src/main/forge-inbox/`, shared types in `src/shared/forge-inbox-*.ts`) turns GitLab
-webhooks for selected projects into a durable, host-owned inbox: an event is admitted, analysed by a
-read-only agent, discussed in the session that produced the analysis, and — only after a human
-approves one exact draft — published back to GitLab by the host. This page is what an operator needs
-to deploy it and what they must not expect from it.
+> **Historical reference — not deployment or security guidance for the project-event redesign.**
+> Except for the explicitly current RPC note below, this page describes an earlier implementation,
+> including manual instance credentials, protected read-only analysis and approval flows. Those claims
+> must not be used to deploy or assess the redesign. The redesign uses execution-host `glab`
+> authentication, automatic project webhook registration and the selected Agent's existing
+> permissions; it is not a read-only sandbox. Implementation and acceptance are still in progress.
+> The local working documents `docs/project-event-agent-redesign.md`,
+> `docs/project-event-agent-progress.md`, and `docs/reference/project-event-agent.md` describe the
+> redesign and its remaining boundaries; they may be absent from a checkout.
 
-## Where it runs
+The earlier inbox (`src/main/forge-inbox/`, shared types in `src/shared/forge-inbox-*.ts`) admitted
+GitLab webhooks into a host-owned ledger and used a read-only analysis and approval workflow. The
+following historical sections record that design; they do not describe current operating instructions.
+
+## Current RPC retirement and owner discovery
+
+`forgeInbox.getConfig`, `forgeInbox.updateConfig`, `forgeInbox.setCredential`, and
+`forgeInbox.clearCredential` are removed from the current server. An otherwise authorized old caller
+receives `method_not_found`; mobile callers remain subject to the mobile allowlist before method
+lookup and receive `forbidden`. Do not use these methods to configure a host. Use the current
+project-event settings UI for configuration and `forgeInbox.getStatus` to discover the selected
+owner; route subsequent requests to that owner, without falling back to the local inbox.
+
+Current `forgeInbox` read, stream, receiver, project-event policy and question handlers declare
+`workspace` permission. Paired desktop callers have the standard runtime permissions; the mobile
+allowlist contains no `forgeInbox.*` methods. These statements describe registered source methods,
+not an acceptance claim for every client or platform.
+
+## Historical design (not current deployment guidance)
+
+All sections below record the earlier implementation and may describe removed APIs, outdated
+capabilities or obsolete safety behavior. They are not a current operations or validation checklist.
+
+### Where it ran
 
 - One owner service per Orca profile. Its ledger is `<profile>/forge-inbox.db`, opened at runtime
   start when the file already exists, otherwise on the first config or credential write and then
@@ -26,9 +53,9 @@ to deploy it and what they must not expect from it.
 
 ## Registering the webhook in GitLab
 
-1. Enable the listener in Orca first — Settings inside the inbox page ("Back to inbox" returns), or
-   `forgeInbox.updateConfig`. Defaults: `enabled: false`, `bindAddress: 127.0.0.1`, `port: 7421`.
-   It stays off until you turn it on.
+1. The earlier implementation enabled the listener through inbox settings or the now-removed
+   `forgeInbox.updateConfig` RPC. Its defaults were `enabled: false`, `bindAddress: 127.0.0.1`,
+   and `port: 7421`; this is not a current setup procedure.
 2. In the GitLab project, add a webhook with URL
    `http://<orca-host>:7421/webhooks/gitlab/<instanceId>`. `<instanceId>` is the id you configured
    (`^[a-z0-9][a-z0-9-]{0,62}$`); the route only accepts that shape and only `POST`.
@@ -136,6 +163,35 @@ protected session is being founded — it does not silently fall back to an ordi
 it does not fall back to a non-protected Claude launch. An `automaticAnalysis` project without both
 `agentId` and `model` cannot be saved at all.
 
+## Changing a project's policy while an agent is dispatched
+
+Changing a project's rules, Agent or model, or disabling it, revokes the dispatches those settings
+produced. The change and the request to stop a still-running dispatch commit in one transaction, so
+a crash cannot keep one without the other. Event and budget edits do not stop a running agent.
+
+- A launch that is still resolving a workspace, creating a session or preparing a terminal re-checks
+  the policy generation, the run and its own lifetime before each effect. A revoked launch sends no
+  prompt and starts no terminal; a session it already created stays recorded on the run.
+- A request to stop is delivered to the host that owns the session as that host's own Stop, naming
+  the run's exact dispatched turn, at the session's current fence, under a durable operation id.
+  The host accepting the request is a receipt, not proof: the run stays `running` (shown as
+  "Stopping") until that turn's own proof settles it as cancelled, failed or succeeded. A refused or
+  unreachable stop is shown as "Stop not confirmed"; nothing a stopped agent already did on GitLab is
+  undone.
+- After a restart or a host replacement the stop is re-asked of the current host. Nothing is
+  relaunched or re-sent.
+- A terminal-launched agent has no turn to name. Its launch records the exact PTY (handle, PTY id,
+  incarnation, execution host) and Orca waits on that PTY's exit through the runtime's own wait. A
+  stop closes it through the runtime's own close, after the wait exists and only on a terminal that
+  a non-spawning listing still shows with the same PTY, incarnation and host; anything else is
+  reported as not confirmed and nothing is closed. Only an `exited` wait is an exit, and the exit
+  code or signal is kept as a process fact: the run stays unverifiable and its GitLab effects are
+  closed as unconfirmable, because a process ending says nothing about what the agent did.
+- Each dispatch also keeps the Agent and requested model (or "Agent default") it was dispatched
+  with. They never follow a later policy change. The actual model is stored only when the runtime
+  itself had already reported one for a structured session; it is never read from a catalog or
+  probed for, and a terminal dispatch has none.
+
 ## Approvals and writes
 
 - A pending proposal is bound to the exact draft hash, the proposal revision, the policy generation
@@ -151,25 +207,12 @@ it does not fall back to a non-protected Claude launch. An `automaticAnalysis` p
   that marker instead of posting again. A publish that cannot be confirmed is reported as such, not
   retried blindly.
 
-## Permissions
+## Historical permissions
 
-| RPC method                                                                                                | Permission                      | What it can do                                                    |
-| --------------------------------------------------------------------------------------------------------- | ------------------------------- | ----------------------------------------------------------------- |
-| `forgeInbox.getStatus`, `getConfig`, `listItems`, `getItemDetail`, `listRuns`, `listEvents`, `getChanges` | `workspace`                     | Read                                                              |
-| `forgeInbox.markRead`, `ackChanges`, `subscribeChanges`, `unsubscribeChanges`                             | `workspace`                     | Local read state / stream only                                    |
-| `forgeInbox.getProposal`, `rejectProposal`, `discuss`                                                     | `workspace`                     | Read the exact draft, local rejection, continue the owner session |
-| `forgeInbox.updateProjectPolicy`                                                                          | `workspace`                     | Per-project policy for an existing project                        |
-| `forgeInbox.approveComment`                                                                               | `host-admin`                    | Reaches GitLab with the host's write credential                   |
-| `forgeInbox.updateConfig`, `setCredential`, `clearCredential`                                             | `host-admin` / `accounts-admin` | Listener, instances, secrets                                      |
-
-A paired desktop holds the standard runtime permissions and therefore can manage the feature. The
-mobile allowlist contains no `forgeInbox.*` method, so a phone cannot read the inbox, fetch a
-proposal, or approve one. Forge attention notices do still fan out through the existing notification
-channel (including phone push where that channel is configured), as a summary with a navigation
-target — not as an approval surface. Adding mobile access is a separate, explicit change.
-
-There is deliberately no RPC that returns a secret. `forgeInbox.getConfig` is a `workspace`-scope
-read and carries presence, kind and protection status only — never secret bytes.
+The earlier implementation exposed configuration and credential management and an approval RPC.
+Those management methods and the proposal, discussion and approval RPCs described above are retired;
+they are not current deployment interfaces. For current caller permissions and admission order, see
+[Current RPC retirement and owner discovery](#current-rpc-retirement-and-owner-discovery).
 
 ## Upgrade, downgrade and data safety
 
@@ -188,7 +231,11 @@ read and carries presence, kind and protection status only — never secret byte
   refuses structured-chat replay/subscribe — so that build cannot use structured chats on this
   profile until it is updated. Nothing is destroyed, and updating again restores normal operation.
 
-## Validation status
+## Historical validation record
+
+These results concern the earlier implementation and do not establish acceptance of the current
+project-event redesign. The described old UI evidence spec and screenshot locations may no longer
+exist or cover those workflows.
 
 | Area                                                        | Status                                                                                                                                                                                                                                                                                                                                                                                                        |
 | ----------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |

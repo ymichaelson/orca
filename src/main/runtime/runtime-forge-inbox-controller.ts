@@ -27,6 +27,14 @@ export class RuntimeForgeInboxController {
     return this.attached
   }
 
+  /** Repo removal must never fail on GitLab: the owner reports the failure and keeps a retryable row. */
+  async removeProjectEvent(repoId: string): Promise<void> {
+    const result = await this.attached?.removeProjectEvent(repoId)
+    if (result && !result.ok) {
+      console.warn('[runtime] project event hook cleanup failed', result.code)
+    }
+  }
+
   /** Busy on enabled listener intent (even if the bind failed) or work in flight; parked and finished rows are not work. A pending retry keeps an orcad host alive until its attempt bound. */
   keepsHostBusy(): boolean {
     const service = this.attached

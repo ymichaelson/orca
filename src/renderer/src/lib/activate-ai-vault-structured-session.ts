@@ -120,3 +120,15 @@ function presentDesktopStructuredSession(
     }
   }
 }
+
+/** The reveal for a surface that holds only a session id; the host's own record names the workspace. */
+export async function revealStructuredSessionOnHost(
+  sessionId: string,
+  host: RuntimeClientTarget
+): Promise<{ outcome: StructuredSessionRevealOutcome; workspaceId: string | null }> {
+  const result = await revealStructuredSession({ sessionId, worktreeId: '', target: host })
+  if (typeof result === 'string') {
+    return { outcome: result, workspaceId: null }
+  }
+  return { outcome: 'revealed', workspaceId: result.worktreeId }
+}

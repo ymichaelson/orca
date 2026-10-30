@@ -49,7 +49,7 @@ describe('forge inbox owner service with no ledger file', () => {
     expect(ledgerFiles(fx)).toEqual([false, false, false])
   })
 
-  it('opens on the first config write, applies it to the listener, and keeps the same host id', async () => {
+  it('opens on the first config write without enabling the global receiver and keeps the same host id', async () => {
     fx = createOwnerFixture()
     const port = await freePort()
     const service = fx.service()
@@ -60,7 +60,8 @@ describe('forge inbox owner service with no ledger file', () => {
 
     expect(result.ok).toBe(true)
     expect(existsSync(fx.dbPath)).toBe(true)
-    expect(service.status().listener).toMatchObject({ enabled: true, listening: true, port })
+    expect(service.status().listener).toMatchObject({ enabled: false, listening: false })
+    expect(await connectRefused(port)).toBe(true)
     expect(service.getConfig().hostId).toBe(before.hostId)
   })
 
@@ -91,7 +92,8 @@ describe('forge inbox owner service with no ledger file', () => {
     ])
 
     expect([a.ok, b.ok].sort()).toEqual([false, true])
-    expect(service.status().listener.listening).toBe(true)
+    expect(service.status().listener.listening).toBe(false)
+    expect(await connectRefused(port)).toBe(true)
   })
 
   it('leaves no file or listener when a stop lands during the first open', async () => {

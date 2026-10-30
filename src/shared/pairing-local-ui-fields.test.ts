@@ -1,7 +1,35 @@
 import { describe, expect, it } from 'vitest'
-import { omitPairingLocalUiFields } from './pairing-local-ui-fields'
+import { omitPairingLocalUiFields, PAIRING_LOCAL_UI_FIELDS } from './pairing-local-ui-fields'
 
 describe('pairing-local UI fields', () => {
+  // Why a census: the seams that honor this set are spread across the host RPC and the web
+  // preload, so a field added here without wiring every seam would otherwise ship silently.
+  it('census: the set is exactly the fields no pairing may exchange', () => {
+    expect([...PAIRING_LOCAL_UI_FIELDS]).toEqual([
+      'automationHostFilter',
+      'hideWorkspacesFromOtherDevices',
+      'manualRepoOrder',
+      'workspaceHostOrder',
+      'sidebarOpen',
+      'showAgentModels',
+      'agentsVisibleHostIds',
+      'agentsFilterRepoIds',
+      'agentsHideWorkspacesFromOtherDevices',
+      'agentsHideAutomationGeneratedWorkspaces',
+      'agentsHideCliCreatedWorkspaces',
+      'agentsShowChildAgents',
+      'agentsCompactMode',
+      'agentsShowSearch',
+      'agentsReadFilter',
+      'agentsGroupBy',
+      'forgeInboxUnreadOnly',
+      'forgeInboxArchiveView',
+      'forgeInboxCompact',
+      'activityClearedAtByPaneKey',
+      'manuallyUnreadTurnsByPaneKey'
+    ])
+  })
+
   it('omits every member and keeps everything else', () => {
     const state = {
       hideWorkspacesFromOtherDevices: true,

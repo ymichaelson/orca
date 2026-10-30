@@ -98,23 +98,9 @@
     "count": 1
   },
   {
-    "filePath": "src/renderer/src/components/forge-inbox/ForgeInboxInstanceEditor.tsx",
-    "kind": "jsx-attribute:placeholder",
-    "text": "alice, alice.smith",
-    "dynamic": false,
-    "count": 1
-  },
-  {
     "filePath": "src/renderer/src/component-fixtures/component-fixture-explorer.tsx",
     "kind": "jsx-text",
     "text": "Component fixtures",
-    "dynamic": false,
-    "count": 1
-  },
-  {
-    "filePath": "src/renderer/src/components/forge-inbox/ForgeInboxProjectPolicyEditor.tsx",
-    "kind": "jsx-attribute:placeholder",
-    "text": "claude",
     "dynamic": false,
     "count": 1
   },
@@ -234,6 +220,27 @@
     "filePath": "src/renderer/src/components/forge-inbox/ForgeInboxSettingsPanel.tsx",
     "kind": "jsx-attribute:placeholder",
     "text": "https://gitlab.example.com",
+    "dynamic": false,
+    "count": 1
+  },
+  {
+    "filePath": "src/renderer/src/components/settings/ProjectEventDecisionSettingsForm.tsx",
+    "kind": "jsx-text",
+    "text": "Jev",
+    "dynamic": false,
+    "count": 1
+  },
+  {
+    "filePath": "src/renderer/src/components/settings/ProjectEventDecisionSettingsForm.tsx",
+    "kind": "jsx-text",
+    "text": "Laya",
+    "dynamic": false,
+    "count": 1
+  },
+  {
+    "filePath": "src/renderer/src/components/settings/ProjectEventDecisionSettingsForm.tsx",
+    "kind": "jsx-attribute:placeholder",
+    "text": "http://127.0.0.1:8080/",
     "dynamic": false,
     "count": 1
   }

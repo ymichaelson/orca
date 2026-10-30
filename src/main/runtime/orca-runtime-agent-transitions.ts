@@ -51,7 +51,10 @@ export abstract class OrcaRuntimeWithAgentTransitions extends OrcaRuntimeWithWin
       getRuntimeDesktopSurface().translateNotification?.(key, fallback) ?? fallback,
     dispatch: (event) => this.mobileNotifications.dispatch(event),
     setTimer: unrefTimer,
-    now: Date.now
+    now: Date.now,
+    forgeDispatchedAgent: {
+      defersToForge: (identity) => this.forgeDispatchedAgentCompletion().defersToForge(identity)
+    }
   })
   // The execution host observes its own panes, so local, SSH and paired-server workers are all seen.
   private readonly terminalWorkerTurnStops = new TerminalWorkerTurnStops({

@@ -1,4 +1,7 @@
 import type { ForgePage, ForgeInstanceScope } from '../../shared/forge-inbox-types'
+import { readDispatchConfirmationViews } from './forge-inbox-dispatch-confirmation-view'
+import { readRunCancellationViews } from './forge-inbox-project-event-run-cancel-state'
+import { readRunDispatchFacts } from './forge-inbox-run-dispatch-view'
 import type { ForgeInboxLedger } from './forge-inbox-ledger'
 import {
   projectForgeItemDetail,
@@ -18,6 +21,10 @@ export function createForgeOwnerReads(ledger: () => ForgeInboxLedger | null) {
     listItems(query: Parameters<ForgeInboxLedger['listItems']>[0]) {
       return ledger()?.listItems(query) ?? EMPTY_PAGE
     },
+    /** Empty while dormant: no ledger means no project holds anything yet. */
+    listProjects(): string[] {
+      return ledger()?.listItemProjects() ?? []
+    },
     getItemDetail(
       scope: ForgeInstanceScope,
       itemId: number,
@@ -28,7 +35,25 @@ export function createForgeOwnerReads(ledger: () => ForgeInboxLedger | null) {
     },
     listRuns(scope: ForgeInstanceScope, query: Parameters<ForgeInboxLedger['listRuns']>[1]) {
       const live = ledger()
-      return live ? projectForgeRunPage(live.listRuns(scope, query)) : EMPTY_PAGE
+      if (!live) {
+        return EMPTY_PAGE
+      }
+      const page = live.listRuns(scope, query)
+      return projectForgeRunPage(
+        page,
+        readDispatchConfirmationViews(
+          live.ledgerContext(),
+          page.rows.map((run) => run.id)
+        ),
+        readRunCancellationViews(
+          live.ledgerContext(),
+          page.rows.map((run) => run.id)
+        ),
+        readRunDispatchFacts(
+          live.ledgerContext(),
+          page.rows.map((run) => run.id)
+        )
+      )
     },
     listEvents(scope: ForgeInstanceScope, query: Parameters<ForgeInboxLedger['listEvents']>[1]) {
       return ledger()?.listEvents(scope, query) ?? EMPTY_PAGE
@@ -45,6 +70,16 @@ export function createForgeOwnerReads(ledger: () => ForgeInboxLedger | null) {
     },
     markRead(scope: ForgeInstanceScope, input: { clientId: string; itemId: number }): boolean {
       return ledger()?.markRead(scope, input) ?? false
+    },
+    /** False while dormant or stopped: nothing was dispatched, so no completion is deferred to Forge. */
+    isDispatchedAgent(identity: Parameters<ForgeInboxLedger['isDispatchedAgent']>[0]): boolean {
+      return ledger()?.isDispatchedAgent(identity) ?? false
+    },
+    archiveItem(scope: ForgeInstanceScope, input: { clientId: string; itemId: number }): boolean {
+      return ledger()?.archiveItem(scope, input) ?? false
+    },
+    unarchiveItem(scope: ForgeInstanceScope, input: { clientId: string; itemId: number }): boolean {
+      return ledger()?.unarchiveItem(scope, input) ?? false
     }
   }
 }

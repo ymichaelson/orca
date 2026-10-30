@@ -26,6 +26,7 @@ export function createWebSettingsApi(): Pick<Partial<PreloadApi>, 'agentAwake'> 
   settings: Partial<WebSettingsApi>
 } {
   return {
+    // oxlint-disable-next-line typescript/consistent-type-assertions -- SAFETY: web omits the desktop-only import previews; every other SettingsApi member matches.
     settings: {
       get: async () => getRuntimeBackedStoredSettings(),
       // Why: localStorage-backed settings are synchronous, so the pre-hydration kill-switch read works the same as desktop.
@@ -82,12 +83,15 @@ export function createWebSettingsApi(): Pick<Partial<PreloadApi>, 'agentAwake'> 
         const localUpdates = { ...sanitizedUpdates }
         if (runtimeEnvironment) {
           delete localUpdates.worktreeVisibilityDefaults
+          delete localUpdates.projectEventReceiver
         }
         const next = mergeSettings(stored, localUpdates, {
           preserveAutoRenameBranchFromWorkUpdate: 'autoRenameBranchFromWork' in sanitizedUpdates
         })
         writeStoredSettings(next)
-        return settingsForActiveVisibilityOwner(await syncRuntimeBackedSettings(sanitizedUpdates))
+        return settingsForActiveVisibilityOwner(
+          await syncRuntimeBackedSettings(sanitizedUpdates, next)
+        )
       },
       setActiveRuntimeEnvironmentPreference: async ({ environmentId }) => {
         const requestedEnvironmentId = environmentId?.trim() || null

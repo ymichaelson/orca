@@ -6,7 +6,7 @@ import {
 } from './forge-inbox-gitlab-context'
 import type { GitlabSnapshotSubject } from './forge-inbox-gitlab-snapshot-relevance'
 import type { GitlabHeadPipeline, GitlabMergeRequest } from './forge-inbox-gitlab-api-schemas'
-import type { ForgeItemKind } from './forge-inbox-types'
+import type { ForgeAnalysisItemKind } from './forge-inbox-types'
 
 const MAX_MERGE_REQUEST_ROUNDS = 2
 
@@ -26,7 +26,7 @@ export type GitlabSnapshotResult =
 
 export function takeGitlabSnapshot(
   reader: GitlabApiReader,
-  kind: ForgeItemKind,
+  kind: ForgeAnalysisItemKind,
   iid: number
 ): Promise<GitlabSnapshotResult> {
   switch (kind) {

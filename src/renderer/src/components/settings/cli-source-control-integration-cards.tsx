@@ -196,6 +196,7 @@ export function GitLabIntegrationCard(): React.JSX.Element {
     <IntegrationCardShell
       icon={<Gitlab className="size-5" />}
       name="GitLab"
+      settingsSectionId="integrations-gitlab"
       description={
         <>
           {translate(

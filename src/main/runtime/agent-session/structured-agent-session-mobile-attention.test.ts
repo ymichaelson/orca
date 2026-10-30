@@ -15,8 +15,8 @@ import {
   createStructuredAttentionMobileDelivery,
   type StructuredAttentionMobileDeliveryDeps
 } from './structured-agent-session-mobile-attention'
-
 import type { MobileNotificationDispatchEvent } from '../runtime-mobile-notification-controller'
+import { createForgeDispatchedAgentCompletion } from '../../notifications/forge-dispatched-agent-completion'
 
 const SCOPE = {
   executionHostId: 'local',
@@ -91,6 +91,61 @@ function harness(overrides: Partial<StructuredAttentionMobileDeliveryDeps> = {})
 }
 
 describe('structured attention mobile delivery', () => {
+  it('pushes a raised prompt at once as "needs input", keyed by the prompt', () => {
+    const h = harness()
+    h.delivery.deliver(PROMPT, SUMMARY)
+    const key = agentSessionAttentionKey(PROMPT)
+    expect(h.sent).toEqual([
+      {
+        type: 'notification',
+        emittedAt: 42,
+        source: 'agent-task-complete',
+        title: 'orca / feature - Claude needs input',
+        body: 'May I run the migration?',
+        worktreeId: SCOPE.workspaceId,
+        notificationId: key,
+        attentionKey: key,
+        agentState: 'blocked'
+      }
+    ])
+  })
+
+  it('words a settled turn by its outcome, and a failure as a failure even while a prompt waits', () => {
+    const h = harness()
+    h.delivery.deliver(completion('success'), SUMMARY)
+    h.delivery.deliver(completion('success', true), SUMMARY)
+    h.delivery.deliver(completion('failure', true), SUMMARY)
+    expect(h.sent.map((event) => [event.agentState, event.title])).toEqual([
+      ['done', 'orca / feature - Claude finished'],
+      ['blocked', 'orca / feature - Claude needs input'],
+      ['done', 'orca / feature - Claude failed']
+    ])
+  })
+
+  it('leaves a dispatched session finish to Forge but keeps its prompts and unrelated sessions', () => {
+    const forgeDispatchedAgent = createForgeDispatchedAgentCompletion({
+      forgeInbox: () => ({ isDispatchedAgent: ({ sessionId }) => sessionId === 'session-1' }),
+      terminalHandleForPaneKey: () => null
+    })
+    const dispatched = harness({ forgeDispatchedAgent })
+    dispatched.delivery.deliver(completion('success'), SUMMARY)
+    dispatched.delivery.deliver(completion('failure'), SUMMARY)
+    expect(dispatched.sent).toEqual([])
+
+    dispatched.delivery.deliver(PROMPT, SUMMARY)
+    dispatched.delivery.deliver(completion('success', true), SUMMARY)
+    expect(dispatched.sent.map((event) => event.agentState)).toEqual(['blocked', 'blocked'])
+
+    const unrelated = harness({
+      forgeDispatchedAgent: createForgeDispatchedAgentCompletion({
+        forgeInbox: () => ({ isDispatchedAgent: () => false }),
+        terminalHandleForPaneKey: () => null
+      })
+    })
+    unrelated.delivery.deliver(completion('success'), SUMMARY)
+    expect(unrelated.sent.map((event) => event.agentState)).toEqual(['done'])
+  })
+
   it('sends nothing for a workspace whose notifications are muted', () => {
     const isWorkspaceMuted = vi.fn(() => true)
     const quiet = harness({ isWorkspaceMuted })

@@ -12,6 +12,7 @@ import type {
   NotificationSettings
 } from '../../shared/notification-settings-types'
 import { buildNotificationOptions } from '../ipc/notification-options'
+import type { ForgeDispatchedAgentCompletion } from '../notifications/forge-dispatched-agent-completion'
 import type { MobileNotificationDispatchEvent } from './runtime-mobile-notification-controller'
 import { TerminalAgentTurnNews } from './terminal-agent-turn-news'
 
@@ -19,6 +20,7 @@ export type TerminalAgentWorkspaceLabels = { repoLabel?: string; worktreeLabel?:
 
 type PaneNews = {
   worktreeId: string
+  paneKey: string
   event: MobileNotificationDispatchEvent
 }
 
@@ -36,6 +38,8 @@ export type TerminalAgentPhonePushDeps = {
   dispatch: (event: MobileNotificationDispatchEvent) => void
   setTimer: (run: () => void, delayMs: number) => { cancel: () => void }
   now: () => number
+  /** Completions of an agent a project event dispatch started are announced by Forge, not here. */
+  forgeDispatchedAgent?: ForgeDispatchedAgentCompletion
 }
 
 export class TerminalAgentPhonePush {
@@ -107,6 +111,14 @@ export class TerminalAgentPhonePush {
           withApprovalTitle(agentState, this.deps.readTerminalTitle(paneKey)),
           () => this.deps.readOrchestration(paneKey)
         ))
+    ) {
+      return
+    }
+    if (
+      this.deps.forgeDispatchedAgent?.defersToForge({
+        state: news.event.agentState,
+        paneKey: news.paneKey
+      })
     ) {
       return
     }

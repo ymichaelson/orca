@@ -42,24 +42,50 @@ function retryTimestamp(nowMs: number, delayMs: number): number {
   return retryAtMs
 }
 
-function assertErrorCode(code: string): void {
+/** Shared so every stored code is an enum-like token, never payload text or an exception message. */
+export function assertForgeWebhookErrorCode(code: string): void {
   if (!ERROR_CODE_PATTERN.test(code)) {
     throw new Error('forge inbox webhook error code must match [a-z0-9-]{1,64}')
   }
 }
 
 // Finished rows keep only the dedupe key; dropping the body releases its capacity and payload.
+// The retired instance worker never claims a binding delivery, whose owner is a project binding.
 export const FORGE_WEBHOOK_CLAIM_SQL = `SELECT * FROM webhook_deliveries
-  WHERE host_id = ? AND state = 'pending' AND (next_attempt_at IS NULL OR next_attempt_at <= ?)
+  WHERE host_id = ? AND instance_id IS NOT NULL AND state = 'pending'
+    AND (next_attempt_at IS NULL OR next_attempt_at <= ?)
   ORDER BY id LIMIT 1`
 
 export const FORGE_WEBHOOK_PRUNE_SQL = `DELETE FROM webhook_deliveries WHERE id IN (
   SELECT id FROM webhook_deliveries
   WHERE host_id = ? AND state IN ('done', 'failed') AND finished_at IS NOT NULL
     AND finished_at <= ?
+    AND NOT EXISTS (SELECT 1 FROM project_event_decisions WHERE delivery_id = webhook_deliveries.id)
   ORDER BY id LIMIT ?)`
 
-const FINISH_SQL = `body = x'', next_attempt_at = NULL, finished_at = ?`
+const FINISH_SQL = `body = x'', next_attempt_at = NULL, parked_reason = NULL, finished_at = ?`
+
+/**
+ * Ends a delivery that no later step can settle: it keeps its dedupe key but releases the queue slot
+ * and the payload. Unconditional on the current state because the deciding action already owns it.
+ */
+export function finishForgeWebhookDelivery(
+  ctx: ForgeLedgerContext,
+  id: number,
+  outcome: 'done' | 'failed',
+  code: string | null = null
+): boolean {
+  if (code !== null) {
+    assertForgeWebhookErrorCode(code)
+  }
+  const result = ctx.db
+    .prepare(
+      `UPDATE webhook_deliveries SET state = ?, last_error_code = ?, ${FINISH_SQL}
+       WHERE id = ? AND host_id = ?`
+    )
+    .run(outcome, code, ctx.now(), id, ctx.hostId)
+  return result.changes === 1
+}
 
 /**
  * A claim schedules its own retry so a worker that dies before marking is not re-offered at once,
@@ -138,7 +164,7 @@ export function markForgeWebhookDeliveryFailed(
   id: number,
   failure: ForgeWebhookFailure
 ): ForgeWebhookFailureOutcome {
-  assertErrorCode(failure.code)
+  assertForgeWebhookErrorCode(failure.code)
   if (!failure.terminal) {
     assertSafeNowMs(failure.nowMs)
     if (
@@ -208,7 +234,7 @@ export function settleForgeUndeliverableWebhookDeliveries(
   const open = ctx.db
     .prepare(
       `SELECT DISTINCT instance_id, project_id FROM webhook_deliveries
-       WHERE host_id = ? AND state IN ('pending', 'needs-auth')`
+       WHERE host_id = ? AND instance_id IS NOT NULL AND state IN ('pending', 'needs-auth')`
     )
     .all(ctx.hostId)
   for (const row of open) {
@@ -244,12 +270,17 @@ export type ForgeWebhookWorkSchedule = {
   nextAttemptAtMs: number | null
 }
 
-/** Durable view of outstanding work so a restart can re-arm its timer without polling. */
+/**
+ * Durable view of outstanding work so a restart can re-arm its timer without polling.
+ * Pinned to the claim index: without statistics the planner rather follows the subject column,
+ * which would read every binding row on the restart path.
+ */
 export const FORGE_WEBHOOK_SCHEDULE_SQL = `SELECT
     COALESCE(SUM(state = 'pending'), 0) AS pending,
     COALESCE(SUM(state = 'needs-auth'), 0) AS needs_auth,
     MIN(CASE WHEN state = 'pending' THEN COALESCE(next_attempt_at, admitted_at) END) AS next_at
-  FROM webhook_deliveries WHERE host_id = ? AND state IN ('pending', 'needs-auth')`
+  FROM webhook_deliveries INDEXED BY webhook_deliveries_claim
+  WHERE host_id = ? AND instance_id IS NOT NULL AND state IN ('pending', 'needs-auth')`
 
 export function getForgeWebhookWorkSchedule(ctx: ForgeLedgerContext): ForgeWebhookWorkSchedule {
   const row = ctx.db.prepare(FORGE_WEBHOOK_SCHEDULE_SQL).get(ctx.hostId)

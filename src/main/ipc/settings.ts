@@ -44,24 +44,13 @@ import {
 import { resolveAiVaultSearchSettings } from '../../shared/ai-vault-search-settings'
 import { applySessionSearchSettingsChange } from '../ai-vault-search/session-search-enablement'
 import { getRuntimeEnvironmentRegistryRoot } from './runtime-environments/runtime-environment-registry-root'
+import {
+  sanitizeRendererSettingsUpdate,
+  settingsWithoutDecisionKey
+} from './renderer-settings-sanitization'
 
 const SETTINGS_CHANGED_WHITELIST_SET = new Set<string>(SETTINGS_CHANGED_WHITELIST)
 const registryRoot = getRuntimeEnvironmentRegistryRoot
-
-type LegacyTerminalScrollbackSettingsUpdate = Partial<GlobalSettings> & {
-  terminalScrollbackBytes?: unknown
-}
-
-function sanitizeRendererSettingsUpdate(args: Partial<GlobalSettings>): Partial<GlobalSettings> {
-  const { terminalScrollbackBytes: _legacyScrollbackBytes, ...sanitizedArgs } =
-    args as LegacyTerminalScrollbackSettingsUpdate
-  void _legacyScrollbackBytes
-  // Plugin consent and enablement require main's reviewed-fingerprint handlers.
-  delete sanitizedArgs.pluginConsents
-  delete sanitizedArgs.disabledPlugins
-  delete sanitizedArgs.pluginExternalHostGrants
-  return sanitizedArgs
-}
 
 // Electron menus do not react to settings; rebuild appearance checkboxes after writes.
 const APPEARANCE_MENU_KEYS: readonly (keyof GlobalSettings)[] = [
@@ -92,13 +81,15 @@ export function registerSettingsHandlers(
       const isOrigin =
         originWebContentsId !== undefined && window.webContents.id === originWebContentsId
       if (!window.isDestroyed() && !isOrigin) {
-        window.webContents.send('settings:changed', updates)
+        window.webContents.send('settings:changed', settingsWithoutDecisionKey(updates))
       }
     }
   })
 
   ipcMain.handle('settings:get', () =>
-    readSettingsWithRuntimeEnvironmentPreference(store, registryRoot())
+    settingsWithoutDecisionKey(
+      readSettingsWithRuntimeEnvironmentPreference(store, registryRoot())
+    )
   )
 
   ipcMain.handle(
@@ -110,13 +101,15 @@ export function registerSettingsHandlers(
         { prBotAuthorOverrides: next },
         { notifyListeners: true, originWebContentsId: event.sender.id }
       )
-      return store.getSettings()
+      return settingsWithoutDecisionKey(store.getSettings())
     }
   )
 
   // PTYs can bind before hydration; transport authority selection needs persisted settings synchronously.
   ipcMain.on('settings:get-sync', (event) => {
-    event.returnValue = readSettingsWithRuntimeEnvironmentPreference(store, registryRoot())
+    event.returnValue = settingsWithoutDecisionKey(
+      readSettingsWithRuntimeEnvironmentPreference(store, registryRoot())
+    )
   })
 
   ipcMain.handle('settings:set', async (event, args: Partial<GlobalSettings>) => {
@@ -286,7 +279,7 @@ export function registerSettingsHandlers(
       })
     }
 
-    return store.getSettings()
+    return settingsWithoutDecisionKey(store.getSettings())
   })
 
   ipcMain.handle(
@@ -299,9 +292,11 @@ export function registerSettingsHandlers(
       const requestedId = requestedEnvironmentId?.trim() || null
       const environmentId =
         requestedId === null ? null : resolveEnvironment(registryRoot(), requestedId).id
-      return store.updateSettings(
-        { activeRuntimeEnvironmentId: environmentId },
-        { notifyListeners: true, originWebContentsId: event.sender.id }
+      return settingsWithoutDecisionKey(
+        store.updateSettings(
+          { activeRuntimeEnvironmentId: environmentId },
+          { notifyListeners: true, originWebContentsId: event.sender.id }
+        )
       )
     }
   )

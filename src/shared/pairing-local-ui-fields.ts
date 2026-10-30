@@ -24,6 +24,9 @@ export const PAIRING_LOCAL_UI_FIELDS = [
   'agentsShowSearch',
   'agentsReadFilter',
   'agentsGroupBy',
+  'forgeInboxUnreadOnly',
+  'forgeInboxArchiveView',
+  'forgeInboxCompact',
   'activityClearedAtByPaneKey',
   'manuallyUnreadTurnsByPaneKey'
 ] as const satisfies readonly (keyof PersistedUIState)[]

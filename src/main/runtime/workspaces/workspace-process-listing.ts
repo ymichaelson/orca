@@ -307,7 +307,10 @@ export abstract class OrcaRuntimeWithGetWorktreePs extends OrcaRuntimeWithWorktr
           this.agentOrchestrationProjection.buildByPaneKey()?.[paneKey],
         dispatch: (event) => this.mobileNotifications.dispatch(event),
         reconcile: (state) => this.mobileNotifications.reconcileStructuredPromptAttention(state),
-        now: () => Date.now()
+        now: () => Date.now(),
+        forgeDispatchedAgent: {
+          defersToForge: (identity) => this.forgeDispatchedAgentCompletion().defersToForge(identity)
+        }
       }),
       onTurnAttention: chatWorkerTurnStopReporter(this.workerTurnStopReportDeps),
       ...structuredNativeWorkReaders(

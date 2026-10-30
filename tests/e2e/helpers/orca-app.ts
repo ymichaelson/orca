@@ -8,14 +8,14 @@ import {
   type ElectronApplication,
   type TestInfo
 } from '@stablyai/playwright-test'
-import { mkdtempSync, mkdirSync, rmSync, writeFileSync } from 'node:fs'
+import { mkdtempSync, mkdirSync } from 'node:fs'
 import os from 'node:os'
 import path from 'node:path'
-import { closeElectronAppForE2E } from './electron-process-shutdown'
-import { recordElectronShutdownTiming } from './electron-shutdown-timing'
+import { closeElectronAppForE2E, removeUserDataDirAfterShutdown } from './electron-process-shutdown'
 import { getOrcaElectronLaunchArgs } from './electron-launch-args'
 import { retryTransientMainEvaluate } from './electron-main-evaluate-retry'
-import { getE2ECompletedOnboardingProfile } from './e2e-completed-onboarding-profile'
+import { writeE2ECompletedOnboardingProfile } from './e2e-completed-onboarding-profile'
+import { createForgeCliStubs } from './forge-cli-stubs'
 import {
   assertElectronResolvedIsolatedHome,
   createElectronHomeIsolation
@@ -33,7 +33,10 @@ type OrcaTestFixtures = {
   orcaPage: Page
   // Dismiss pointer-blocking onboarding by default; onboarding specs explicitly opt out.
   dismissOnboarding: boolean
-  // Seed a ready project unless a first-run golden needs the zero-project path.
+  disableDesktopNotifications: boolean
+  stubForgeClis: boolean
+  // Why: most E2E specs need a ready project before assertions start. Golden
+  // first-run specs opt out so they can prove the zero-project onboarding path.
   seedTestRepo: boolean
   seededRepoPath: string
   // Synthetic-list specs need only the primary checkout; switching specs keep the two-row default.
@@ -66,23 +69,6 @@ const ORCA_E2E_SLOWMO_MS = ((): number => {
   }
   return Math.max(parsed, 0)
 })()
-
-async function removeUserDataDirAfterShutdown(userDataDir: string): Promise<void> {
-  const started = performance.now()
-  for (let attempt = 0; attempt < 5; attempt += 1) {
-    try {
-      rmSync(userDataDir, { recursive: true, force: true })
-      recordElectronShutdownTiming('profile-removal', started)
-      return
-    } catch (error) {
-      if (attempt === 4) {
-        throw error
-      }
-      // Windows profile handles may outlive process exit; retry removal without masking the flow result.
-      await new Promise((resolve) => setTimeout(resolve, 250 * (attempt + 1)))
-    }
-  }
-}
 
 function shouldLaunchHeadful(testInfo: TestInfo): boolean {
   // Allow isolated manual observation without retagging every spec.
@@ -138,6 +124,8 @@ export const test = base.extend<OrcaTestFixtures, OrcaWorkerFixtures>({
   electronApp: async (
     {
       dismissOnboarding,
+      disableDesktopNotifications,
+      stubForgeClis,
       launchEnv,
       orcaAppExtraEnv,
       orcaAppExtraArgs,
@@ -152,10 +140,14 @@ export const test = base.extend<OrcaTestFixtures, OrcaWorkerFixtures>({
     const userDataDir = mkdtempSync(path.join(os.tmpdir(), 'orca-e2e-userdata-'))
 
     if (dismissOnboarding) {
-      // Seed completed onboarding; an empty profile implies an existing-user cohort and can show a telemetry overlay.
-      writeFileSync(
+      // Why: onboarding renders a fullscreen `fixed inset-0 z-[100]` overlay
+      // when persisted `closedAt` is null, which intercepts pointer events for
+      // every other test. Seed a completed-onboarding fresh-install profile:
+      // an empty file would make persistence treat the profile as an
+      // existing-user upgrade cohort and mount the telemetry notice overlay.
+      writeE2ECompletedOnboardingProfile(
         path.join(userDataDir, 'orca-data.json'),
-        `${JSON.stringify(getE2ECompletedOnboardingProfile(), null, 2)}\n`
+        disableDesktopNotifications
       )
     }
     const headful = shouldLaunchHeadful(testInfo)
@@ -168,7 +160,12 @@ export const test = base.extend<OrcaTestFixtures, OrcaWorkerFixtures>({
       extraEnv: orcaAppExtraEnv,
       userDataDir
     })
-    // Use slowMo only for deliberate observation on an isolated display.
+    if (stubForgeClis) {
+      createForgeCliStubs(homeIsolation.isolatedHome, homeIsolation.env)
+    }
+    // Why: ORCA_E2E_SLOWMO_MS adds a pause between every Playwright action so a
+    // developer running with ORCA_E2E_FORCE_HEADFUL=1 can actually watch what
+    // the test does. Defaults to 0 (no slowdown) for normal runs.
     const slowMo = ORCA_E2E_SLOWMO_MS
     // Record video for Electron replay; create outputDir up front or Windows may silently drop recordings.
     const recordVideoDir = process.env.ORCA_E2E_RECORD_VIDEO === '1' ? testInfo.outputDir : null
@@ -204,6 +201,8 @@ export const test = base.extend<OrcaTestFixtures, OrcaWorkerFixtures>({
   },
 
   dismissOnboarding: [true, { option: true }],
+  disableDesktopNotifications: [false, { option: true }],
+  stubForgeClis: [false, { option: true }],
   seedTestRepo: [true, { option: true }],
   // Test-scoped so generation scenarios can isolate Git indexes and remotes.
   seededRepoPath: async ({ testRepoPath }, provideFixture) => {

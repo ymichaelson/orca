@@ -53,6 +53,7 @@ export const HOST_OPERATION_OWNERSHIP = {
   plugins: 'host',
   preflight: 'host',
   project: 'host',
+  projectEventDecision: 'scope-picked',
   projectGroup: 'host',
   projectHostSetup: 'host',
   reference: 'host',

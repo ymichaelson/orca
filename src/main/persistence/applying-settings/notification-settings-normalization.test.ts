@@ -62,3 +62,15 @@ describe('agent needs-input notifications', () => {
     ).toBe(true)
   })
 })
+
+describe('forge inbox completed-runs preference', () => {
+  it('defaults off for a profile written before it existed and keeps a stored choice', () => {
+    expect(normalizeNotificationSettings({ forgeInbox: true }).forgeInboxCompletedRuns).toBe(false)
+    expect(
+      normalizeNotificationSettings({ forgeInboxCompletedRuns: true }).forgeInboxCompletedRuns
+    ).toBe(true)
+    expect(
+      normalizeNotificationSettings({ forgeInboxCompletedRuns: 'yes' }).forgeInboxCompletedRuns
+    ).toBe(false)
+  })
+})

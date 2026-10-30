@@ -3,16 +3,31 @@
 
 import { randomUUID } from 'node:crypto'
 import Database from '../sqlite/sync-database'
+import { forgeInboxStorageProblem } from './forge-inbox-database-shape'
 import { forgeCommitSignal } from './forge-inbox-commit-signal'
 import { hardenSqliteDatabaseFiles } from '../sqlite/harden-database-files'
 import {
   createForgeInboxPatchRequestsTableSql,
-  createForgeInboxTablesSql,
+  createForgeInboxProjectEventTablesSql,
+  createForgeInboxProjectEventDecisionsTableSql,
+  createForgeInboxV5TablesSql,
   FORGE_INBOX_SCHEMA_VERSION,
-  FORGE_INBOX_TABLES,
-  FORGE_INBOX_V1_TABLES,
-  FORGE_INBOX_V1_TABLES_SQL
+  migrateForgeInboxToV4Sql,
+  migrateForgeInboxToV6Sql,
+  migrateForgeInboxToV7Sql,
+  migrateForgeInboxToV8Sql
 } from './forge-inbox-schema'
+import { migrateForgeInboxToV9Sql } from './forge-inbox-project-event-question-schema'
+import { migrateForgeInboxToV10Sql } from './forge-inbox-schema-project-binding-secret-window'
+import { migrateForgeInboxToV11Sql } from './forge-inbox-schema-question-subject'
+import { migrateForgeInboxToV12Sql } from './forge-inbox-schema-run-dispatch-turn'
+import { migrateForgeInboxToV13Sql } from './forge-inbox-schema-project-item-kind'
+import { migrateForgeInboxToV14Sql } from './forge-inbox-schema-dispatch-confirmation'
+import { migrateForgeInboxToV15Sql } from './forge-inbox-schema-run-cancellation'
+import { migrateForgeInboxToV16Sql } from './forge-inbox-schema-run-terminal'
+import { migrateForgeInboxToV17Sql } from './forge-inbox-schema-item-archive'
+import { migrateForgeInboxToV18Sql } from './forge-inbox-schema-run-question-origin'
+import { migrateForgeInboxToV19Sql } from './forge-inbox-schema-question-source'
 
 export const FORGE_INBOX_BUSY_TIMEOUT_MS = 5000
 
@@ -43,7 +58,10 @@ export function openForgeInboxDatabase(
       throw new ForgeInboxSchemaError(`forge inbox ${dbPath} is an existing unversioned database`)
     }
     if (stored > 0) {
-      assertForgeInboxIntact(db, dbPath, stored)
+      const problem = forgeInboxStorageProblem(db, dbPath, stored)
+      if (problem !== null) {
+        throw new ForgeInboxCorruptError(problem)
+      }
       // Refuse a foreign owner before WAL or the additive migration can change the file.
       if (requestedHostId !== undefined) {
         const owner = db.prepare("SELECT value FROM meta WHERE key = 'host_id'").get()
@@ -58,19 +76,13 @@ export function openForgeInboxDatabase(
     db.pragma('synchronous = FULL')
     db.pragma('checkpoint_fullfsync = ON')
     if (stored < FORGE_INBOX_SCHEMA_VERSION) {
-      // Tables and the version bump commit together so a shaped file never reports version 0.
-      runForgeTransaction(db, () => {
-        if (stored === 0) {
-          db.exec(createForgeInboxTablesSql())
-          db.prepare("INSERT INTO meta (key, value) VALUES ('host_id', ?)").run(
-            requestedHostId ?? randomUUID()
-          )
-        } else {
-          // v1 to v2 is additive: existing rows and credential bytes are never rebuilt.
-          db.exec(createForgeInboxPatchRequestsTableSql())
-        }
-        db.pragma(`user_version = ${FORGE_INBOX_SCHEMA_VERSION}`)
-      })
+      // The items rebuild drops a table other rows point at, and the pragma is a no-op inside a transaction.
+      db.pragma('foreign_keys = OFF')
+      try {
+        migrateForgeInbox(db, dbPath, stored, requestedHostId)
+      } finally {
+        db.pragma('foreign_keys = ON')
+      }
     }
     const owner = db.prepare("SELECT value FROM meta WHERE key = 'host_id'").get()
     const hostId = owner?.value
@@ -86,6 +98,84 @@ export function openForgeInboxDatabase(
     db.close()
     throw error
   }
+}
+
+function migrateForgeInbox(
+  db: Database.Database,
+  dbPath: string,
+  stored: number,
+  requestedHostId: string | undefined
+): void {
+  // Tables and the version bump commit together so a shaped file never reports version 0.
+  runForgeTransaction(db, () => {
+    if (stored === 0) {
+      db.exec(createForgeInboxV5TablesSql())
+      db.prepare("INSERT INTO meta (key, value) VALUES ('host_id', ?)").run(
+        requestedHostId ?? randomUUID()
+      )
+    } else if (stored === 1) {
+      // v1 to v2 then v2 to v3 are additive: existing rows and credential bytes are never rebuilt.
+      db.exec(createForgeInboxPatchRequestsTableSql())
+      db.exec(createForgeInboxProjectEventTablesSql())
+      db.exec(migrateForgeInboxToV4Sql())
+      db.exec(createForgeInboxProjectEventDecisionsTableSql())
+    } else if (stored === 2) {
+      db.exec(createForgeInboxProjectEventTablesSql())
+      db.exec(migrateForgeInboxToV4Sql())
+      db.exec(createForgeInboxProjectEventDecisionsTableSql())
+    } else if (stored === 3) {
+      // v3 to v4 rebuilds webhook_deliveries, so keeping its rows intact is the migration itself.
+      db.exec(migrateForgeInboxToV4Sql())
+      db.exec(createForgeInboxProjectEventDecisionsTableSql())
+    } else if (stored === 4) {
+      db.exec(createForgeInboxProjectEventDecisionsTableSql())
+    }
+    if (stored < 6) {
+      db.exec(migrateForgeInboxToV6Sql())
+    }
+    if (stored < 7) {
+      db.exec(migrateForgeInboxToV7Sql())
+    }
+    if (stored < 8) {
+      db.exec(migrateForgeInboxToV8Sql())
+    }
+    db.exec(migrateForgeInboxToV9Sql())
+    if (stored < 10) {
+      db.exec(migrateForgeInboxToV10Sql())
+    }
+    if (stored < 11) {
+      db.exec(migrateForgeInboxToV11Sql())
+    }
+    if (stored < 12) {
+      db.exec(migrateForgeInboxToV12Sql())
+    }
+    if (stored < 13) {
+      db.exec(migrateForgeInboxToV13Sql())
+    }
+    if (stored < 14) {
+      db.exec(migrateForgeInboxToV14Sql())
+    }
+    if (stored < 15) {
+      db.exec(migrateForgeInboxToV15Sql())
+    }
+    if (stored < 16) {
+      db.exec(migrateForgeInboxToV16Sql())
+    }
+    if (stored < 17) {
+      db.exec(migrateForgeInboxToV17Sql())
+    }
+    if (stored < 18) {
+      db.exec(migrateForgeInboxToV18Sql())
+    }
+    if (stored < 19) {
+      db.exec(migrateForgeInboxToV19Sql())
+    }
+    const violations = db.pragma('foreign_key_check')
+    if (Array.isArray(violations) && violations.length > 0) {
+      throw new ForgeInboxCorruptError(`forge inbox ${dbPath} has rows that break a foreign key`)
+    }
+    db.pragma(`user_version = ${FORGE_INBOX_SCHEMA_VERSION}`)
+  })
 }
 
 function hasSchemaObjects(db: Database.Database): boolean {
@@ -116,96 +206,4 @@ export function runForgeTransaction<T>(db: Database.Database, run: () => T): T {
   }
   signal.committed()
   return result
-}
-
-/** Read-only validation before any persistent pragma, so a damaged file is left byte-identical. */
-function assertForgeInboxIntact(db: Database.Database, dbPath: string, version: number): void {
-  const check = db.pragma('quick_check', { simple: true })
-  const tables = new Set(
-    db
-      .prepare("SELECT name FROM sqlite_master WHERE type = 'table'")
-      .all()
-      .map((row) => row.name)
-  )
-  const expectedTables = version === 1 ? FORGE_INBOX_V1_TABLES : FORGE_INBOX_TABLES
-  const missing = expectedTables.filter((name) => !tables.has(name))
-  if (check !== 'ok' || missing.length > 0) {
-    throw new ForgeInboxCorruptError(
-      `forge inbox ${dbPath} failed validation (${check === 'ok' ? `missing ${missing.join(', ')}` : String(check)})`
-    )
-  }
-  const owner = db.prepare("SELECT value FROM meta WHERE key = 'host_id'").get()
-  if (typeof owner?.value !== 'string' || owner.value === '') {
-    throw new ForgeInboxCorruptError(`forge inbox ${dbPath} has no owner host`)
-  }
-  // A pre-release file that lacks a released table, column or index is refused, not migrated.
-  assertForgeInboxShape(db, dbPath, version)
-}
-
-type ForgeInboxShape = {
-  objects: string[]
-  columns: Map<string, string>
-}
-
-const forgeInboxShapes = new Map<number, ForgeInboxShape>()
-
-function assertForgeInboxShape(db: Database.Database, dbPath: string, version: number): void {
-  const expected = expectedForgeInboxShape(version)
-  const objects = new Set(forgeInboxSchemaObjects(db))
-  const missing = expected.objects.filter((object) => !objects.has(object))
-  if (missing.length > 0) {
-    throw new ForgeInboxCorruptError(
-      `forge inbox ${dbPath} has an outdated schema ${version} shape (missing ${missing.join(', ')})`
-    )
-  }
-  for (const [table, columns] of expected.columns) {
-    if (forgeInboxTableColumns(db, table) !== columns) {
-      throw new ForgeInboxCorruptError(`forge inbox ${dbPath} has an outdated ${table} table`)
-    }
-  }
-}
-
-function expectedForgeInboxShape(version: number): ForgeInboxShape {
-  const cached = forgeInboxShapes.get(version)
-  if (cached) {
-    return cached
-  }
-  const reference = new Database(':memory:')
-  try {
-    reference.exec(version === 1 ? FORGE_INBOX_V1_TABLES_SQL : createForgeInboxTablesSql())
-    const tables: readonly string[] = version === 1 ? FORGE_INBOX_V1_TABLES : FORGE_INBOX_TABLES
-    const shape: ForgeInboxShape = {
-      objects: forgeInboxSchemaObjects(reference),
-      columns: new Map<string, string>(
-        tables.map((table) => [table, forgeInboxTableColumns(reference, table)])
-      )
-    }
-    forgeInboxShapes.set(version, shape)
-    return shape
-  } finally {
-    reference.close()
-  }
-}
-
-/** User objects only: SQLite's own sqlite_sequence/autoindex entries follow the stored schema. */
-function forgeInboxSchemaObjects(db: Database.Database): string[] {
-  return db
-    .prepare(
-      `SELECT type || ':' || name AS object FROM sqlite_master
-       WHERE type IN ('table', 'index') AND name NOT LIKE 'sqlite_%'
-       ORDER BY object`
-    )
-    .all()
-    .map((row) => String(row.object))
-}
-
-function forgeInboxTableColumns(db: Database.Database, table: string): string {
-  return JSON.stringify(
-    db
-      .prepare(
-        `SELECT name, type, "notnull", dflt_value, pk FROM pragma_table_info(?)
-         ORDER BY cid`
-      )
-      .all(table)
-  )
 }

@@ -24,6 +24,7 @@ export type GitlabApiErrorCode =
   | 'request-too-large'
   | 'bad-response'
   | 'network'
+  | 'missing-checkout'
   | 'stale-config'
   | 'no-credential'
 

@@ -1,5 +1,11 @@
 import { publishedLegacyChatPermissionMode } from '../../shared/agent-chat-permission-mode'
 import { getClaudeAgentViewService } from '../claude/agent-view-service'
+import { normalizeProjectEventReceiverSettings } from '../../shared/project-event-receiver-settings'
+import {
+  normalizeProjectEventDecisionSettings,
+  projectEventDecisionSettingsView,
+  type ProjectEventDecisionSettings
+} from '../../shared/project-event-decision-settings'
 import { getAppEnvironment } from '../../shared/app-environment'
 import { isArtifactSharingEnabled } from '../../shared/artifact-sharing-gate'
 import { isAgentSkillSharingEnabled } from '../../shared/agent-skill-sharing-gate'
@@ -24,6 +30,7 @@ import { applyAgentStatusHooksEnabled } from '../agent-hooks/managed-agent-hook-
 import { isWslHostOrcadProcess } from '../ipc/wsl-guest-windows-drive-path'
 import { isAgentStatusHooksEnabledForAgent } from '../../shared/agent-status-hooks-setting'
 import type { RuntimeStore } from './runtime-store-contract'
+import type { ProjectEventDecisionProbeResult } from '../../shared/project-event-decision'
 import {
   agentLaunchSettingsMutationUpdates,
   projectAgentLaunchSettings,
@@ -39,6 +46,7 @@ import type {
   RuntimeClientSourceControlAi,
   RuntimeHostDisplayLabelOverrides
 } from './runtime-client-settings-shape'
+import * as decisionSettings from './runtime-client-decision-settings'
 
 /** Which Orca cloud services this host registered; headless hosts register none. */
 export type RuntimeSharingServicePresence = {
@@ -53,11 +61,32 @@ export class RuntimeClientSettingsController {
   constructor(
     private readonly store: Pick<
       RuntimeStore,
-      'getSettings' | 'updateSettings' | 'runDurableMutation'
+      'getSettings' | 'updateSettings' | 'runDurableMutation' | 'hasSealedProtectedSecret'
     > | null,
     private readonly notifyReposChanged: (() => void) | undefined = undefined,
     private readonly sharingServices: RuntimeSharingServicePresence | undefined = undefined
   ) {}
+
+  supportsDecisionManagement(): boolean {
+    return decisionSettings.supportsDecisionManagement(this.store)
+  }
+
+  getDecisionSettings() {
+    return decisionSettings.getDecisionSettings(this.store)
+  }
+
+  updateDecisionSettings(updates: {
+    projectEventDecision?: ProjectEventDecisionSettings
+    projectEventDecisionKey?: string
+    projectEventDecisionLayaKey?: string
+  }) {
+    return decisionSettings.updateDecisionSettings(this.store, updates)
+  }
+
+  /** Runs one bounded real request with the saved settings; never returns the key. */
+  async probeDecisionConnection(signal?: AbortSignal): Promise<ProjectEventDecisionProbeResult> {
+    return await decisionSettings.probeDecisionConnection(this.store, signal)
+  }
 
   get(): RuntimeClientSettings {
     if (!this.store?.getSettings) {
@@ -107,6 +136,12 @@ export class RuntimeClientSettingsController {
       ...(this.sharingServices?.skills() === false
         ? {}
         : { agentSkillSharingEnabled: isAgentSkillSharingEnabled(settings) }),
+      projectEventReceiver: normalizeProjectEventReceiverSettings(settings.projectEventReceiver),
+      projectEventDecision: projectEventDecisionSettingsView(
+        normalizeProjectEventDecisionSettings(settings.projectEventDecision),
+        settings,
+        decisionSettings.sealedDecisionKeys(this.store)
+      ),
       machineName: settings.machineName ?? '',
       nativeChatPermissionMode: publishedLegacyChatPermissionMode(settings),
       // Mirror the host preference; delivery still depends on queue capability.

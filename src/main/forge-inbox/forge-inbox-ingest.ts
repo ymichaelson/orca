@@ -1,8 +1,13 @@
 import { runForgeTransaction } from './forge-inbox-database'
 import { recordForgeChange, type ForgeLedgerContext } from './forge-inbox-context'
 import { policyGenerationOfItem } from './forge-inbox-policy'
-import { rowNumber } from './forge-inbox-rows'
-import type { ForgeEventIngest, ForgeIngestResult } from './forge-inbox-types'
+import { projectEventPolicyGenerationOfItem } from './forge-inbox-project-event-policy'
+import { rowNumber, rowText } from './forge-inbox-rows'
+import {
+  FORGE_PROVISIONAL_REVISION_PREFIX,
+  type ForgeEventIngest,
+  type ForgeIngestResult
+} from './forge-inbox-types'
 
 function assertIngestable(ctx: ForgeLedgerContext, input: ForgeEventIngest): void {
   if (input.hostId !== ctx.hostId) {
@@ -22,6 +27,19 @@ export function ingestForgeEvent(
   return runForgeTransaction(ctx.db, () => ingestForgeEventInTransaction(ctx, input))
 }
 
+/** The event this delivery already recorded, if any; dedupe is per host, instance and key. */
+export function findForgeIngestEventId(
+  ctx: ForgeLedgerContext,
+  input: Pick<ForgeEventIngest, 'hostId' | 'instanceId' | 'dedupeKey'>
+): number | null {
+  const seen = ctx.db
+    .prepare(
+      'SELECT event_id FROM deliveries WHERE host_id = ? AND instance_id = ? AND dedupe_key = ?'
+    )
+    .get(input.hostId, input.instanceId, input.dedupeKey)
+  return seen ? rowNumber(seen, 'event_id') : null
+}
+
 /** For callers that already hold the write transaction; runForgeTransaction is not re-entrant. */
 export function ingestForgeEventInTransaction(
   ctx: ForgeLedgerContext,
@@ -29,13 +47,9 @@ export function ingestForgeEventInTransaction(
 ): ForgeIngestResult {
   assertIngestable(ctx, input)
   const { db } = ctx
-  const seen = db
-    .prepare(
-      'SELECT event_id FROM deliveries WHERE host_id = ? AND instance_id = ? AND dedupe_key = ?'
-    )
-    .get(input.hostId, input.instanceId, input.dedupeKey)
-  if (seen) {
-    return { duplicate: true, eventId: rowNumber(seen, 'event_id') }
+  const seenId = findForgeIngestEventId(ctx, input)
+  if (seenId !== null) {
+    return { duplicate: true, eventId: seenId }
   }
   const now = ctx.now()
   const { itemId, revision, newRevision, advanced } = upsertItemRevision(ctx, input)
@@ -73,7 +87,7 @@ export function ingestForgeEventInTransaction(
     advanced ? (input.itemState ?? null) : null,
     itemId
   )
-  const runId = input.queueRun ? queueLatestRun(ctx, itemId, input.queueRun.reason) : null
+  const runId = input.queueRun ? queueForgeItemRun(ctx, itemId, input.queueRun.reason) : null
   return { duplicate: false, eventId, itemId, revision, newRevision, seq, runId }
 }
 
@@ -188,11 +202,44 @@ function supersedeQueuedRunsNotForThisHead(
   }
 }
 
+export type QueueForgeItemRunOutcome =
+  | { kind: 'queued'; runId: number }
+  | { kind: 'claimed' }
+  | { kind: 'provisional-head' }
+  // No head row means the item or its current revision is missing, so there is nothing to queue for.
+  | { kind: 'no-head' }
+
 /** Coalesces to the latest revision: an older queued run is superseded, running ones are left alone. */
-function queueLatestRun(ctx: ForgeLedgerContext, itemId: number, reason: string): number | null {
+export function queueForgeItemRunOutcome(
+  ctx: ForgeLedgerContext,
+  itemId: number,
+  reason: string,
+  scope:
+    | { purpose: 'question'; deliveryId: number }
+    // The one minimum task a declined preparation owes: a deliberate second turn on the same head.
+    | { purpose: 'question-task'; deliveryId: number }
+    | { purpose: 'answered'; questionId: number }
+    | null = null
+): QueueForgeItemRunOutcome {
   const { db } = ctx
   const now = ctx.now()
-  const policyGeneration = policyGenerationOfItem(ctx, itemId)
+  const head = db
+    .prepare(
+      `SELECT r.version_token AS token FROM items i
+         JOIN item_revisions r ON r.item_id = i.id AND r.revision = i.current_revision
+        WHERE i.id = ? AND i.host_id = ?`
+    )
+    .get(itemId, ctx.hostId)
+  if (!head) {
+    return { kind: 'no-head' }
+  }
+  // A webhook-reported head is provisional: paying for it would analyse a snapshot nobody read back.
+  if (rowText(head, 'token').startsWith(FORGE_PROVISIONAL_REVISION_PREFIX)) {
+    return { kind: 'provisional-head' }
+  }
+  // Binding items follow the project event policy; only the retired flow still reads the old table.
+  const policyGeneration =
+    projectEventPolicyGenerationOfItem(ctx, itemId) ?? policyGenerationOfItem(ctx, itemId)
   supersedeQueuedRunsNotForThisHead(ctx, itemId, policyGeneration)
   // A head already dispatched under these rules is a claim, not a fresh bill: a repeat delivery,
   // or a return to a head analysed earlier, must not start or pay for a second analysis. Only
@@ -205,24 +252,57 @@ function queueLatestRun(ctx: ForgeLedgerContext, itemId: number, reason: string)
         WHERE r.item_id = ? AND r.context_digest = head.version_token
           AND r.analysis_kind = i.kind AND r.policy_generation = ?
           AND r.state <> 'superseded'
+          AND CASE ?
+            WHEN 'question' THEN EXISTS (
+              SELECT 1 FROM project_event_decisions d
+              WHERE d.run_id = r.id AND d.action = 'ask_user' AND d.delivery_id = ?)
+            -- Already paid for by the decision's own claim, so the owed task is not a duplicate.
+            WHEN 'question-task' THEN 0
+            WHEN 'answered' THEN r.origin_question_id = ?
+            ELSE NOT EXISTS (
+              SELECT 1 FROM project_event_decisions d WHERE d.run_id = r.id AND d.action = 'ask_user')
+          END
         LIMIT 1`
     )
-    .get(itemId, policyGeneration)
+    .get(
+      itemId,
+      policyGeneration,
+      scope?.purpose ?? 'ordinary',
+      scope?.purpose === 'question' ? scope.deliveryId : null,
+      scope?.purpose === 'answered' ? scope.questionId : null
+    )
   if (claimed) {
-    return null
+    return { kind: 'claimed' }
   }
   // The claim is on the head's own digest, never on a delivery's token that may be older than it.
   const created = db
     .prepare(
       `INSERT INTO runs (item_id, revision, state, generation, policy_generation,
-           context_digest, analysis_kind, reason, created_at, updated_at)
-       SELECT i.id, i.current_revision, 'queued', 0, ?, r.version_token, i.kind, ?, ?, ?
+           context_digest, analysis_kind, reason, created_at, updated_at, origin_question_id)
+       SELECT i.id, i.current_revision, 'queued', 0, ?, r.version_token, i.kind, ?, ?, ?, ?
          FROM items i
          JOIN item_revisions r ON r.item_id = i.id AND r.revision = i.current_revision
         WHERE i.id = ?`
     )
-    .run(policyGeneration, reason, now, now, itemId)
+    .run(
+      policyGeneration,
+      reason,
+      now,
+      now,
+      scope?.purpose === 'answered' ? scope.questionId : null,
+      itemId
+    )
   const runId = rowNumber({ v: created.lastInsertRowid }, 'v')
   recordForgeChange(ctx, itemId, 'run', runId, 'queued')
-  return runId
+  return { kind: 'queued', runId }
+}
+
+/** Callers that only need the new run keep the flat shape; dispatch reads the outcome to explain a null. */
+export function queueForgeItemRun(
+  ctx: ForgeLedgerContext,
+  itemId: number,
+  reason: string
+): number | null {
+  const outcome = queueForgeItemRunOutcome(ctx, itemId, reason)
+  return outcome.kind === 'queued' ? outcome.runId : null
 }

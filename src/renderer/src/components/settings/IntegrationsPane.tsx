@@ -10,11 +10,14 @@ import { useIntegrationProviderStatusRefresh } from './use-integration-provider-
 import { translate } from '@/i18n/i18n'
 export { getIntegrationsPaneSearchEntries } from './integrations-search'
 
-export function IntegrationsPane(): React.JSX.Element {
+import { WebhookIntegrationCard, type WebhookIntegrationCardProps } from './WebhookIntegrationCard'
+
+export function IntegrationsPane(props: WebhookIntegrationCardProps): React.JSX.Element {
   useIntegrationProviderStatusRefresh()
 
   return (
     <div className="space-y-5">
+      <WebhookIntegrationCard {...props} />
       <section className="space-y-3">
         <div className="space-y-1">
           <h3 className="text-sm font-semibold text-foreground">

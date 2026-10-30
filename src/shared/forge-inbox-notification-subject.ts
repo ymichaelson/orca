@@ -6,6 +6,7 @@ export const FORGE_NOTIFICATION_REASONS = [
   'pipeline-failure',
   'issue-mention',
   'issue-assignment',
+  'project-event',
   'run-succeeded',
   'run-failed',
   'proposal-pending'
@@ -24,6 +25,8 @@ export type ForgeInboxNotificationSubject = {
   eventId?: number
   runId?: number
   proposalId?: number
+  /** Bounded fingerprint of a project-level event, so two different pushes never read as one. */
+  trigger?: string
 }
 
 /** What a client opens on click: the subject plus the host that client itself reaches the owner through. */
@@ -63,6 +66,13 @@ export function isForgeInboxNotificationClickTarget(
     typeof subject.itemId !== 'number' ||
     !Number.isSafeInteger(subject.itemId) ||
     subject.itemId <= 0
+  ) {
+    return false
+  }
+  if (
+    'trigger' in subject &&
+    subject.trigger !== undefined &&
+    typeof subject.trigger !== 'string'
   ) {
     return false
   }

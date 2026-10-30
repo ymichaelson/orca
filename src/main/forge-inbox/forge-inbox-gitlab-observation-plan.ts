@@ -1,4 +1,4 @@
-import type { ForgeItemKind } from './forge-inbox-types'
+import type { ForgeAnalysisItemKind } from './forge-inbox-types'
 import type { GitlabHook } from './forge-inbox-gitlab-hook-payload'
 import {
   classifyGitlabHook,
@@ -15,7 +15,7 @@ export type ObservationPlan =
   | { action: 'skip' }
   | {
       action: 'observe'
-      kind: ForgeItemKind
+      kind: ForgeAnalysisItemKind
       iid: number
       /** Null when only the verified snapshot can say why the item matters. */
       category: GitlabRelevanceCategory | null

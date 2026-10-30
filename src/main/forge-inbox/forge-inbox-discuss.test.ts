@@ -397,6 +397,43 @@ describe('forge inbox discuss', () => {
     expect(send[1].envelope.expectedRuntimeFence).toBe(7)
   })
 
+  it('refuses a run on a project item, which has no analysed snapshot to discuss', async () => {
+    const queued = ledger.ingestObservation(
+      {
+        hostId: OWNER,
+        ...SCOPE,
+        projectId: '42',
+        kind: 'project',
+        iid: 0,
+        dedupeKey: 'd-project',
+        eventKind: 'Push Hook',
+        payload: {},
+        versionToken: 'project-event:push:refs/heads/main:aaaaaaaaaaaa',
+        queueRun: { reason: 'review-request' }
+      },
+      ledger.getConfig().configRevision,
+      0
+    )
+    if (!queued.ok || queued.duplicate || queued.runId === null) {
+      throw new Error(`unexpected observation outcome ${JSON.stringify(queued)}`)
+    }
+    const runId = queued.runId
+    ledger.transitionRun(runId, { to: 'running' })
+    ledger.bindRunSession(runId, SESSION)
+    ledger.transitionRun(runId, { to: 'succeeded', result: { summary: 'Fine', concerns: [] } })
+    const host = fakeHost()
+
+    const { ensureHost, result } = discuss({
+      runId,
+      record: record({ ...subjectOf(runId) }),
+      host
+    })
+
+    await expect(result).resolves.toEqual({ kind: 'refused', reason: 'run-not-analysed' })
+    expect(ensureHost).not.toHaveBeenCalled()
+    expect(host.sends).toHaveLength(0)
+  })
+
   it('writes the host instruction itself and keeps the typing inside an escaped data block', async () => {
     const runId = analysedRun()
     const host = fakeHost({

@@ -1,5 +1,6 @@
 import { homedir } from 'node:os'
 import { normalizeProxyUrl } from '../../../shared/network-proxy'
+import { projectEventDecisionKeySchema } from '../../../shared/project-event-decision-settings'
 import { normalizeKagiSessionLink } from '../../../shared/browser-url'
 import type { PersistedState } from '../../../shared/persisted-state-types'
 import type { ChatUiLaunchTipAudience } from '../../../shared/native-chat/chat-ui-launch-tip-audience'
@@ -139,6 +140,23 @@ export class LoadedStateParsingOperations {
             )
             parsed.settings.httpProxyUrl = ''
             this.runtime.protectedSecrets.removeRetainedBlob(PROTECTED_SECRET_SLOT.httpProxyUrl)
+            this.runtime.loadNeedsSave = true
+          }
+        }
+        for (const field of ['projectEventDecisionKey', 'projectEventDecisionLayaKey'] as const) {
+          const stored = parsed.settings?.[field]
+          if (!stored || !parsed.settings) {
+            continue
+          }
+          const decryptedKey = this.runtime.protectedSecrets.decryptWithStatus(
+            PROTECTED_SECRET_SLOT[field],
+            stored
+          )
+          if (projectEventDecisionKeySchema.safeParse(decryptedKey.plaintext).success) {
+            parsed.settings[field] = decryptedKey.plaintext
+          } else {
+            parsed.settings[field] = ''
+            this.runtime.protectedSecrets.removeRetainedBlob(PROTECTED_SECRET_SLOT[field])
             this.runtime.loadNeedsSave = true
           }
         }

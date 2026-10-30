@@ -20,6 +20,8 @@ type RuntimeRepositorySettingsDependencies = {
     repo: Repo,
     options: { deadline: number; closeStructuredSessions: boolean }
   ) => Promise<unknown>
+  /** Optional like stopProjectTerminals; must settle in bounded time and never reject removal. */
+  releaseProjectEvents?: (repo: Repo) => Promise<unknown>
   invalidateResolvedWorktrees: () => void
   invalidateWorktreeScan: (repoId: string) => void
   notifyReposChanged: () => void
@@ -40,6 +42,7 @@ type RepositoryUpdates = Partial<
     | 'symlinkPaths'
     | 'issueSourcePreference'
     | 'defaultJiraProject'
+    | 'projectEventGitlabProject'
     | 'externalWorktreeVisibility'
     | 'externalWorktreeVisibilityPromptDismissedAt'
     | 'externalWorktreeInboxBaselinePaths'
@@ -157,7 +160,11 @@ export class RuntimeRepositorySettingsController {
         })
     }
     await stopProjectTerminals(false)
-    // Recheck WSL fence after stop awaits.
+    // Why before the store write: the hook cleanup resolves the repo's path through the store.
+    await this.deps.releaseProjectEvents?.(repo).catch((error: unknown) => {
+      console.warn('[runtime] failed to remove the project event hook on removal', error)
+    })
+    // Why again: a WSL move may have fenced the project while the stop was awaited.
     assertWslMoveRepoWritable(store, repo)
     store.removeProjectForHost(repo)
     // Sweep again for terminals spawned during stop. Retire chats only after the final WSL fence because that step is irreversible.

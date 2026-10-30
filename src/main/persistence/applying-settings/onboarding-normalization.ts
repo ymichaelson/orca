@@ -56,6 +56,10 @@ export function normalizeNotificationSettings(value: unknown): NotificationSetti
     ),
     terminalBell: booleanOr(candidate.terminalBell, defaults.terminalBell),
     forgeInbox: booleanOr(candidate.forgeInbox, defaults.forgeInbox),
+    forgeInboxCompletedRuns: booleanOr(
+      candidate.forgeInboxCompletedRuns,
+      defaults.forgeInboxCompletedRuns ?? false
+    ),
     suppressWhenFocused: booleanOr(candidate.suppressWhenFocused, defaults.suppressWhenFocused),
     customSoundId,
     customSoundPath:

@@ -12,6 +12,8 @@ import { useCompleteGitRepoAdd } from './use-complete-git-repo-add'
 import { useCreateProjectDefaults } from './useCreateProjectDefaults'
 import { useAddRepoHostChangeReset } from './use-add-repo-host-change-reset'
 import { AddRepoDialogChrome } from './AddRepoDialogChrome'
+import { useAddRepoProjectEventSetup } from './use-add-repo-project-event-setup'
+import { useAddRepoDialogDismissal } from './use-add-repo-dialog-dismissal'
 import { AddRepoHostSelectorSlot } from './AddRepoHostSelectorSlot'
 import { useAddRepoNestedReviewController } from './useAddRepoNestedReviewController'
 import {
@@ -45,6 +47,8 @@ export default React.memo(function AddRepoDialog({ hosted }: AddRepoDialogProps)
     setHideDefaultBranchWorkspace,
     finishProjectAdd
   })
+  // Why: every Git add path ends here, so a GitLab repo gets its event-agent step before the final handoff.
+  const projectEvent = useAddRepoProjectEventSetup({ completeGitRepoAdd, setStep })
   const hostSelection = useAddRepoHostSelection({
     isOpen,
     setStep,
@@ -78,7 +82,7 @@ export default React.memo(function AddRepoDialog({ hosted }: AddRepoDialogProps)
     closeModal: closeForFolderHandoff,
     fetchWorktrees,
     importNestedRepos,
-    onGitRepoReady: completeGitRepoAdd,
+    onGitRepoBatchReady: projectEvent.onGitRepoBatchReady,
     setIsAdding,
     activeRuntimeEnvironmentId: selectedRuntimeEnvironmentId,
     setStep
@@ -101,7 +105,8 @@ export default React.memo(function AddRepoDialog({ hosted }: AddRepoDialogProps)
     setStep,
     // Only the non-git confirmation handoff closes this remote flow.
     closeForFolderHandoff,
-    (repoId, executionHostId) => completeGitRepoAdd(repoId, 'ssh_remote_path', executionHostId),
+    (repoId, executionHostId) =>
+      projectEvent.onGitRepoReady(repoId, 'ssh_remote_path', executionHostId),
     selectedRuntimeEnvironmentId
   )
   const {
@@ -118,7 +123,8 @@ export default React.memo(function AddRepoDialog({ hosted }: AddRepoDialogProps)
   } = useCreateRepo(
     fetchWorktrees,
     closeForFolderHandoff,
-    (repoId, executionHostId) => completeGitRepoAdd(repoId, 'create_project', executionHostId),
+    (repoId, executionHostId) =>
+      projectEvent.onGitRepoReady(repoId, 'create_project', executionHostId),
     {
       hostId: hostSelection.selectedHostId,
       runtimeEnvironmentId: selectedRuntimeEnvironmentId,
@@ -158,7 +164,7 @@ export default React.memo(function AddRepoDialog({ hosted }: AddRepoDialogProps)
     activeRuntimeEnvironmentId: selectedRuntimeEnvironmentId,
     workspaceDir: settings?.workspaceDir,
     fetchWorktrees,
-    onGitRepoReady: completeGitRepoAdd
+    onGitRepoReady: projectEvent.onGitRepoReady
   })
 
   const isRuntimeEnvironmentActive = Boolean(selectedRuntimeEnvironmentId)
@@ -175,7 +181,8 @@ export default React.memo(function AddRepoDialog({ hosted }: AddRepoDialogProps)
     setActiveNestedScanId,
     setNestedScanInProgress,
     showNestedRepoReview,
-    onGitRepoReady: completeGitRepoAdd,
+    onGitRepoReady: projectEvent.onGitRepoReady,
+    onGitRepoBatchReady: projectEvent.onGitRepoBatchReady,
     setIsAdding,
     setAddProjectBusyLabel,
     offerWslHost: wslHostOffer.offer
@@ -196,7 +203,7 @@ export default React.memo(function AddRepoDialog({ hosted }: AddRepoDialogProps)
     setActiveNestedScanId,
     setNestedScanInProgress,
     showNestedRepoReview,
-    onGitRepoReady: completeGitRepoAdd,
+    onGitRepoReady: projectEvent.onGitRepoReady,
     setAddProjectBusyLabel,
     onWindowsDriveRefusal: (refusal) => windowsDrive.showRefusal(refusal)
   })
@@ -215,10 +222,12 @@ export default React.memo(function AddRepoDialog({ hosted }: AddRepoDialogProps)
     resetCreateDefaultState()
     resetCreateState()
     resetRemoteState()
+    projectEvent.reset()
   }, [
     resetCloneFlow,
     resetLocalFolderFlow,
     resetNestedRepoReviewState,
+    projectEvent,
     resetCreateDefaultState,
     resetServerPathFlow,
     resetNestedImportFlow,
@@ -268,30 +277,19 @@ export default React.memo(function AddRepoDialog({ hosted }: AddRepoDialogProps)
     onWindowsDriveRefusal: windowsDrive.showRefusal
   })
 
-  const handleBack = useCallback(() => {
-    if (step === 'nested') {
-      trackNestedBackAction()
-    }
-    resetState()
-  }, [resetState, step, trackNestedBackAction])
-
-  const handleOpenChange = useCallback(
-    (open: boolean) => {
-      if (!open) {
-        if (step === 'nested' && !isAdding) {
-          trackNestedBackAction()
-        }
-        closeModal()
-        resetState()
-      }
-    },
-    [closeModal, isAdding, resetState, step, trackNestedBackAction]
-  )
+  const { handleBack, handleOpenChange } = useAddRepoDialogDismissal({
+    step,
+    isAdding,
+    closeModal,
+    resetState,
+    trackNestedBackAction,
+    dismissProjectEventStep: projectEvent.requestDismiss
+  })
 
   return (
     <AddRepoDialogChrome
       isOpen={isOpen}
-      step={step}
+      step={projectEvent.step ? 'project-event' : step}
       isAdding={isAdding}
       isCloning={isCloning}
       onBack={handleBack}
@@ -300,6 +298,7 @@ export default React.memo(function AddRepoDialog({ hosted }: AddRepoDialogProps)
     >
       <AddRepoDialogStepContent
         step={step}
+        projectEventStep={projectEvent.step}
         isRuntimeEnvironmentActive={isRuntimeEnvironmentActive}
         activeRuntimeEnvironmentId={selectedRuntimeEnvironmentId}
         repoCount={repos.length}
