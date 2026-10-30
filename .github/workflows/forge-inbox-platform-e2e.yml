@@ -3,6 +3,12 @@ name: Forge Inbox platform E2E
 # Platform acceptance for the project-event Inbox: the same hidden-window specs that pass locally
 # run on Linux (via the E2E workflow) and here on Windows, where no macOS run can stand in.
 on:
+  push:
+    # Why: workflow_dispatch needs the file on the default branch; a push runs the copy at that ref.
+    branches: [feat/project-event-agent]
+    paths:
+      - '.github/workflows/forge-inbox-platform-e2e.yml'
+      - 'tests/e2e/forge-inbox-*.spec.ts'
   workflow_dispatch:
     inputs:
       ref:
