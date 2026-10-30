@@ -84,6 +84,22 @@ const NO_IID_BODY = Buffer.from(
     merge_request: { title: 'missing' }
   })
 )
+const MR_DETAILED_BODY = Buffer.from(
+  JSON.stringify({
+    object_kind: 'merge_request',
+    project: { id: 3 },
+    merge_request: {
+      id: 99,
+      iid: 7,
+      title: 'Add thing',
+      state: 'opened',
+      source_branch: 'feat',
+      target_branch: 'main',
+      description: 'Adds a thing.'
+    },
+    object_attributes: { action: 'update', last_commit: { id: 'sha-1' } }
+  })
+)
 const CONTEXT_ROUND_ONE_BODY = Buffer.from(
   JSON.stringify({
     object_kind: 'merge_request',
@@ -480,6 +496,47 @@ describe('project event action drain', () => {
       iid: 7,
       sha: OBSERVED_SHA,
       title: 'Add thing'
+    })
+  })
+
+  it('re-decides the observed head with the facts the event already reported', async () => {
+    record('fetch_context', MR_DETAILED_BODY)
+
+    expect(
+      await drainProjectEventActions(
+        ctx,
+        drainDeps(async () => observedHead())
+      )
+    ).toEqual({
+      executed: 1,
+      failed: 0,
+      capped: false
+    })
+
+    const [row] = pendingDeliveries()
+    if (!row) {
+      throw new Error('expected the synthesized delivery')
+    }
+    // Why: a re-read must never teach the decision less than the event it re-read.
+    expect(projectEventDecisionFacts(row.body)).toMatchObject({
+      kind: 'merge_request',
+      itemId: 99,
+      iid: 7,
+      sha: OBSERVED_SHA,
+      title: 'Add thing',
+      state: 'opened',
+      sourceBranch: 'feat',
+      targetBranch: 'main',
+      text: 'Adds a thing.',
+      missing: []
+    })
+    const claim = claimProjectEventDecision(ctx)
+    if (!claim) {
+      throw new Error('expected the synthesized delivery to be decidable')
+    }
+    expect(claim.input.context).toMatchObject({
+      contextRound: 1,
+      contextFetchAvailable: false
     })
   })
 

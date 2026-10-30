@@ -26,7 +26,14 @@ import {
 
 const REPO_ID = 'repo-1'
 const RULES = '合并请求需要评审。'
-const BODY = Buffer.from('{"object_kind":"merge_request"}')
+const BODY = Buffer.from(
+  JSON.stringify({
+    object_kind: 'merge_request',
+    project: { id: 3 },
+    merge_request: { iid: 7, title: 'Add thing' },
+    object_attributes: { action: 'update' }
+  })
+)
 
 const decision = (
   action: ProjectEventDecisionAction,
@@ -108,6 +115,47 @@ describe('project event delivery decision', () => {
   afterEach(() => {
     ctx.db.close()
     rmSync(root, { recursive: true, force: true })
+  })
+
+  it('tells the decision whether another context round is still available', () => {
+    expect(claimProjectEventDecision(ctx)?.input.context).toMatchObject({
+      contextRound: 0,
+      contextFetchAvailable: true
+    })
+  })
+
+  it('does not offer a context fetch for a project-level event', () => {
+    decideProjectEventDelivery(
+      ctx,
+      deliveryId,
+      decision('record_only'),
+      claimProjectEventDecision(ctx) ?? undefined
+    )
+    const admitted = admitProjectEventDelivery(ctx, FORGE_WEBHOOK_DEFAULT_QUEUE_LIMITS, {
+      bindingId,
+      projectPath: 'group/demo',
+      policyGeneration: 1,
+      policyEnabled: true,
+      eventKind: 'Push Hook',
+      dedupeKey: 'push-1',
+      correlation: { eventUuid: null, configUuid: null },
+      body: Buffer.from(
+        JSON.stringify({
+          object_kind: 'push',
+          project: { id: 3 },
+          ref: 'refs/heads/main',
+          after: 'a'.repeat(40)
+        })
+      )
+    })
+    if (!admitted.ok) {
+      throw new Error(`fixture could not admit: ${admitted.reason}`)
+    }
+
+    expect(claimProjectEventDecision(ctx)?.input.context).toMatchObject({
+      contextRound: 0,
+      contextFetchAvailable: false
+    })
   })
 
   it('records a decision and finishes the delivery when nothing more is required', () => {

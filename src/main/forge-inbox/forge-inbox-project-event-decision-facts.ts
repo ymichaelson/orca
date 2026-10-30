@@ -1,6 +1,31 @@
 import { isRecord } from './forge-inbox-rows'
 
-export const PROJECT_EVENT_DECISION_INPUT_VERSION = 3
+export const PROJECT_EVENT_DECISION_INPUT_VERSION = 4
+
+/**
+ * The facts each kind is expected to report. A kind's payload never carries another kind's fields, so
+ * reporting those as missing would read as incomplete context and invite a fetch that cannot help.
+ */
+const PROJECT_EVENT_EXPECTED_FACTS: Record<string, readonly string[]> = {
+  merge_request: [
+    'itemId',
+    'iid',
+    'action',
+    'state',
+    'title',
+    'sourceBranch',
+    'targetBranch',
+    'sha',
+    'text'
+  ],
+  issue: ['itemId', 'iid', 'action', 'state', 'title', 'text'],
+  note: ['itemId', 'iid', 'action', 'text'],
+  pipeline: ['itemId', 'state', 'sha', 'ref'],
+  push: ['sha', 'ref'],
+  tag_push: ['sha', 'ref'],
+  release: ['action', 'itemId', 'title', 'tag', 'text'],
+  deployment: ['itemId', 'state', 'environment']
+}
 
 export function persistedProjectEventFacts(raw: unknown): Record<string, unknown> | null {
   if (typeof raw !== 'string') {
@@ -105,6 +130,7 @@ export function projectEventDecisionFacts(body: unknown): Record<string, unknown
       : (attributes.note ?? attributes.description ?? item.description),
     ...(rootEvent ? { tag: parsed.tag, environment: parsed.environment } : {})
   }
+  const expected = PROJECT_EVENT_EXPECTED_FACTS[parsed.object_kind] ?? []
   const facts: Record<string, unknown> = {}
   const missing: string[] = []
   const truncated: string[] = []
@@ -117,7 +143,7 @@ export function projectEventDecisionFacts(body: unknown): Record<string, unknown
       }
     } else if (typeof value === 'number' && Number.isSafeInteger(value)) {
       facts[key] = value
-    } else {
+    } else if (expected.includes(key)) {
       missing.push(key)
     }
   }

@@ -94,7 +94,8 @@ export const PROJECT_EVENT_DECISION_CRITERIA: Record<ProjectEventDecisionAction,
   record_only: '重复事件或无新增信息，只需记录，无需进一步处理。',
   notify: '只需根据已经确认的事实发送状态通知，不需要深入分析或生成复杂文本。',
   wait: '正在等待明确的后续事件，例如最新提交流水线结束、作者更新或用户回复。',
-  fetch_context: '需要先获取少量缺失的 GitLab 事实才能决定下一步，不猜测未知事实。',
+  fetch_context:
+    '仅当 context.contextFetchAvailable 为 true 时可选：需要先获取少量缺失的 GitLab 事实才能决定下一步，不猜测未知事实。轮次已用尽时必须改用其他动作。',
   dispatch_agent: '需要阅读变更、深入理解讨论、撰写回复或按项目规则执行任务。',
   ask_user: '已知事实足以确定需要用户作出业务取舍或明确决定。'
 }

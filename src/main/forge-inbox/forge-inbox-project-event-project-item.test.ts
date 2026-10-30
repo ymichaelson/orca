@@ -512,7 +512,8 @@ describe('project item for events without an issue, merge request or pipeline', 
     const prompt = fake.calls[0]?.prompt ?? ''
     expect(fake.calls).toHaveLength(1)
     expect(prompt).toContain('"kind":"deployment"')
-    expect(prompt).toContain('"missing":["action","iid","sha","ref"')
+    // Why: a deployment carries none of these, so reporting them missing would read as incomplete.
+    expect(prompt).toContain('"missing":[]')
     expect(prompt).not.toContain('e'.repeat(1000))
     expect(prompt.length).toBeLessThan(8000)
   })
