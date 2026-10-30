@@ -12,8 +12,11 @@ name: macOS Test Build (unsigned)
 on:
   workflow_dispatch:
   push:
+    # Why: dispatch needs this file on the default branch, which a fork's feature
+    # branch does not have; a push runs the copy at that ref instead.
     branches:
       - feat/gitlab-webhook-inbox
+      - feat/project-event-agent
 
 permissions:
   contents: read
