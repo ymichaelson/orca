@@ -22,6 +22,8 @@ import type { ForgeWebhookQueueLimits } from './forge-inbox-webhook-queue'
 
 const TITLE_LIMIT = 512
 const TEXT_LIMIT = 256
+/** Matches the decision facts' own limit, so carrying a description forward never shortens it. */
+const DESCRIPTION_LIMIT = 4096
 
 export type ProjectEventActionDeps = {
   observeContext?: (
@@ -109,9 +111,13 @@ function reportedFacts(body: unknown): Record<string, unknown> {
   }
 }
 
-function reportedText(facts: Record<string, unknown>, key: string): string | null {
+function reportedText(
+  facts: Record<string, unknown>,
+  key: string,
+  limit = TEXT_LIMIT
+): string | null {
   const value = facts[key]
-  return typeof value === 'string' ? value.slice(0, TEXT_LIMIT) : null
+  return typeof value === 'string' ? value.slice(0, limit) : null
 }
 
 /**
@@ -144,7 +150,8 @@ function contextBody(
   }
   const itemId = reported.itemId
   // Why: a note's text is the note, not the request's description, so only a same-kind event carries it.
-  const text = reported.kind === observed.kind ? reportedText(reported, 'text') : null
+  const text =
+    reported.kind === observed.kind ? reportedText(reported, 'text', DESCRIPTION_LIMIT) : null
   const sourceBranch = reportedText(reported, 'sourceBranch')
   const targetBranch = reportedText(reported, 'targetBranch')
   const item = {

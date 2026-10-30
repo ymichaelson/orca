@@ -95,7 +95,7 @@ const MR_DETAILED_BODY = Buffer.from(
       state: 'opened',
       source_branch: 'feat',
       target_branch: 'main',
-      description: 'Adds a thing.'
+      description: 'd'.repeat(300)
     },
     object_attributes: { action: 'update', last_commit: { id: 'sha-1' } }
   })
@@ -527,7 +527,7 @@ describe('project event action drain', () => {
       state: 'opened',
       sourceBranch: 'feat',
       targetBranch: 'main',
-      text: 'Adds a thing.',
+      text: 'd'.repeat(300),
       missing: []
     })
     const claim = claimProjectEventDecision(ctx)
