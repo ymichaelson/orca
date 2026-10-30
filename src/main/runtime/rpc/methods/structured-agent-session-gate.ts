@@ -166,6 +166,18 @@ export async function ensureStructuredHostInstalled(
   await ctx.runtime.ensureStructuredAgentSessionHost()
 }
 
+/** The session's host for a read that returns no transcript: modelCatalog answers only `unknown`
+ *  for a protected record, so the protected-output capability is not required. */
+export async function requireInstalledStructuredMetadataHost(
+  ctx: RpcContext,
+  sessionId: string
+): Promise<StructuredAgentSessionHost> {
+  await ensureStructuredHostInstalled(ctx)
+  const host = requireStructuredHost(ctx)
+  requireStructuredAgentAudience(ctx, host.sessionAgent(sessionId) ?? '')
+  return host
+}
+
 /** The host for a read, built first when this process has none: the read RPCs share this one. */
 export async function requireInstalledStructuredHost(
   ctx: RpcContext,

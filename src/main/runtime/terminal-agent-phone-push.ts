@@ -19,12 +19,14 @@ import type {
 } from '../../shared/notification-settings-types'
 import { isPiCompatibleAgentType } from '../../shared/pi-agent-kind'
 import { buildNotificationOptions } from '../ipc/notification-options'
+import type { ForgeDispatchedAgentCompletion } from '../notifications/forge-dispatched-agent-completion'
 import type { MobileNotificationDispatchEvent } from './runtime-mobile-notification-controller'
 
 export type TerminalAgentWorkspaceLabels = { repoLabel?: string; worktreeLabel?: string }
 
 type PaneNews = {
   worktreeId: string
+  paneKey: string
   event: MobileNotificationDispatchEvent
   /** Waiting out a finish's quiet window. */
   quiet: { cancel: () => void } | null
@@ -42,6 +44,8 @@ export type TerminalAgentPhonePushDeps = {
   dispatch: (event: MobileNotificationDispatchEvent) => void
   setTimer: (run: () => void, delayMs: number) => { cancel: () => void }
   now: () => number
+  /** Completions of an agent a project event dispatch started are announced by Forge, not here. */
+  forgeDispatchedAgent?: ForgeDispatchedAgentCompletion
 }
 
 export class TerminalAgentPhonePush {
@@ -151,6 +155,7 @@ export class TerminalAgentPhonePush {
     }
     const news: PaneNews = {
       worktreeId,
+      paneKey,
       event: this.buildEvent(worktreeId, paneKey, row),
       quiet: null
     }
@@ -209,6 +214,14 @@ export class TerminalAgentPhonePush {
   private send(news: PaneNews): void {
     // Decided when the alert would go out: a window that took over by then announces it itself.
     if (this.deps.hasWindow() || this.deps.isWorkspaceMuted(news.worktreeId)) {
+      return
+    }
+    if (
+      this.deps.forgeDispatchedAgent?.defersToForge({
+        state: news.event.agentState,
+        paneKey: news.paneKey
+      })
+    ) {
       return
     }
     const settings = this.deps.readNotificationSettings()

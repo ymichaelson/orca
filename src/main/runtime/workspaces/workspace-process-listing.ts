@@ -308,7 +308,10 @@ export abstract class OrcaRuntimeWithGetWorktreePs extends OrcaRuntimeWithWorktr
         isWorkspaceMuted: (scope) => this.isWorkspaceNotificationMuted(scope.workspaceId),
         dispatch: (event) => this.mobileNotifications.dispatch(event),
         reconcile: (state) => this.mobileNotifications.reconcileStructuredPromptAttention(state),
-        now: () => Date.now()
+        now: () => Date.now(),
+        forgeDispatchedAgent: {
+          defersToForge: (identity) => this.forgeDispatchedAgentCompletion().defersToForge(identity)
+        }
       }),
       // Read per sweep tick from the orchestration database: a worker whose dispatch is open keeps
       // its agent running. No database answers no.

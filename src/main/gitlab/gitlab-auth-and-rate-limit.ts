@@ -4,6 +4,7 @@ import type {
   GitLabRateLimitSnapshot,
   GitLabViewer
 } from '../../shared/gitlab-types'
+import { extractExecError } from '../git/exec-error'
 import {
   acquire,
   glabApiWithHeaders,
@@ -62,11 +63,16 @@ export async function diagnoseAuth(): Promise<GitLabAuthDiagnostic> {
     }
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error)
+    // Why: glab exits 1 when any configured host fails but still prints the working ones;
+    // claiming "not signed in" with no hosts hid a signed-in self-hosted instance.
+    const { stdout, stderr } = extractExecError(error)
+    const hosts = parseGlabAuthStatusHosts(`${stdout}\n${stderr}`)
+    rememberGlabKnownHosts(hosts)
     return {
       glabAvailable: !/ENOENT|not found|spawn/i.test(message),
-      authenticated: false,
-      hosts: [],
-      activeHost: null,
+      authenticated: hosts.length > 0,
+      hosts,
+      activeHost: hosts[0] ?? null,
       envTokenInProcess,
       error: message
     }

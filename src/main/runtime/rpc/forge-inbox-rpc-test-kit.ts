@@ -2,6 +2,7 @@ import { mkdtempSync, rmSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import type { SecretStore } from '../../../shared/secret-store'
+import type { createReceiverSettingsFixture } from '../../project-events/project-event-receiver-settings-test-fixture'
 import { ForgeInboxLedger } from '../../forge-inbox/forge-inbox-ledger'
 import { createForgeInboxOwnerService } from '../../forge-inbox/forge-inbox-owner-service'
 import {
@@ -96,6 +97,8 @@ export type ForgeRpcHarness = {
   ) => ForgeStream
   /** A second real ledger connection on the owner's file, for seeding through real ingest. */
   openLedger: (hostId: string) => ForgeInboxLedger
+  /** Set only when the caller supplied one: the listener binds from these settings, not the ledger config. */
+  receiverSettings?: ReturnType<typeof createReceiverSettingsFixture>
   stop: () => Promise<void>
   close: () => Promise<void>
 }
@@ -105,6 +108,8 @@ export async function createForgeRpcHarness(
     secretStore?: SecretStore
     attach?: boolean
     http?: { fetch: (url: string, init?: RequestInit) => Promise<Response> }
+    receiverSettings?: ReturnType<typeof createReceiverSettingsFixture>
+    ownerOptions?: Partial<Parameters<typeof createForgeInboxOwnerService>[0]>
   } = {}
 ): Promise<ForgeRpcHarness> {
   const root = mkdtempSync(join(tmpdir(), 'forge-rpc-'))
@@ -113,7 +118,11 @@ export async function createForgeRpcHarness(
   const service = createForgeInboxOwnerService({
     dbPath,
     http: options.http ?? { fetch: () => Promise.reject(new Error('no network in tests')) },
-    secretStore
+    secretStore,
+    ...(options.receiverSettings === undefined
+      ? {}
+      : { receiverSettings: options.receiverSettings }),
+    ...options.ownerOptions
   })
   const runtime = new OrcaRuntimeService()
   if (options.attach !== false) {
@@ -189,6 +198,9 @@ export async function createForgeRpcHarness(
     runtime,
     dbPath,
     secretStore,
+    ...(options.receiverSettings === undefined
+      ? {}
+      : { receiverSettings: options.receiverSettings }),
     call,
     stream,
     async ok(method, params, caller, connectionId) {
@@ -227,15 +239,17 @@ export function enabledConfig() {
   ])
 }
 
-/** Creates the ledger through the public management route, as a real first-time admin would. */
 export async function configure(harness: ForgeRpcHarness): Promise<string> {
-  const view = await harness.ok('forgeInbox.getConfig', {})
-  const ownerHostId = String(view.ownerHostId)
-  await harness.ok('forgeInbox.updateConfig', {
-    ownerHostId,
-    expectedRevision: Number(view.configRevision),
-    config: enabledConfig()
-  })
+  const ownerHostId = String((await harness.ok('forgeInbox.getStatus', {})).ownerHostId)
+  const service = harness.runtime.forgeInboxService()
+  const result = await service.updateConfig(
+    service.getConfig().configRevision,
+    enabledConfig(),
+    ownerHostId
+  )
+  if (!result.ok) {
+    throw new Error(`fixture config failed: ${result.reason}`)
+  }
   return ownerHostId
 }
 

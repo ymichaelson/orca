@@ -1,7 +1,7 @@
 import type { ForgeLedgerContext } from './forge-inbox-context'
 import { summarizeForgeEventPayload } from './forge-inbox-event-summary'
 import { rowNumber, rowText } from './forge-inbox-rows'
-import { FORGE_PAGE_MAX } from './forge-inbox-queries'
+import { FORGE_PAGE_MAX } from './forge-inbox-item-list-query'
 import type { ForgeEvent, ForgeInstanceScope, ForgePage } from './forge-inbox-types'
 
 /** Newest first; `cursor` is the id of the last event already seen. */

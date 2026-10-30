@@ -98,6 +98,7 @@ describe('useIpcEvents updater integration', () => {
         ui: {
           onStateChanged: () => () => {},
           onOpenSettings: () => () => {},
+          onOpenForgeInboxItem: () => () => {},
           consumePendingOpenSettings: () => Promise.resolve(false),
           onOpenFeatureTour: () => () => {},
           onToggleLeftSidebar: () => () => {},

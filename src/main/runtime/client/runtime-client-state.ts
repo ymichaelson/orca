@@ -213,6 +213,24 @@ export abstract class OrcaRuntimeWithPtyForegroundProcessReads extends OrcaRunti
     return this.store.recordFeatureInteraction(id)
   }
 
+  supportsDecisionSettingsManagement() {
+    return this.clientSettings.supportsDecisionManagement()
+  }
+
+  getDecisionSettings() {
+    return this.clientSettings.getDecisionSettings()
+  }
+
+  updateDecisionSettings(
+    updates: Parameters<typeof this.clientSettings.updateDecisionSettings>[0]
+  ) {
+    return this.clientSettings.updateDecisionSettings(updates)
+  }
+
+  probeDecisionConnection(signal?: AbortSignal) {
+    return this.clientSettings.probeDecisionConnection(signal)
+  }
+
   getClientSettings() {
     return this.clientSettings.get()
   }

@@ -6,6 +6,7 @@ export function getDefaultNotificationSettings(): NotificationSettings {
     agentTaskComplete: true,
     terminalBell: false,
     forgeInbox: true,
+    forgeInboxCompletedRuns: false,
     suppressWhenFocused: true,
     customSoundId: 'system',
     customSoundPath: null,

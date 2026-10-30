@@ -70,12 +70,13 @@ function register(
         }
       })
     } as never,
-    // oxlint-disable-next-line typescript/consistent-type-assertions -- SAFETY: the notification handlers call only these four runtime methods.
+    // oxlint-disable-next-line typescript/consistent-type-assertions -- SAFETY: the notification handlers call only these five runtime methods.
     {
       dispatchMobileNotification,
       dismissMobileNotification,
       retireStructuredAttention,
-      reconcileStructuredPromptAttention
+      reconcileStructuredPromptAttention,
+      onNotificationDispatched: vi.fn(() => () => {})
     } as never
   )
   return { dispatchMobileNotification, dismissMobileNotification }

@@ -1,5 +1,15 @@
-export const FORGE_ITEM_KINDS = ['issue', 'merge_request', 'pipeline'] as const
+export const FORGE_ANALYSIS_ITEM_KINDS = ['issue', 'merge_request', 'pipeline'] as const
+/** The kinds the retired snapshot analysis understands; a project item has no GitLab object to read. */
+export type ForgeAnalysisItemKind = (typeof FORGE_ANALYSIS_ITEM_KINDS)[number]
+export const FORGE_ITEM_KINDS = [...FORGE_ANALYSIS_ITEM_KINDS, 'project'] as const
 export type ForgeItemKind = (typeof FORGE_ITEM_KINDS)[number]
+
+export function isForgeAnalysisItemKind(kind: string): kind is ForgeAnalysisItemKind {
+  return FORGE_ANALYSIS_ITEM_KINDS.some((candidate) => candidate === kind)
+}
+
+/** A webhook-reported revision is provisional until an authenticated API read replaces it. */
+export const FORGE_PROVISIONAL_REVISION_PREFIX = 'hook:'
 
 export const FORGE_RUN_STATES = [
   'queued',
@@ -69,6 +79,8 @@ export type ForgeItem = ForgeItemKey & {
   createdAt: number
   updatedAt: number
   unread: boolean
+  /** Absent from an older host; true only while this reader's archive still covers the item's activity. */
+  archived?: boolean
 }
 
 export type ForgeRevision = {

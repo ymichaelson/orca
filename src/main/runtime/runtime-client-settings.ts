@@ -1,3 +1,9 @@
+import { normalizeProjectEventReceiverSettings } from '../../shared/project-event-receiver-settings'
+import {
+  normalizeProjectEventDecisionSettings,
+  projectEventDecisionSettingsView,
+  type ProjectEventDecisionSettings
+} from '../../shared/project-event-decision-settings'
 import { getAppEnvironment } from '../../shared/app-environment'
 import { isArtifactSharingEnabled } from '../../shared/artifact-sharing-gate'
 import { isAgentSkillSharingEnabled } from '../../shared/agent-skill-sharing-gate'
@@ -20,6 +26,7 @@ import { recordManagedHookInstallFailure } from '../agent-hooks/install-telemetr
 import { applyAgentStatusHooksEnabled } from '../agent-hooks/managed-agent-hook-controls'
 import { isAgentStatusHooksEnabledForAgent } from '../../shared/agent-status-hooks-setting'
 import type { RuntimeStore } from './runtime-store-contract'
+import type { ProjectEventDecisionProbeResult } from '../../shared/project-event-decision'
 import {
   agentLaunchSettingsMutationUpdates,
   projectAgentLaunchSettings,
@@ -33,6 +40,7 @@ import type {
   RuntimeClientSourceControlAi,
   RuntimeHostDisplayLabelOverrides
 } from './runtime-client-settings-shape'
+import * as decisionSettings from './runtime-client-decision-settings'
 
 export class RuntimeClientSettingsController {
   private reconciliationGeneration = 0
@@ -41,10 +49,31 @@ export class RuntimeClientSettingsController {
   constructor(
     private readonly store: Pick<
       RuntimeStore,
-      'getSettings' | 'updateSettings' | 'runDurableMutation'
+      'getSettings' | 'updateSettings' | 'runDurableMutation' | 'hasSealedProtectedSecret'
     > | null,
     private readonly notifyReposChanged: (() => void) | undefined = undefined
   ) {}
+
+  supportsDecisionManagement(): boolean {
+    return decisionSettings.supportsDecisionManagement(this.store)
+  }
+
+  getDecisionSettings() {
+    return decisionSettings.getDecisionSettings(this.store)
+  }
+
+  updateDecisionSettings(updates: {
+    projectEventDecision?: ProjectEventDecisionSettings
+    projectEventDecisionKey?: string
+    projectEventDecisionLayaKey?: string
+  }) {
+    return decisionSettings.updateDecisionSettings(this.store, updates)
+  }
+
+  /** Runs one bounded real request with the saved settings; never returns the key. */
+  async probeDecisionConnection(signal?: AbortSignal): Promise<ProjectEventDecisionProbeResult> {
+    return await decisionSettings.probeDecisionConnection(this.store, signal)
+  }
 
   get(): RuntimeClientSettings {
     if (!this.store?.getSettings) {
@@ -85,6 +114,12 @@ export class RuntimeClientSettingsController {
       artifactSharingEnabled: isArtifactSharingEnabled(settings),
       worktreeVisibilityDefaults: settings.worktreeVisibilityDefaults ?? { external: 'hide' },
       agentSkillSharingEnabled: isAgentSkillSharingEnabled(settings),
+      projectEventReceiver: normalizeProjectEventReceiverSettings(settings.projectEventReceiver),
+      projectEventDecision: projectEventDecisionSettingsView(
+        normalizeProjectEventDecisionSettings(settings.projectEventDecision),
+        settings,
+        decisionSettings.sealedDecisionKeys(this.store)
+      ),
       machineName: settings.machineName ?? '',
       // Why projected: a web client's Settings → Chat edits this host's new-chat default.
       ...(settings.nativeChatPermissionMode

@@ -18255,7 +18255,13 @@
           "emptyUnread": "No hay elementos sin leer.",
           "empty": "Todavía no hay elementos. La nueva actividad de GitLab aparecerá aquí.",
           "loadingMore": "Cargando…",
-          "loadMore": "Cargar más"
+          "loadMore": "Cargar más",
+          "kindFilter": "Tipo",
+          "allKinds": "Todos los tipos",
+          "projectFilter": "Proyecto",
+          "allProjects": "Todos los proyectos",
+          "handlingFilter": "Estado",
+          "allHandling": "Cualquier estado"
         },
         "ForgeInboxPage": {
           "title": "Bandeja de entrada",

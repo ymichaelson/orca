@@ -1,0 +1,71 @@
+name: Forge Inbox platform E2E
+
+# Platform acceptance for the project-event Inbox: the same hidden-window specs that pass locally
+# run on Linux (via the E2E workflow) and here on Windows, where no macOS run can stand in.
+on:
+  workflow_dispatch:
+    inputs:
+      ref:
+        description: Ref to check out
+        required: false
+        type: string
+
+permissions:
+  contents: read
+
+concurrency:
+  group: forge-inbox-platform-e2e-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  windows-forge-inbox:
+    name: Windows Inbox narrowing
+    runs-on: windows-2022
+    timeout-minutes: 40
+    env:
+      NODE_OPTIONS: --max-old-space-size=4096
+      ORCA_BACKGROUND_LAUNCH: '1'
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v6
+        with:
+          ref: ${{ inputs.ref || github.ref }}
+          persist-credentials: false
+
+      # Why: pnpm must exist before setup-node resolves its dependency cache.
+      - name: Setup pnpm
+        uses: pnpm/setup@v2
+        with:
+          install: false
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v6
+        with:
+          node-version-file: package.json
+          cache: pnpm
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Build Electron app for Windows E2E
+        run: pnpm exec electron-vite build --mode e2e
+
+      - name: Run Inbox narrowing specs
+        env:
+          SKIP_BUILD: '1'
+          ORCA_E2E_FORWARD_APP_LOGS: '1'
+        run: >-
+          pnpm run test:e2e
+          tests/e2e/forge-inbox-project-filter.spec.ts
+          tests/e2e/forge-inbox-status-filter.spec.ts
+          --workers=1
+
+      - name: Upload Playwright traces
+        if: failure()
+        uses: actions/upload-artifact@v7
+        with:
+          name: windows-forge-inbox-playwright-traces
+          path: test-results/
+          retention-days: 7
+          if-no-files-found: ignore

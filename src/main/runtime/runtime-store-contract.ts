@@ -55,6 +55,7 @@ export type RuntimeStore = {
   setWorkspaceSession?: Store['setWorkspaceSession']
   getRemoteLayoutSnapshots?: Store['getRemoteLayoutSnapshots']
   runDurableMutation?: Store['runDurableMutation']
+  hasSealedProtectedSecret?: Store['hasSealedProtectedSecret']
   flushOrThrow?: Store['flushOrThrow']
   flushPendingOrThrowAsync?: Store['flushPendingOrThrowAsync']
   stageOrcadMigrationCatalog?: Store['stageOrcadMigrationCatalog']
@@ -175,6 +176,10 @@ export type RuntimeStore = {
     nativeChatInheritShellEnvironment?: GlobalSettings['nativeChatInheritShellEnvironment']
     nativeChatShellEnvironmentVariables?: GlobalSettings['nativeChatShellEnvironmentVariables']
     aiVaultSearch?: GlobalSettings['aiVaultSearch']
+    projectEventReceiver?: GlobalSettings['projectEventReceiver']
+    projectEventDecision?: GlobalSettings['projectEventDecision']
+    projectEventDecisionKey?: GlobalSettings['projectEventDecisionKey']
+    projectEventDecisionLayaKey?: GlobalSettings['projectEventDecisionLayaKey']
     sourceControlAi?: GlobalSettings['sourceControlAi']
     commitMessageAi?: GlobalSettings['commitMessageAi']
   }

@@ -1,15 +1,34 @@
 import { forgeCommitSignal } from './forge-inbox-commit-signal'
 import { runForgeTransaction } from './forge-inbox-database'
+import type { ForgeDispatchConfirmationView } from '../../shared/forge-inbox-dispatch-confirmation'
 import type { ForgeLedgerContext } from './forge-inbox-context'
+import { readDispatchConfirmationViews } from './forge-inbox-dispatch-confirmation-view'
+import { readRunCancellationViews } from './forge-inbox-project-event-run-cancel-state'
+import { readRunDispatchFacts, type ForgeRunDispatchFacts } from './forge-inbox-run-dispatch-view'
+import type { ForgeRunCancellationView } from '../../shared/forge-inbox-run-cancellation'
+import { itemFromRowWithMarks } from './forge-inbox-item-archive'
+import { readForgeItemHandling } from './forge-inbox-item-handling'
+import { listForgeItemsByHandling } from './forge-inbox-item-handling-list'
 import {
-  changeFromRow,
-  itemFromRow,
-  proposalFromRow,
-  rowNumber,
-  runFromRow
-} from './forge-inbox-rows'
+  FORGE_PAGE_MAX,
+  itemListParams,
+  itemListSql,
+  pageSize
+} from './forge-inbox-item-list-query'
+import type { ForgeItemListQuery } from './forge-inbox-item-list-query'
+import { readForgeItemTimeline } from './forge-inbox-item-timeline'
+import {
+  BINDING_INSTANCE_PREFIX,
+  getProjectBindingByGitlabPath
+} from './forge-inbox-project-binding'
+import { getProjectEventRepoLinkByBinding } from './forge-inbox-project-event-link'
 import type {
-  ForgeChange,
+  ForgeItemHandlingState,
+  ForgeItemHandlingView
+} from '../../shared/forge-inbox-item-handling'
+import type { ForgeItemTimelineEntry } from '../../shared/forge-inbox-item-timeline'
+import { itemFromRow, proposalFromRow, rowNumber, runFromRow } from './forge-inbox-rows'
+import type {
   ForgeItem,
   ForgePage,
   ForgeProposal,
@@ -19,56 +38,34 @@ import type {
   ForgeInstanceScope
 } from './forge-inbox-types'
 
-export const FORGE_PAGE_MAX = 100
-const FORGE_PAGE_DEFAULT = 50
-
-function pageSize(limit: number | undefined): number {
-  if (limit === undefined || !Number.isFinite(limit)) {
-    return FORGE_PAGE_DEFAULT
-  }
-  return Math.min(Math.max(Math.floor(limit), 1), FORGE_PAGE_MAX)
-}
-
 /**
  * Ordered by immutable item id (newest created first) so later activity can never skip or repeat
  * a row between pages; `activitySeq` and the changes feed carry recency. `cursor` is the last id seen.
  */
 export function listForgeItems(
   ctx: ForgeLedgerContext,
-  query: ForgeInstanceScope & {
-    clientId: string
-    unreadOnly?: boolean
-    limit?: number
-    cursor?: number
-  }
+  query: ForgeItemListQuery & { handling?: ForgeItemHandlingState }
 ): ForgePage<ForgeItem> {
+  if (query.handling !== undefined) {
+    return listForgeItemsByHandling(ctx, { ...query, handling: query.handling })
+  }
   const size = pageSize(query.limit)
   const rows = ctx.db
-    .prepare(
-      `SELECT i.*, r.read_seq AS read_seq FROM items i
-       LEFT JOIN item_reads r ON r.item_id = i.id AND r.client_id = ?
-       WHERE i.host_id = ? AND (? IS NULL OR i.instance_id = ?)
-         AND (? IS NULL OR i.id < ?)
-         AND (? = 0 OR r.read_seq IS NULL OR r.read_seq < i.activity_seq)
-       ORDER BY i.id DESC LIMIT ?`
-    )
-    .all(
-      query.clientId,
-      ctx.hostId,
-      query.instanceId ?? null,
-      query.instanceId ?? null,
-      query.cursor ?? null,
-      query.cursor ?? null,
-      query.unreadOnly ? 1 : 0,
-      size + 1
-    )
-  const items = rows
-    .slice(0, size)
-    .map((row) => itemFromRow(row, row.read_seq === null ? null : rowNumber(row, 'read_seq')))
+    .prepare(`${itemListSql()} ORDER BY i.id DESC LIMIT ?`)
+    .all(...itemListParams(ctx, query), size + 1)
+  const items = rows.slice(0, size).map((row) => itemFromRowWithMarks(row))
   return {
     rows: items,
     nextCursor: rows.length > size ? (items.at(-1)?.id ?? null) : null
   }
+}
+
+/** Every project this host holds an item for, so a client can offer the filter without guessing. */
+export function listForgeItemProjects(ctx: ForgeLedgerContext): string[] {
+  return ctx.db
+    .prepare(`SELECT DISTINCT project_id FROM items WHERE host_id = ? ORDER BY project_id LIMIT ?`)
+    .all(ctx.hostId, FORGE_PAGE_MAX)
+    .map((row) => String(row.project_id))
 }
 
 /** No client cursor, so `unread` is not meaningful on this read. */
@@ -87,7 +84,16 @@ export type ForgeItemDetail = {
   item: ForgeItem
   revisions: ForgeRevision[]
   runs: ForgeRun[]
+  /** Already allowlisted views by run id; a run that dispatched nothing has none. */
+  dispatchConfirmations?: ReadonlyMap<number, ForgeDispatchConfirmationView>
+  /** Already allowlisted views by run id; only runs someone asked to stop have one. */
+  cancellations?: ReadonlyMap<number, ForgeRunCancellationView>
+  /** Already allowlisted facts by run id: the dispatch snapshot and the terminal exit, when recorded. */
+  dispatchFacts?: ReadonlyMap<number, ForgeRunDispatchFacts>
   proposals: ForgeProposal[]
+  handling: ForgeItemHandlingView
+  timeline: ForgeItemTimelineEntry[]
+  repoId?: string | null
 }
 
 export function getForgeItemDetail(
@@ -98,11 +104,12 @@ export function getForgeItemDetail(
 ): ForgeItemDetail | null {
   const row = ctx.db
     .prepare(
-      `SELECT i.*, r.read_seq AS read_seq FROM items i
+      `SELECT i.*, r.read_seq AS read_seq, a.archived_seq AS archived_seq FROM items i
        LEFT JOIN item_reads r ON r.item_id = i.id AND r.client_id = ?
+       LEFT JOIN item_archives a ON a.item_id = i.id AND a.client_id = ?
        WHERE i.id = ? AND i.host_id = ? AND (? IS NULL OR i.instance_id = ?)`
     )
-    .get(clientId, itemId, ctx.hostId, scope.instanceId ?? null, scope.instanceId ?? null)
+    .get(clientId, clientId, itemId, ctx.hostId, scope.instanceId ?? null, scope.instanceId ?? null)
   if (!row) {
     return null
   }
@@ -120,11 +127,39 @@ export function getForgeItemDetail(
     .prepare('SELECT * FROM proposals WHERE item_id = ? ORDER BY id DESC LIMIT ?')
     .all(itemId, FORGE_PAGE_MAX)
     .map(proposalFromRow)
+  const item = itemFromRowWithMarks(row)
+  const binding = item.instanceId.startsWith(BINDING_INSTANCE_PREFIX)
+    ? getProjectBindingByGitlabPath(
+        ctx,
+        item.instanceId.slice(BINDING_INSTANCE_PREFIX.length),
+        item.projectId
+      )
+    : null
+  const repoId =
+    binding === null
+      ? null
+      : (getProjectEventRepoLinkByBinding(ctx, binding.bindingId)?.repoId ?? null)
+  const runs = listForgeRuns(ctx, scope, { itemId, limit: FORGE_PAGE_MAX }).rows
   return {
-    item: itemFromRow(row, row.read_seq === null ? null : rowNumber(row, 'read_seq')),
+    item,
+    repoId,
     revisions,
-    runs: listForgeRuns(ctx, scope, { itemId, limit: FORGE_PAGE_MAX }).rows,
-    proposals
+    runs,
+    dispatchConfirmations: readDispatchConfirmationViews(
+      ctx,
+      runs.map((run) => run.id)
+    ),
+    cancellations: readRunCancellationViews(
+      ctx,
+      runs.map((run) => run.id)
+    ),
+    dispatchFacts: readRunDispatchFacts(
+      ctx,
+      runs.map((run) => run.id)
+    ),
+    proposals,
+    handling: readForgeItemHandling(ctx, itemId),
+    timeline: readForgeItemTimeline(ctx, itemId)
   }
 }
 
@@ -158,26 +193,6 @@ export function listForgeRuns(
     )
   const runs = rows.slice(0, size).map(runFromRow)
   return { rows: runs, nextCursor: rows.length > size ? (runs.at(-1)?.id ?? null) : null }
-}
-
-export function listForgeChanges(
-  ctx: ForgeLedgerContext,
-  scope: ForgeInstanceScope,
-  query: { afterSeq: number; limit?: number }
-): { changes: ForgeChange[]; nextSeq: number; hasMore: boolean } {
-  const size = pageSize(query.limit)
-  const rows = ctx.db
-    .prepare(
-      `SELECT * FROM changes WHERE host_id = ? AND (? IS NULL OR instance_id = ?) AND seq > ?
-       ORDER BY seq LIMIT ?`
-    )
-    .all(ctx.hostId, scope.instanceId ?? null, scope.instanceId ?? null, query.afterSeq, size + 1)
-  const changes = rows.slice(0, size).map(changeFromRow)
-  return {
-    changes,
-    nextSeq: changes.at(-1)?.seq ?? query.afterSeq,
-    hasMore: rows.length > size
-  }
 }
 
 /** Only moves the client's own read mark; run state is untouched. */
@@ -217,40 +232,4 @@ export function markForgeItemRead(
       undefined
     )
   })
-}
-
-export function setForgeClientCursor(
-  ctx: ForgeLedgerContext,
-  input: ForgeInstanceScope & { clientId: string; lastSeq: number }
-): void {
-  ctx.db
-    .prepare(
-      `INSERT INTO client_cursors (client_id, host_id, instance_id, last_seq) VALUES (?, ?, ?, ?)
-       ON CONFLICT (client_id, host_id, instance_id)
-       DO UPDATE SET last_seq = MAX(last_seq, excluded.last_seq)`
-    )
-    .run(input.clientId, ctx.hostId, input.instanceId ?? '', input.lastSeq)
-}
-
-export function getForgeClientCursor(
-  ctx: ForgeLedgerContext,
-  input: ForgeInstanceScope & { clientId: string }
-): number {
-  const row = ctx.db
-    .prepare(
-      'SELECT last_seq FROM client_cursors WHERE client_id = ? AND host_id = ? AND instance_id = ?'
-    )
-    .get(input.clientId, ctx.hostId, input.instanceId ?? '')
-  return row ? rowNumber(row, 'last_seq') : 0
-}
-
-/** Latest durable change seq for the scope; it survives restarts, unlike any process counter. */
-export function readForgeChangeHead(ctx: ForgeLedgerContext, scope: ForgeInstanceScope): number {
-  const row = ctx.db
-    .prepare(
-      `SELECT COALESCE(MAX(seq), 0) AS head FROM changes
-       WHERE host_id = ? AND (? IS NULL OR instance_id = ?)`
-    )
-    .get(ctx.hostId, scope.instanceId ?? null, scope.instanceId ?? null)
-  return row ? rowNumber(row, 'head') : 0
 }

@@ -41,26 +41,15 @@ import {
 } from '../../shared/computer-awake-mode'
 import { resolveAiVaultSearchSettings } from '../../shared/ai-vault-search-settings'
 import { applySessionSearchSettingsChange } from '../ai-vault-search/session-search-enablement'
+import {
+  sanitizeRendererSettingsUpdate,
+  settingsWithoutDecisionKey
+} from './renderer-settings-sanitization'
 
 // Why: the whitelist is the source-of-truth for which keys we emit on. Casting
 // to a Set once at module load lets the IPC handler's per-key membership
 // check stay O(1) without re-coercing the readonly tuple on every call.
 const SETTINGS_CHANGED_WHITELIST_SET = new Set<string>(SETTINGS_CHANGED_WHITELIST)
-
-type LegacyTerminalScrollbackSettingsUpdate = Partial<GlobalSettings> & {
-  terminalScrollbackBytes?: unknown
-}
-
-function sanitizeRendererSettingsUpdate(args: Partial<GlobalSettings>): Partial<GlobalSettings> {
-  const { terminalScrollbackBytes: _legacyScrollbackBytes, ...sanitizedArgs } =
-    args as LegacyTerminalScrollbackSettingsUpdate
-  void _legacyScrollbackBytes
-  // Plugin consent and enablement are main-owned authority state. Renderer
-  // writes must pass the dedicated reviewed-fingerprint handlers.
-  delete sanitizedArgs.pluginConsents
-  delete sanitizedArgs.disabledPlugins
-  return sanitizedArgs
-}
 
 // Why: fields that appear in the View > Appearance submenu need the menu
 // rebuilt after any update so the checkbox `checked` state stays in sync
@@ -94,13 +83,15 @@ export function registerSettingsHandlers(
       const isOrigin =
         originWebContentsId !== undefined && window.webContents.id === originWebContentsId
       if (!window.isDestroyed() && !isOrigin) {
-        window.webContents.send('settings:changed', updates)
+        window.webContents.send('settings:changed', settingsWithoutDecisionKey(updates))
       }
     }
   })
 
   ipcMain.handle('settings:get', () => {
-    return readSettingsWithRuntimeEnvironmentPreference(store, app.getPath('userData'))
+    return settingsWithoutDecisionKey(
+      readSettingsWithRuntimeEnvironmentPreference(store, app.getPath('userData'))
+    )
   })
 
   ipcMain.handle(
@@ -112,7 +103,7 @@ export function registerSettingsHandlers(
         { prBotAuthorOverrides: next },
         { notifyListeners: true, originWebContentsId: event.sender.id }
       )
-      return store.getSettings()
+      return settingsWithoutDecisionKey(store.getSettings())
     }
   )
 
@@ -122,7 +113,9 @@ export function registerSettingsHandlers(
   // synchronously or pre-hydration bindings would always pick main authority
   // (terminal-side-effect-authority.md, migration switch).
   ipcMain.on('settings:get-sync', (event) => {
-    event.returnValue = readSettingsWithRuntimeEnvironmentPreference(store, app.getPath('userData'))
+    event.returnValue = settingsWithoutDecisionKey(
+      readSettingsWithRuntimeEnvironmentPreference(store, app.getPath('userData'))
+    )
   })
 
   ipcMain.handle('settings:set', async (event, args: Partial<GlobalSettings>) => {
@@ -299,7 +292,7 @@ export function registerSettingsHandlers(
       })
     }
 
-    return store.getSettings()
+    return settingsWithoutDecisionKey(store.getSettings())
   })
 
   ipcMain.handle(
@@ -312,9 +305,11 @@ export function registerSettingsHandlers(
       const requestedId = requestedEnvironmentId?.trim() || null
       const environmentId =
         requestedId === null ? null : resolveEnvironment(app.getPath('userData'), requestedId).id
-      return store.updateSettings(
-        { activeRuntimeEnvironmentId: environmentId },
-        { notifyListeners: true, originWebContentsId: event.sender.id }
+      return settingsWithoutDecisionKey(
+        store.updateSettings(
+          { activeRuntimeEnvironmentId: environmentId },
+          { notifyListeners: true, originWebContentsId: event.sender.id }
+        )
       )
     }
   )

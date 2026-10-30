@@ -4,6 +4,20 @@ import { createLocalizedCatalog } from '@/i18n/localized-catalog'
 
 export const getIntegrationsPaneSearchEntries = createLocalizedCatalog(() => [
   {
+    title: translate('webhook.settings.title', 'Webhook'),
+    description: translate(
+      'webhook.search.description',
+      'Configure the selected host’s event receiver, listen address, exact port and external base URL.'
+    ),
+    keywords: [
+      ...translateSearchKeyword('webhook.settings.title', 'Webhook'),
+      ...translateSearchKeyword('webhook.search.receiver', 'receiver'),
+      ...translateSearchKeyword('webhook.search.http', 'HTTP'),
+      ...translateSearchKeyword('webhook.search.port', 'port'),
+      ...translateSearchKeyword('webhook.search.callback', 'callback')
+    ]
+  },
+  {
     title: translate(
       'auto.components.settings.integrations.search.f16e41cc72',
       'GitHub Integration'

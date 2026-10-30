@@ -35,6 +35,27 @@ export const readAuthorizationStatusMock = vi.fn(
     Promise.resolve(null)
 )
 
+/** The runtime members `registerNotificationHandlers` reads; only these sessions are dispatches. */
+export function createNotificationRuntimeStub(dispatchedSessionIds: readonly string[]): {
+  dispatchMobileNotification: NotificationSpy
+  getTerminalHandleForPaneKey: NotificationSpy
+  forgeInboxServiceIfAttached: () => {
+    isDispatchedAgent: (identity: { sessionId?: string }) => boolean
+  }
+  onNotificationDispatched: NotificationSpy
+} {
+  const dispatched = new Set(dispatchedSessionIds)
+  return {
+    dispatchMobileNotification: vi.fn(),
+    getTerminalHandleForPaneKey: vi.fn(() => null),
+    forgeInboxServiceIfAttached: () => ({
+      isDispatchedAgent: ({ sessionId }: { sessionId?: string }) =>
+        sessionId !== undefined && dispatched.has(sessionId)
+    }),
+    onNotificationDispatched: vi.fn(() => () => {})
+  }
+}
+
 export function createElectronModuleMock(): Record<string, unknown> {
   return {
     ipcMain: {

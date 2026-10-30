@@ -49,6 +49,31 @@ export function canonicalGitlabBaseUrl(value: string): string | null {
   return `${url.protocol}//${url.host}${url.pathname.replace(/\/+$/, '')}`
 }
 
+// `0.0.0.0` / `[::]` are bind addresses, not a base a remote GitLab can call back.
+const UNSPECIFIED_RECEIVER_HOSTS = new Set(['0.0.0.0', '[::]', '::'])
+
+export function canonicalReceiverBaseUrl(value: string): string | null {
+  if (/[\s?#\\]/.test(value) || hasControlCharacter(value)) {
+    return null
+  }
+  let url: URL
+  try {
+    url = new URL(value)
+  } catch {
+    return null
+  }
+  if (
+    (url.protocol !== 'https:' && url.protocol !== 'http:') ||
+    url.username !== '' ||
+    url.password !== '' ||
+    url.hostname === '' ||
+    UNSPECIFIED_RECEIVER_HOSTS.has(url.hostname.toLowerCase())
+  ) {
+    return null
+  }
+  return `${url.protocol}//${url.host}${url.pathname.replace(/\/+$/, '')}`
+}
+
 const gitlabBaseUrlSchema = z
   .string()
   .max(2048)
@@ -61,7 +86,7 @@ const gitlabBaseUrlSchema = z
     return canonical
   })
 
-const eventsSchema = z
+export const forgeInboxProjectEventsSchema = z
   .strictObject({
     reviewRequests: z.boolean().default(false),
     participatingMergeRequestUpdates: z.boolean().default(false),
@@ -71,7 +96,7 @@ const eventsSchema = z
   })
   .prefault({})
 
-const budgetsSchema = z
+export const forgeInboxProjectBudgetsSchema = z
   .strictObject({
     timeoutSeconds: z.number().int().min(10).max(3600).default(600),
     maxInputTokens: z.number().int().min(1000).max(1_000_000).default(100_000),
@@ -98,8 +123,8 @@ const projectPolicySchema = z
       .refine((value) => new TextEncoder().encode(value).length <= MAX_RULES_BYTES),
     enabled: z.boolean().default(false),
     automaticAnalysis: z.boolean().default(false),
-    events: eventsSchema,
-    budgets: budgetsSchema
+    events: forgeInboxProjectEventsSchema,
+    budgets: forgeInboxProjectBudgetsSchema
   })
   .superRefine((project, ctx) => {
     if (

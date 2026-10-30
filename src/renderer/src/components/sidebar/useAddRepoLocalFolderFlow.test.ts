@@ -64,6 +64,7 @@ describe('useAddRepoLocalFolderFlow', () => {
   const setNestedScanInProgress = vi.fn()
   const showNestedRepoReview = vi.fn()
   const onGitRepoReady = vi.fn()
+  const onGitRepoBatchReady = vi.fn()
   const setIsAdding = vi.fn()
   const setAddProjectBusyLabel = vi.fn()
   const pickFolders = vi.fn()
@@ -81,6 +82,7 @@ describe('useAddRepoLocalFolderFlow', () => {
     fetchWorktrees.mockResolvedValue(true)
     scanNestedRepos.mockImplementation(async (path: string) => makeScan(path))
     onGitRepoReady.mockResolvedValue(undefined)
+    onGitRepoBatchReady.mockResolvedValue(undefined)
   })
 
   it('adds every selected local folder and completes one default-checkout handoff', async () => {
@@ -99,6 +101,7 @@ describe('useAddRepoLocalFolderFlow', () => {
       setNestedScanInProgress,
       showNestedRepoReview,
       onGitRepoReady,
+      onGitRepoBatchReady,
       setIsAdding,
       setAddProjectBusyLabel
     })
@@ -126,8 +129,13 @@ describe('useAddRepoLocalFolderFlow', () => {
       requireAuthoritative: true,
       executionHostId: 'local'
     })
-    expect(onGitRepoReady).toHaveBeenCalledTimes(1)
-    expect(onGitRepoReady).toHaveBeenCalledWith('alpha', 'local_folder_picker', 'local')
+    expect(onGitRepoBatchReady).toHaveBeenCalledTimes(1)
+    expect(onGitRepoBatchReady).toHaveBeenCalledWith({
+      repoIds: ['alpha', 'beta'],
+      source: 'local_folder_picker',
+      executionHostId: 'local'
+    })
+    expect(onGitRepoReady).not.toHaveBeenCalled()
   })
 
   it('skips nested-review folders in a multi-folder add and continues with git folders', async () => {
@@ -154,6 +162,7 @@ describe('useAddRepoLocalFolderFlow', () => {
       setNestedScanInProgress,
       showNestedRepoReview,
       onGitRepoReady,
+      onGitRepoBatchReady,
       setIsAdding,
       setAddProjectBusyLabel
     })
@@ -166,7 +175,11 @@ describe('useAddRepoLocalFolderFlow', () => {
       runtimeEnvironmentId: null
     })
     expect(scanNestedRepos).toHaveBeenCalledTimes(2)
-    expect(onGitRepoReady).toHaveBeenCalledWith('later', 'local_folder_picker', 'local')
+    expect(onGitRepoBatchReady).toHaveBeenCalledWith({
+      repoIds: ['later'],
+      source: 'local_folder_picker',
+      executionHostId: 'local'
+    })
   })
 
   it('still completes handoff when a later selected folder is skipped', async () => {
@@ -191,6 +204,7 @@ describe('useAddRepoLocalFolderFlow', () => {
       setNestedScanInProgress,
       showNestedRepoReview,
       onGitRepoReady,
+      onGitRepoBatchReady,
       setIsAdding,
       setAddProjectBusyLabel
     })
@@ -202,7 +216,11 @@ describe('useAddRepoLocalFolderFlow', () => {
     expect(addRepoPath).toHaveBeenCalledWith('/projects/git', undefined, {
       runtimeEnvironmentId: null
     })
-    expect(onGitRepoReady).toHaveBeenCalledWith('git', 'local_folder_picker', 'local')
+    expect(onGitRepoBatchReady).toHaveBeenCalledWith({
+      repoIds: ['git'],
+      source: 'local_folder_picker',
+      executionHostId: 'local'
+    })
   })
 
   it('drops a local scan completion after host-scoped reset', async () => {
@@ -226,6 +244,7 @@ describe('useAddRepoLocalFolderFlow', () => {
       setNestedScanInProgress,
       showNestedRepoReview,
       onGitRepoReady,
+      onGitRepoBatchReady,
       setIsAdding,
       setAddProjectBusyLabel
     })
@@ -237,6 +256,6 @@ describe('useAddRepoLocalFolderFlow', () => {
     await adding
 
     expect(addRepoPath).not.toHaveBeenCalled()
-    expect(onGitRepoReady).not.toHaveBeenCalled()
+    expect(onGitRepoBatchReady).not.toHaveBeenCalled()
   })
 })

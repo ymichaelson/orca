@@ -18260,7 +18260,13 @@
           "emptyUnread": "没有未读条目。",
           "empty": "暂无条目。新的 GitLab 活动将显示在这里。",
           "loadingMore": "正在加载…",
-          "loadMore": "加载更多"
+          "loadMore": "加载更多",
+          "kindFilter": "类型",
+          "allKinds": "全部类型",
+          "projectFilter": "项目",
+          "allProjects": "全部项目",
+          "handlingFilter": "状态",
+          "allHandling": "全部状态"
         },
         "ForgeInboxPage": {
           "title": "收件箱",

@@ -22,6 +22,7 @@ export type SharedControlTestServer = {
   connectionCount: () => number
   flushDelayedResponses: () => void
   closeClients: () => void
+  emitSubscription: (method: string, result: unknown) => void
 }
 
 type ServerOptions = {
@@ -41,6 +42,9 @@ type ServerOptions = {
   silentMethods?: string[]
   /** Refuses every auth the way a server that dropped this device does. */
   rejectAuth?: boolean
+  closeBeforeFirstReady?: boolean
+  unsupportedMethods?: string[]
+  errorForRequest?: (method: string) => { code: string; message: string } | null
 }
 
 const servers: WebSocketServer[] = []
@@ -66,6 +70,7 @@ export async function createSharedControlTestServer(
   const requests: SharedControlTestServer['requests'] = []
   const auths: unknown[] = []
   const delayedResponses: (() => void)[] = []
+  const subscriptions = new Map<WebSocket, { id: string; method: string; key: Uint8Array }[]>()
   let connectionCount = 0
   let closedAfterFirstStreamingResponse = false
   // host must match the 127.0.0.1 clients dial: a wildcard bind lets a foreign loopback listener claim the port and answer here.
@@ -86,6 +91,10 @@ export async function createSharedControlTestServer(
       }
       const frame = data.toString()
       if (!sharedKey) {
+        if (options.closeBeforeFirstReady && connectionCount === 1) {
+          ws.close(4001, 'initially offline')
+          return
+        }
         const hello = JSON.parse(frame) as { publicKeyB64: string }
         sharedKey = deriveSharedKey(
           serverKeyPair.secretKey,
@@ -117,11 +126,17 @@ export async function createSharedControlTestServer(
         }
         return
       }
+      const request: { id: string; method: string; params?: unknown } = JSON.parse(plaintext)
+      if (request.method.endsWith('.subscribe')) {
+        const entries = subscriptions.get(ws) ?? []
+        entries.push({ id: request.id, method: request.method, key: sharedKey })
+        subscriptions.set(ws, entries)
+      }
       handleRequest(
         ws,
         sharedKey,
         requests,
-        JSON.parse(plaintext),
+        request,
         {
           ...options,
           closeAfterStreamingResponse: () => {
@@ -157,7 +172,25 @@ export async function createSharedControlTestServer(
     auths,
     connectionCount: () => connectionCount,
     flushDelayedResponses: () => delayedResponses.splice(0).forEach((send) => send()),
-    closeClients: () => wss.clients.forEach((client) => client.close(4001, 'test close'))
+    closeClients: () => wss.clients.forEach((client) => client.close(4001, 'test close')),
+    emitSubscription: (method, result) => {
+      for (const [ws, entries] of subscriptions) {
+        if (ws.readyState !== ws.OPEN) {
+          continue
+        }
+        for (const entry of entries) {
+          if (entry.method === method) {
+            sendEncrypted(ws, entry.key, {
+              id: entry.id,
+              ok: true,
+              result,
+              streaming: true,
+              _meta: { runtimeId: 'runtime-test' }
+            })
+          }
+        }
+      }
+    }
   }
 }
 
@@ -170,6 +203,25 @@ function handleRequest(
   delayedResponses: (() => void)[]
 ): void {
   requests.push(request)
+  if (options.unsupportedMethods?.includes(request.method)) {
+    sendEncrypted(ws, sharedKey, {
+      id: request.id,
+      ok: false,
+      error: { code: 'method_not_found', message: 'Method not found' },
+      _meta: { runtimeId: 'runtime-test' }
+    })
+    return
+  }
+  const error = options.errorForRequest?.(request.method)
+  if (error) {
+    sendEncrypted(ws, sharedKey, {
+      id: request.id,
+      ok: false,
+      error,
+      _meta: { runtimeId: 'runtime-test' }
+    })
+    return
+  }
   if (options.sendKeepaliveBeforeResponse && options.keepaliveDelayMs !== undefined) {
     const timer = setInterval(
       () => sendEncrypted(ws, sharedKey, { _keepalive: true }),
@@ -186,7 +238,11 @@ function handleRequest(
   }
   const streaming = isStreamingMethod(request.method)
   const result = streaming
-    ? { type: 'ready', subscriptionId: `${request.method}:subscription` }
+    ? {
+        type: 'ready',
+        subscriptionId: `${request.method}:subscription`,
+        ...(request.method === 'notifications.subscribe' ? { epoch: 'test-epoch' } : {})
+      }
     : (options.resultForRequest?.(request.method) ?? { method: request.method })
   const sendResponse = (): void => {
     if (options.sendUnknownResponseBeforeResponse) {

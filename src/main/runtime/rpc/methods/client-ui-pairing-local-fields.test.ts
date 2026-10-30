@@ -58,6 +58,9 @@ describe('client UI RPC pairing-local field seams', () => {
     agentsShowSearch: false,
     agentsReadFilter: 'unread',
     agentsGroupBy: 'project',
+    forgeInboxUnreadOnly: true,
+    forgeInboxArchiveView: 'archived',
+    forgeInboxCompact: true,
     activityClearedAtByPaneKey: { 'tab-1:leaf-1': 123 },
     manuallyUnreadTurnsByPaneKey: { 'tab-1:leaf-1': 321 }
   }

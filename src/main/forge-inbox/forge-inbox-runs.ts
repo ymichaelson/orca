@@ -1,6 +1,6 @@
 import { runForgeTransaction } from './forge-inbox-database'
 import { recordForgeChange, type ForgeLedgerContext } from './forge-inbox-context'
-import { rowNumber, runFromRow } from './forge-inbox-rows'
+import { rowNumber, rowText, runFromRow } from './forge-inbox-rows'
 import type {
   ForgeAnalysisResult,
   ForgeRun,
@@ -79,6 +79,19 @@ export function transitionForgeRun(
   })
 }
 
+/** Marks a still-running run unknown-outcome against its current generation; any other state is left alone. */
+export function markForgeRunUnverifiableIfRunning(ctx: ForgeLedgerContext, runId: number): boolean {
+  const run = readForgeRun(ctx, runId)
+  if (run?.state !== 'running') {
+    return false
+  }
+  return transitionForgeRun(ctx, runId, {
+    to: 'unverifiable',
+    error: 'unknown-outcome',
+    expectedGeneration: run.generation
+  }).ok
+}
+
 /** Persists the session before anything is sent, so a restart reconciles instead of re-launching. */
 export function bindForgeRunSession(
   ctx: ForgeLedgerContext,
@@ -92,6 +105,82 @@ export function bindForgeRunSession(
       )
       .run(sessionId, ctx.now(), runId)
     return updated.changes === 1
+  })
+}
+
+/** Persists which turn this run dispatched, so a restart can ask that turn for its own verdict. */
+export function bindForgeRunDispatchTurn(
+  ctx: ForgeLedgerContext,
+  runId: number,
+  clientMessageId: string
+): boolean {
+  return runForgeTransaction(ctx.db, () => {
+    const updated = ctx.db
+      .prepare(
+        `UPDATE runs SET dispatch_client_message_id = ?, updated_at = ?
+         WHERE id = ? AND state = 'running' AND dispatch_client_message_id IS NULL`
+      )
+      .run(clientMessageId, ctx.now(), runId)
+    return updated.changes === 1
+  })
+}
+
+export type InterruptedDispatchedRun = {
+  id: number
+  sessionId: string
+  clientMessageId: string
+}
+
+/** Only an interrupted run that recorded its own turn can be asked what happened. */
+export function listInterruptedDispatchedForgeRuns(
+  ctx: ForgeLedgerContext
+): InterruptedDispatchedRun[] {
+  return ctx.db
+    .prepare(
+      `SELECT r.id, r.session_id, r.dispatch_client_message_id FROM runs r
+       JOIN items i ON i.id = r.item_id
+       WHERE r.state = 'unverifiable' AND r.error = 'unknown-outcome'
+         AND r.session_id IS NOT NULL AND r.dispatch_client_message_id IS NOT NULL
+         AND i.host_id = ? ORDER BY r.id`
+    )
+    .all(ctx.hostId)
+    .map((row) => ({
+      id: rowNumber(row, 'id'),
+      sessionId: rowText(row, 'session_id'),
+      clientMessageId: rowText(row, 'dispatch_client_message_id')
+    }))
+}
+
+/** A settled run is never reopened: only the interruption verdict may be replaced by proof. */
+export function settleInterruptedForgeRunFromProof(
+  ctx: ForgeLedgerContext,
+  runId: number,
+  settlement: { to: ForgeRunState; error: string | null; result?: ForgeAnalysisResult | null }
+): boolean {
+  return runForgeTransaction(ctx.db, () => {
+    const row = ctx.db.prepare('SELECT item_id, generation FROM runs WHERE id = ?').get(runId)
+    if (!row) {
+      return false
+    }
+    const updated = ctx.db
+      .prepare(
+        `UPDATE runs SET state = ?, generation = generation + 1, error = ?,
+           result_json = COALESCE(?, result_json), updated_at = ?
+         WHERE id = ? AND state = 'unverifiable' AND error = 'unknown-outcome' AND generation = ?`
+      )
+      .run(
+        settlement.to,
+        settlement.error,
+        settlement.result ? JSON.stringify(settlement.result) : null,
+        ctx.now(),
+        runId,
+        rowNumber(row, 'generation')
+      )
+    if (updated.changes !== 1) {
+      return false
+    }
+    recordForgeChange(ctx, rowNumber(row, 'item_id'), 'run', runId, settlement.to)
+    return true
   })
 }
 

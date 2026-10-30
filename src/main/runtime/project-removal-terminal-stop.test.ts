@@ -5,6 +5,7 @@
 import { describe, expect, it, vi } from 'vitest'
 import { spawnWorktreeTarget } from '../../shared/worktree/host-qualified-identity'
 import type { Repo } from '../../shared/repo-types'
+import type { ForgeInboxOwnerService } from '../forge-inbox/forge-inbox-owner-service'
 import { OrcaRuntimeService } from './orca-runtime-test-mocks.spec'
 import { TEST_REPO_ID, TEST_WORKTREE_ID, store } from './orca-runtime-test-fixtures.spec'
 
@@ -59,6 +60,25 @@ describe('project removal on the execution host', () => {
 
     expect(stoppedBeforeRemoval.sort()).toEqual(['pty-hidden', 'pty-visible'])
     expect(removeProjectForHost).toHaveBeenCalledWith(expect.objectContaining({ id: TEST_REPO_ID }))
+  })
+
+  it('asks the Forge owner to drop the project hook first and still removes when it fails', async () => {
+    const { runtime, removeProjectForHost } = createRemovableRuntime()
+    const removedBefore: boolean[] = []
+    const removeProjectEvent = vi.fn(async () => {
+      removedBefore.push(removeProjectForHost.mock.calls.length === 0)
+      throw new Error('gitlab unreachable')
+    })
+    // oxlint-disable-next-line typescript/consistent-type-assertions -- SAFETY: removal only calls removeProjectEvent on the attached owner.
+    runtime.attachForgeInboxService({ removeProjectEvent } as unknown as ForgeInboxOwnerService)
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => undefined)
+
+    await expect(runtime.removeProject(TEST_REPO_ID)).resolves.toEqual({ removed: true })
+
+    expect(removeProjectEvent).toHaveBeenCalledWith(TEST_REPO_ID)
+    expect(removedBefore).toEqual([true])
+    expect(removeProjectForHost).toHaveBeenCalledTimes(1)
+    warn.mockRestore()
   })
 
   it('stops native shells of a project a paired client registered under a runtime stamp', async () => {

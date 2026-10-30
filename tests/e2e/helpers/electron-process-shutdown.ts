@@ -1,6 +1,6 @@
 import type { ChildProcess } from 'node:child_process'
 import { execFileSync } from 'node:child_process'
-import { existsSync, readFileSync, readdirSync } from 'node:fs'
+import { existsSync, readFileSync, readdirSync, rmSync } from 'node:fs'
 import path from 'node:path'
 import { cleanupE2ECrashpad } from './electron-crashpad-cleanup'
 import { recordElectronShutdownTiming } from './electron-shutdown-timing'
@@ -9,6 +9,24 @@ import type { ElectronApplication } from '@stablyai/playwright-test'
 const GRACEFUL_CLOSE_TIMEOUT_MS = 10_000
 const PROCESS_EXIT_TIMEOUT_MS = 5_000
 const FORCE_KILL_WAIT_MS = 2_000
+
+export async function removeUserDataDirAfterShutdown(userDataDir: string): Promise<void> {
+  const started = performance.now()
+  for (let attempt = 0; attempt < 5; attempt += 1) {
+    try {
+      rmSync(userDataDir, { recursive: true, force: true })
+      recordElectronShutdownTiming('profile-removal', started)
+      return
+    } catch (error) {
+      if (attempt === 4) {
+        throw error
+      }
+      // Why: Windows can briefly keep Electron profile files locked after the
+      // process exits; retrying avoids turning a passed flow into teardown noise.
+      await new Promise((resolve) => setTimeout(resolve, 250 * (attempt + 1)))
+    }
+  }
+}
 
 function delay(ms: number): Promise<void> {
   return new Promise((resolve) => {

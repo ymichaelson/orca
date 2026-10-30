@@ -41,11 +41,13 @@ export async function commitStructuredAgentSessionLaunchPrompt(args: {
   sessionId: string
   fence: number
   text: string
+  clientMessageId?: string
 }): Promise<string | null> {
   if (!args.host || args.text.trim().length === 0) {
     return null
   }
-  const clientMessageId = createStructuredAgentSessionOperationId(randomUUID)
+  const clientMessageId =
+    args.clientMessageId ?? createStructuredAgentSessionOperationId(randomUUID)
   try {
     const result = await args.host.send(args.caller, {
       ...structuredAgentSessionMessageSendMutation({

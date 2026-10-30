@@ -77,6 +77,7 @@ export async function glabExecFileAsync(
           timeout: timeoutMs,
           env: options.env,
           signal: options.signal,
+          stdin: options.stdin,
           onDeadlineKill: () => logHostedCliDeadlineKill('glab', resolved.binary, args, timeoutMs)
         },
         resolved.termination

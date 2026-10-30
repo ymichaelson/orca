@@ -5,6 +5,7 @@ import { normalizeRepoBadgeColor } from '../../../shared/repo-badge-color'
 import { sanitizeRepoIcon } from '../../../shared/repo-icon'
 import { normalizeGhAccountBinding } from '../../../shared/github/account-binding'
 import { normalizeJiraProjectReference } from '../../../shared/jira-project-reference'
+import { normalizeProjectEventGitlabProject } from '../../../shared/project-event-gitlab-project'
 import type { GhAccountBinding } from '../../../shared/github/account-binding'
 import {
   normalizeCustomWorktreeVisibilitySources,
@@ -80,6 +81,7 @@ export function sanitizeRepoUpdatesForPersistence<
       | 'projectHostSetupMethod'
       | 'forkSyncMode'
       | 'defaultJiraProject'
+      | 'projectEventGitlabProject'
       | 'customWorktreeVisibilitySources'
       | 'worktreeVisibilitySourcePreferences'
     >
@@ -94,6 +96,14 @@ export function sanitizeRepoUpdatesForPersistence<
       delete sanitized.defaultJiraProject
     } else {
       sanitized.defaultJiraProject = reference
+    }
+  }
+  if ('projectEventGitlabProject' in sanitized) {
+    const reference = normalizeProjectEventGitlabProject(sanitized.projectEventGitlabProject)
+    if (reference === undefined) {
+      delete sanitized.projectEventGitlabProject
+    } else {
+      sanitized.projectEventGitlabProject = reference
     }
   }
   if ('badgeColor' in sanitized) {

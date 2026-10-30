@@ -18364,7 +18364,13 @@
           "emptyUnread": "Aucun élément non lu.",
           "empty": "Aucun élément pour le moment. Les nouvelles activités GitLab apparaîtront ici.",
           "loadingMore": "Chargement…",
-          "loadMore": "Charger plus"
+          "loadMore": "Charger plus",
+          "kindFilter": "Type",
+          "allKinds": "Tous les types",
+          "projectFilter": "Projet",
+          "allProjects": "Tous les projets",
+          "handlingFilter": "Statut",
+          "allHandling": "Tous les statuts"
         },
         "ForgeInboxPage": {
           "title": "Boîte de réception",

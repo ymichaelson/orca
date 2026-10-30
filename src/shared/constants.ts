@@ -9,6 +9,7 @@ import { DEFAULT_STATUS_BAR_ITEMS } from './status-bar-defaults'
 import type { VoiceSettings } from './speech-types'
 import { cloneDefaultWorkspaceStatuses } from './workspace-statuses'
 import { DEFAULT_WORKTREE_CARD_PROPERTIES } from './worktree/card-properties'
+import { DEFAULT_FORGE_INBOX_ARCHIVE_VIEW } from './forge-inbox-display-preferences'
 import { DEFAULT_AGENTS_GROUP_BY, DEFAULT_AGENTS_READ_FILTER } from './agents-view-thread-filters'
 import { DEFAULT_USAGE_PERCENTAGE_DISPLAY } from './usage-percentage-display'
 import { DEFAULT_STATUS_BAR_USAGE_MODE } from './status-bar-usage-mode'
@@ -229,6 +230,9 @@ export function getDefaultUIState(): PersistedUIState {
     agentsShowSearch: true,
     agentsReadFilter: DEFAULT_AGENTS_READ_FILTER,
     agentsGroupBy: DEFAULT_AGENTS_GROUP_BY,
+    forgeInboxUnreadOnly: false,
+    forgeInboxArchiveView: DEFAULT_FORGE_INBOX_ARCHIVE_VIEW,
+    forgeInboxCompact: false,
     collapsedGroups: [],
     uiZoomLevel: 0,
     editorFontZoomLevel: 0,

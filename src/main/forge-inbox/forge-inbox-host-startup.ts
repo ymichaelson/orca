@@ -5,11 +5,16 @@ import type { MobileNotificationDispatchEvent } from '../runtime/runtime-mobile-
 import { createForgeNotificationDispatcher } from './forge-inbox-notification-dispatch'
 import { forgeErrorLabel } from './forge-inbox-error-label'
 import {
+  projectEventDecisionForSource,
+  type ProjectEventDecisionSource
+} from './forge-inbox-decision-runtime'
+import {
   createForgeInboxOwnerService,
-  type ForgeAnalysisRunnerFactory,
   type ForgeInboxOwnerService,
   type ForgeInboxOwnerServiceOptions
 } from './forge-inbox-owner-service'
+import { createGlabDispatchConfirmationReaderFactory } from './forge-inbox-dispatch-confirmation-reader'
+import { createForgeProjectEventContextObserver } from './forge-inbox-project-event-context-observer'
 
 export const FORGE_INBOX_LEDGER_FILE = 'forge-inbox.db'
 
@@ -23,21 +28,41 @@ export async function startForgeInboxForHost(input: {
   attach: (service: ForgeInboxOwnerService) => void
   /** The runtime's notification dispatch; Forge attention rides the same fan-out as every other lane. */
   notify: (event: MobileNotificationDispatchEvent) => void
-  /** Without one, queued analyses stay queued: a host that cannot run a protected session must not fake it. */
-  analyse?: ForgeAnalysisRunnerFactory
-  /** Without one, Discuss is refused: a session this host cannot prove is never resumed elsewhere. */
-  discuss?: NonNullable<ForgeInboxOwnerServiceOptions['discuss']>
-  /** Without one, patch proposals are refused: a turn this host cannot run is never faked. */
-  proposePatch?: NonNullable<ForgeInboxOwnerServiceOptions['proposePatch']>
+  receiverSettings?: ForgeInboxOwnerServiceOptions['receiverSettings']
+  secretStore?: ForgeInboxOwnerServiceOptions['secretStore']
+  /** Without one, no background binding can resolve a repo, so none is attempted. */
+  resolveProjectBindingContext?: ForgeInboxOwnerServiceOptions['resolveProjectBindingContext']
+  /** Without one, binding deliveries stay pending until a host that can decide opens the ledger. */
+  decisionSource?: ProjectEventDecisionSource
+  /** Without one, dispatch_agent stays queued and is refused as dispatch-unavailable. */
+  launchProjectEventAgent?: ForgeInboxOwnerServiceOptions['launchProjectEventAgent']
+  /** Without one, a dead process's unverifiable dispatched runs keep their recorded verdict. */
+  recoverProjectEventRuns?: ForgeInboxOwnerServiceOptions['recoverProjectEventRuns']
+  /** Defaults to glab as the checkout sees it; tests inject a fake so no GitLab is contacted. */
+  createProjectEventDispatchReader?: ForgeInboxOwnerServiceOptions['createProjectEventDispatchReader']
 }): Promise<ForgeInboxHostStartup> {
   const service = createForgeInboxOwnerService({
     dbPath: join(input.profileDirectory, FORGE_INBOX_LEDGER_FILE),
     http: input.http,
     networkReady: input.networkReady,
+    receiverSettings: input.receiverSettings,
+    secretStore: input.secretStore,
     notificationSinks: [createForgeNotificationDispatcher(input.notify)],
-    ...(input.analyse ? { analyse: input.analyse } : {}),
-    ...(input.discuss ? { discuss: input.discuss } : {}),
-    ...(input.proposePatch ? { proposePatch: input.proposePatch } : {})
+    ...(input.decisionSource
+      ? { decideProjectEvent: projectEventDecisionForSource(input.decisionSource, input.http) }
+      : {}),
+    observeProjectEventContext: (ledger) => createForgeProjectEventContextObserver(ledger),
+    ...(input.launchProjectEventAgent
+      ? { launchProjectEventAgent: input.launchProjectEventAgent }
+      : {}),
+    createProjectEventDispatchReader:
+      input.createProjectEventDispatchReader ?? createGlabDispatchConfirmationReaderFactory(),
+    ...(input.recoverProjectEventRuns
+      ? { recoverProjectEventRuns: input.recoverProjectEventRuns }
+      : {}),
+    ...(input.resolveProjectBindingContext
+      ? { resolveProjectBindingContext: input.resolveProjectBindingContext }
+      : {})
   })
   try {
     // Attached before the start so a stop during the ledger-open and listener-bind window reaches it.

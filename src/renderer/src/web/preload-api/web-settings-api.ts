@@ -23,6 +23,7 @@ import { noopUnsubscribe } from './web-storage'
 
 export function createWebSettingsApi(): Partial<PreloadApi> {
   return {
+    // oxlint-disable-next-line typescript/consistent-type-assertions -- SAFETY: web omits the desktop-only import previews; every other SettingsApi member matches.
     settings: {
       get: async () => getRuntimeBackedStoredSettings(),
       // Why: localStorage-backed settings are synchronous, so the pre-hydration kill-switch read works the same as desktop.
@@ -77,6 +78,7 @@ export function createWebSettingsApi(): Partial<PreloadApi> {
         const localUpdates = { ...sanitizedUpdates }
         if (runtimeEnvironment) {
           delete localUpdates.worktreeVisibilityDefaults
+          delete localUpdates.projectEventReceiver
         }
         const next = mergeSettings(getStoredSettings(), localUpdates, {
           preserveAutoRenameBranchFromWorkUpdate: 'autoRenameBranchFromWork' in sanitizedUpdates

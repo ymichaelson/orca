@@ -117,6 +117,7 @@ describe('useIpcEvents CLI-created worktree activation', () => {
         ui: {
           onStateChanged: () => () => {},
           onOpenSettings: () => () => {},
+          onOpenForgeInboxItem: () => () => {},
           consumePendingOpenSettings: () => Promise.resolve(false),
           onOpenFeatureTour: () => () => {},
           onToggleLeftSidebar: () => () => {},
@@ -396,6 +397,7 @@ describe('useIpcEvents CLI-created worktree activation', () => {
         ui: {
           onStateChanged: () => () => {},
           onOpenSettings: () => () => {},
+          onOpenForgeInboxItem: () => () => {},
           consumePendingOpenSettings: () => Promise.resolve(false),
           onOpenFeatureTour: () => () => {},
           onToggleLeftSidebar: () => () => {},

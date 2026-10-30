@@ -2,6 +2,7 @@ import { useCallback, useRef } from 'react'
 import { toast } from 'sonner'
 import { track } from '@/lib/telemetry'
 import { useAppStore } from '@/store'
+import { repoMatchesHostIdentity } from '@/store/slices/repo-host-identity'
 import { getSelectedNestedRepoPathsInScanOrder } from '@/lib/nested-repo-selected-paths'
 import {
   buildNestedRepoImportActionTelemetry,
@@ -19,7 +20,7 @@ import { translate } from '@/i18n/i18n'
 import { worktreeRefreshOptions } from './add-repo-runtime-owner'
 import { completeNestedFolderOpen } from './complete-nested-folder-open'
 import { defaultProjectGroupNameForPath } from './add-repo-dialog-types'
-import type { ExecutionHostId } from '../../../../shared/execution-host'
+import type { GitRepoBatchHandoff } from './use-add-repo-project-event-setup'
 
 export function useAddRepoNestedImportFlow({
   nestedAttemptId,
@@ -35,7 +36,7 @@ export function useAddRepoNestedImportFlow({
   fetchWorktrees,
   importNestedRepos,
   getNestedRepoRuntimeKind,
-  onGitRepoReady,
+  onGitRepoBatchReady,
   setIsAdding
 }: {
   nestedAttemptId: string | null
@@ -59,11 +60,7 @@ export function useAddRepoNestedImportFlow({
     mode: 'group' | 'separate'
   }) => Promise<ProjectGroupImportResult | null>
   getNestedRepoRuntimeKind: (connectionId: string | null) => NestedRepoTelemetryRuntimeKind
-  onGitRepoReady: (
-    repoId: string,
-    source: AddRepoExistingWorkspaceSource,
-    executionHostId?: ExecutionHostId
-  ) => Promise<void>
+  onGitRepoBatchReady: (handoff: GitRepoBatchHandoff) => Promise<void>
   setIsAdding: (isAdding: boolean) => void
 }): {
   handleImportNestedRepos: (mode: 'group' | 'separate') => Promise<void>
@@ -201,14 +198,22 @@ export function useAddRepoNestedImportFlow({
             }
           )
         }
-        const repo = useAppStore.getState().repos.find((entry) => entry.id === firstRepoId)
-        if (repo) {
+        const executionHostId = completionOwnerOptions.executionHostId
+        // Why: an unhydrated first row means the store has not caught up, so the dialog must not navigate blind.
+        const hydrated = useAppStore
+          .getState()
+          .repos.some((entry) =>
+            executionHostId === undefined
+              ? entry.id === firstRepoId
+              : repoMatchesHostIdentity(entry, firstRepoId, executionHostId)
+          )
+        if (hydrated) {
           const source: AddRepoExistingWorkspaceSource = nestedConnectionId
             ? 'ssh_remote_path'
             : activeRuntimeEnvironmentId?.trim()
               ? 'runtime_server_path'
               : 'local_folder_picker'
-          await onGitRepoReady(repo.id, source, completionOwnerOptions.executionHostId)
+          await onGitRepoBatchReady({ repoIds: importedRepoIds, source, executionHostId })
         }
       } catch (err) {
         if (gen === nestedImportGenRef.current) {
@@ -247,7 +252,7 @@ export function useAddRepoNestedImportFlow({
       nestedScan,
       nestedSelectedPaths,
       getNestedRepoRuntimeKind,
-      onGitRepoReady,
+      onGitRepoBatchReady,
       setIsAdding
     ]
   )

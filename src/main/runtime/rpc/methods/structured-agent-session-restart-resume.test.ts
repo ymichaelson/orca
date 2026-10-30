@@ -115,7 +115,9 @@ describe("a paired client too old to show the host's other agents", () => {
     const host = installRestartHost()
     await call('agentSession.restartContinue', {}, OLD_CLIENT)
     const audience = host.restartResume.continueAfterRestart.mock.lastCall?.[2]
-    expect(host.restartResume.continueAfterRestart.mock.lastCall?.[0]).toBeUndefined()
+    expect(host.restartResume.continueAfterRestart.mock.lastCall?.[0]).toEqual([
+      CLAUDE_OFFER.sessionId
+    ])
     expect(audience?.('claude')).toBe(true)
     expect(audience?.('codex')).toBe(true)
     expect(audience?.('grok')).toBe(false)

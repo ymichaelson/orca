@@ -1,3 +1,7 @@
+import {
+  createForgeDispatchedAgentCompletion,
+  type ForgeDispatchedAgentCompletion
+} from '../../../notifications/forge-dispatched-agent-completion'
 import type { ForgeInboxOwnerService } from '../../../forge-inbox/forge-inbox-owner-service'
 import type { ExecutionHostId } from '../../../../shared/execution-host'
 import type { RuntimePtyWorktreeRecord } from '../../runtime-terminal-state-records'
@@ -233,6 +237,14 @@ export abstract class OrcaRuntimeWithHasExactPersistedTerminalSurfaceIdentity ex
 
   forgeInboxServiceIfAttached(): ForgeInboxOwnerService | null {
     return this.forgeInbox.serviceIfAttached()
+  }
+
+  /** Ordinary agent-completion alerts defer to Forge for an agent a project event dispatch started. */
+  forgeDispatchedAgentCompletion(): ForgeDispatchedAgentCompletion {
+    return createForgeDispatchedAgentCompletion({
+      forgeInbox: () => this.forgeInboxServiceIfAttached(),
+      terminalHandleForPaneKey: (paneKey) => this.getTerminalHandleForPaneKey(paneKey)
+    })
   }
 
   forgeInboxService(): ForgeInboxOwnerService {

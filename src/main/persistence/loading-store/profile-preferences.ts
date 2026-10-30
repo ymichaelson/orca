@@ -54,6 +54,11 @@ export class ProfilePreferences {
     return this[profilePreferencesContext].runtime.state.settings
   }
 
+  /** Whether ciphertext is parked for this slot even though no plaintext could be read from it. */
+  hasSealedProtectedSecret(slot: string): boolean {
+    return this[profilePreferencesContext].runtime.protectedSecrets.sealedBlob(slot) !== null
+  }
+
   onSettingsChanged(
     listener: (
       updates: Partial<GlobalSettings>,

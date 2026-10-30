@@ -1,14 +1,11 @@
 import { z } from 'zod'
+import { FORGE_ITEM_HANDLING_STATES } from '../forge-inbox-item-handling'
+import { FORGE_ITEM_KINDS } from '../forge-inbox-types'
 import { forgeProjectPolicyPatchSchema } from '../forge-inbox-project-policy-patch'
-import { FORGE_CREDENTIAL_KINDS, FORGE_CREDENTIAL_MAX_BYTES } from '../forge-inbox-config'
-import { FORGE_PUSH_MAX_MESSAGE_CHARS } from '../forge-push'
 import {
-  FORGE_PATCH_REQUEST_MAX_IDENTIFIER_CHARS,
-  FORGE_PATCH_REQUEST_MAX_MESSAGE_CHARS,
-  FORGE_PATCH_REQUEST_MAX_PATHS,
-  FORGE_PATCH_REQUEST_MAX_PATH_CHARS,
-  hasControlCharacter
-} from '../forge-patch-request'
+  FORGE_PROJECT_EVENT_ANSWER_MAX_BYTES,
+  FORGE_PROJECT_EVENT_QUESTION_STATUSES
+} from '../forge-inbox-project-event-question'
 
 // Why a bounded string, not a UUID: the owner mints a UUID, but a host may be pinned to any id.
 const OwnerHostId = z.string().min(1).max(128)
@@ -19,19 +16,20 @@ const Page = {
   cursor: RowId.optional()
 }
 const Owned = { ownerHostId: OwnerHostId, instanceId: InstanceId.optional() }
-const CredentialTarget = {
-  ownerHostId: OwnerHostId,
-  instanceId: InstanceId,
-  kind: z.enum(FORGE_CREDENTIAL_KINDS),
-  expectedRevision: z.number().int().min(0).max(Number.MAX_SAFE_INTEGER)
-}
 
 export const ForgeInboxNoParams = z.strictObject({})
 export const ForgeInboxListItemsParams = z.strictObject({
   ...Owned,
   ...Page,
-  unreadOnly: z.boolean().optional()
+  unreadOnly: z.boolean().optional(),
+  archiveView: z.enum(['active', 'archived', 'all']).optional(),
+  /** One project path as the ledger recorded it, so the filter cannot be a pattern. */
+  projectId: z.string().min(1).max(512).optional(),
+  kind: z.enum(FORGE_ITEM_KINDS).optional(),
+  /** The derived handling state; the host computes it per item, so this narrows after that read. */
+  handling: z.enum(FORGE_ITEM_HANDLING_STATES).optional()
 })
+export const ForgeInboxListProjectsParams = z.strictObject({ ownerHostId: OwnerHostId })
 export const ForgeInboxItemParams = z.strictObject({ ...Owned, itemId: RowId })
 export const ForgeInboxListRunsParams = z.strictObject({
   ...Owned,
@@ -44,21 +42,6 @@ export const ForgeInboxGetChangesParams = z.strictObject({
   afterSeq: z.number().int().min(0).max(Number.MAX_SAFE_INTEGER),
   limit: Page.limit
 })
-export const ForgeInboxUpdateConfigParams = z.strictObject({
-  ownerHostId: OwnerHostId,
-  expectedRevision: CredentialTarget.expectedRevision,
-  config: z.unknown()
-})
-export const ForgeInboxSetCredentialParams = z.strictObject({
-  ...CredentialTarget,
-  // Why no trim: a pasted secret is stored byte-exact or refused, never silently altered.
-  secret: z
-    .string()
-    .max(FORGE_CREDENTIAL_MAX_BYTES)
-    .regex(/^[\x21-\x7e]+$/),
-  allowUnprotectedStorage: z.boolean().optional()
-})
-export const ForgeInboxClearCredentialParams = z.strictObject(CredentialTarget)
 export const ForgeInboxSubscribeChangesParams = z.strictObject({
   ownerHostId: OwnerHostId,
   instanceId: InstanceId.optional(),
@@ -72,61 +55,53 @@ export const ForgeInboxAckChangesParams = z.strictObject({
   subscriptionId: z.string().min(1).max(256),
   seq: z.number().int().min(0).max(Number.MAX_SAFE_INTEGER)
 })
-export const ForgeInboxUpdateProjectPolicyParams = z.strictObject({
+/** A repository id is durable across worktrees; a workspace or client path is never accepted. */
+const RepoId = z.string().min(1).max(200)
+
+export const ForgeInboxGetProjectEventPolicyParams = z.strictObject({
   ownerHostId: OwnerHostId,
-  instanceId: InstanceId,
-  projectId: z.string().min(1).max(128),
-  expectedRevision: CredentialTarget.expectedRevision,
+  repoId: RepoId
+})
+export const ForgeInboxUpdateProjectEventPolicyParams = z.strictObject({
+  ownerHostId: OwnerHostId,
+  repoId: RepoId,
+  expectedGeneration: z.number().int().min(0).max(Number.MAX_SAFE_INTEGER),
   patch: forgeProjectPolicyPatchSchema
 })
+export const ForgeInboxRetryProjectEventParams = z.strictObject({
+  ownerHostId: OwnerHostId,
+  repoId: RepoId,
+  allowUnprotectedStorage: z.boolean().optional()
+})
+export const ForgeInboxGetProjectEventActivityParams = z.strictObject({
+  ownerHostId: OwnerHostId,
+  repoId: RepoId,
+  limit: z.number().int().min(1).max(20).optional()
+})
+export const ForgeInboxRotateProjectEventSecretParams = z.strictObject({
+  ownerHostId: OwnerHostId,
+  repoId: RepoId,
+  allowUnprotectedStorage: z.boolean().optional()
+})
 
-const ProposalId = { ...Owned, proposalId: RowId }
-
-export const ForgeInboxProposalParams = z.strictObject(ProposalId)
-
-/** Approval binds the draft the client displayed: its hash and the versions it was made under. */
-const Approval = {
-  ...ProposalId,
-  expectedHash: z.string().regex(/^[0-9a-f]{64}$/),
-  expectedRevision: RowId,
-  expectedPolicyGeneration: z.number().int().min(0).max(Number.MAX_SAFE_INTEGER)
-}
-
-export const ForgeInboxApproveCommentParams = z.strictObject(Approval)
-export const ForgeInboxApprovePatchParams = z.strictObject(Approval)
-export const ForgeInboxApprovePushParams = z.strictObject(Approval)
-
-export const ForgeInboxRejectProposalParams = z.strictObject(ProposalId)
+export const ForgeInboxListProjectEventQuestionsParams = z.strictObject({
+  ownerHostId: OwnerHostId,
+  status: z.enum(FORGE_PROJECT_EVENT_QUESTION_STATUSES).optional()
+})
+/** NUL and the byte bound are refused here so the ledger only ever stores displayable answer text. */
+export const ForgeInboxAnswerProjectEventQuestionParams = z.strictObject({
+  ownerHostId: OwnerHostId,
+  questionId: RowId,
+  answer: z
+    .string()
+    .min(1)
+    .refine(
+      (value) =>
+        !value.includes('\u0000') &&
+        Buffer.byteLength(value, 'utf8') <= FORGE_PROJECT_EVENT_ANSWER_MAX_BYTES,
+      'answer must be displayable text within the byte bound'
+    )
+})
 
 /** One discuss message; the prompt builder quotes it whole, so the cap is shared by both sides. */
 export const FORGE_DISCUSS_MAX_MESSAGE_CHARS = 64 * 1024
-
-export const ForgeInboxDiscussParams = z.strictObject({
-  ...Owned,
-  runId: RowId,
-  message: z.string().min(1).max(FORGE_DISCUSS_MAX_MESSAGE_CHARS)
-})
-
-/** No control characters: these become a SQLite key and filesystem paths, never prompt text. */
-const controlFree = (schema: z.ZodString) =>
-  schema.refine((value) => !hasControlCharacter(value), 'control characters are not allowed')
-
-/** The same intent the claim digests, so a retry that reorders the paths is the same request. */
-export const ForgeInboxProposePatchParams = z.strictObject({
-  ...Owned,
-  runId: RowId,
-  operationId: controlFree(z.string().min(1).max(FORGE_PATCH_REQUEST_MAX_IDENTIFIER_CHARS)),
-  message: z.string().min(1).max(FORGE_PATCH_REQUEST_MAX_MESSAGE_CHARS),
-  paths: z
-    .array(controlFree(z.string().min(1).max(FORGE_PATCH_REQUEST_MAX_PATH_CHARS)))
-    .max(FORGE_PATCH_REQUEST_MAX_PATHS)
-    .optional()
-})
-
-/** A push publishes one applied patch; the message is the exact commit message to approve. */
-export const ForgeInboxProposePushParams = z.strictObject({
-  ...Owned,
-  runId: RowId,
-  patchProposalId: RowId,
-  message: z.string().min(1).max(FORGE_PUSH_MAX_MESSAGE_CHARS)
-})

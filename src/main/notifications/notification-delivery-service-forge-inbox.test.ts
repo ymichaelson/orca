@@ -4,6 +4,8 @@ import type {
   NotificationDispatchRequest,
   NotificationSettings
 } from '../../shared/notification-settings-types'
+import { LOCAL_EXECUTION_HOST_ID } from '../../shared/execution-host'
+import type { ForgeNotificationReason } from '../../shared/forge-inbox-notification-subject'
 import { createNotificationDeliveryService } from './notification-delivery-service'
 
 let now = 1_000_000
@@ -36,6 +38,18 @@ const forgeRequest = (
   attentionKey: 'forge:owner:gitlab-main:1',
   ...overrides
 })
+
+const forgeReasonRequest = (reason: ForgeNotificationReason) =>
+  forgeRequest({
+    notificationId: `forge:owner:gitlab-main:1:${reason}:1`,
+    attentionKey: `forge:owner:gitlab-main:1:${reason}`,
+    forgeInbox: {
+      subject: { ownerId: 'owner', instanceId: 'gitlab-main', itemId: 1, reason, runId: 1 },
+      executionHostId: LOCAL_EXECUTION_HOST_ID,
+      title: 'Forge Inbox',
+      body: 'fixed copy'
+    }
+  })
 
 describe('forge inbox native notification delivery', () => {
   it('defaults the Forge preference on like the other lanes', () => {
@@ -88,5 +102,39 @@ describe('forge inbox native notification delivery', () => {
 
     service.dispatch({ source: 'agent-task-complete', worktreeId: 'wt-1' })
     expect(dispatchMobileNotification).toHaveBeenCalledTimes(1)
+  })
+
+  it('keeps ordinary run completion quiet unless completed runs are opted in', () => {
+    const quiet = setup()
+    expect(getDefaultNotificationSettings().forgeInboxCompletedRuns).toBe(false)
+    expect(quiet.service.dispatch(forgeReasonRequest('run-succeeded'))).toEqual({
+      delivered: false,
+      reason: 'source-disabled'
+    })
+    expect(quiet.deliverNative).not.toHaveBeenCalled()
+
+    const opted = setup({ forgeInboxCompletedRuns: true })
+    expect(opted.service.dispatch(forgeReasonRequest('run-succeeded'))).toEqual({ delivered: true })
+    expect(opted.deliverNative).toHaveBeenCalledTimes(1)
+  })
+
+  it.each(['run-failed', 'proposal-pending', 'project-event', 'review-request'] as const)(
+    'still delivers %s by default',
+    (reason) => {
+      const { service, deliverNative } = setup()
+      expect(service.dispatch(forgeReasonRequest(reason))).toEqual({ delivered: true })
+      expect(deliverNative).toHaveBeenCalledTimes(1)
+    }
+  )
+
+  it('lets the master Forge preference silence everything, completions included', () => {
+    const { service, deliverNative } = setup({ forgeInbox: false, forgeInboxCompletedRuns: true })
+    for (const reason of ['run-succeeded', 'run-failed', 'project-event'] as const) {
+      expect(service.dispatch(forgeReasonRequest(reason))).toEqual({
+        delivered: false,
+        reason: 'source-disabled'
+      })
+    }
+    expect(deliverNative).not.toHaveBeenCalled()
   })
 })

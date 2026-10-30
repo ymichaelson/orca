@@ -7,6 +7,7 @@ import {
 import { isPluginPanelTabKey } from '../plugins/plugin-manifest'
 import { isFeatureInteractionId } from '../feature-interactions'
 import type { FeatureInteractionId } from '../feature-interactions'
+import { FORGE_INBOX_ARCHIVE_VIEW_VALUES } from '../forge-inbox-display-preferences'
 import { ACTIVITY_GROUP_BY_VALUES, THREAD_READ_FILTER_VALUES } from '../agents-view-thread-filters'
 import { isReleaseChannel } from '../release-channel'
 import type { ReleaseChannel } from '../release-channel'
@@ -155,6 +156,9 @@ export const UiUpdateFields = z
     agentsShowSearch: z.boolean().optional(),
     agentsReadFilter: z.enum(THREAD_READ_FILTER_VALUES).optional(),
     agentsGroupBy: z.enum(ACTIVITY_GROUP_BY_VALUES).optional(),
+    forgeInboxUnreadOnly: z.boolean().optional(),
+    forgeInboxArchiveView: z.enum(FORGE_INBOX_ARCHIVE_VIEW_VALUES).optional(),
+    forgeInboxCompact: z.boolean().optional(),
     workspaceHostOrder: z.array(z.string()).optional(),
     automationHostFilter: z
       .union([

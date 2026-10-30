@@ -21,6 +21,9 @@ describe('pairing-local UI fields', () => {
       'agentsShowSearch',
       'agentsReadFilter',
       'agentsGroupBy',
+      'forgeInboxUnreadOnly',
+      'forgeInboxArchiveView',
+      'forgeInboxCompact',
       'activityClearedAtByPaneKey',
       'manuallyUnreadTurnsByPaneKey'
     ])

@@ -10,6 +10,8 @@ export type NotificationSettings = {
   terminalBell: boolean
   /** Forge Inbox attention; the feature itself stays off until it is configured. */
   forgeInbox: boolean
+  /** Forge Inbox: also announce an ordinary successful run; failures and needs-attention always follow `forgeInbox`. Absent reads as off. */
+  forgeInboxCompletedRuns?: boolean
   suppressWhenFocused: boolean
   customSoundId:
     | 'system'

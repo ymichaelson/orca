@@ -27,6 +27,8 @@ import {
   AgentPermissionsSetting,
   type AgentPermissionsSettingProps
 } from './AgentPermissionsSetting'
+import { ProjectEventDecisionSettingsCard } from './ProjectEventDecisionSettingsCard'
+import type { PublicKnownRuntimeEnvironment } from '../../../../shared/runtime-environments'
 import type { SettingsHostScope } from './settings-host-scope'
 
 export {
@@ -45,16 +47,20 @@ type AgentSettingProps = {
 type AgentsPaneProps = AgentSettingProps & {
   /** Host whose agent launch settings and detected agents the pane shows. */
   hostScope: SettingsHostScope
+  runtimeEnvironments?: readonly PublicKnownRuntimeEnvironment[]
   wslSupportedPlatform?: boolean
   wslAvailable?: boolean
   wslDistros?: string[]
   wslCapabilitiesLoading?: boolean
 }
 
+const NO_RUNTIME_ENVIRONMENTS: readonly PublicKnownRuntimeEnvironment[] = []
+
 export function AgentsPane({
   settings,
   updateSettings,
   hostScope,
+  runtimeEnvironments = NO_RUNTIME_ENVIRONMENTS,
   wslSupportedPlatform,
   wslAvailable,
   wslDistros,
@@ -68,6 +74,10 @@ export function AgentsPane({
         updateSettings={updateSettings}
         hostScope={hostScope}
         renderPermissions={renderAgentPermissions}
+      />
+      <ProjectEventDecisionSettingsCard
+        hostScope={hostScope}
+        runtimeEnvironments={runtimeEnvironments}
       />
       <section className="space-y-8">
         <SettingsSubsectionHeader title={getLocalExecutionHostLabel()} />

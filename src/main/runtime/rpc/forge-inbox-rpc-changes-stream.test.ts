@@ -1,6 +1,20 @@
 import './unused-default-rpc-methods.test-fixture'
 import { existsSync } from 'node:fs'
 import { afterEach, describe, expect, it, vi } from 'vitest'
+import type { ProjectEventDecisionResult } from '../../../shared/project-event-decision'
+import { normalizeProjectEventReceiverSettings } from '../../../shared/project-event-receiver-settings'
+import { createReceiverSettingsFixture } from '../../project-events/project-event-receiver-settings-test-fixture'
+import {
+  createFakeGitlab,
+  mergeRequestHookBody
+} from '../../forge-inbox/forge-inbox-gitlab-fake-server'
+import { ensureOwnerFixtureBinding } from '../../forge-inbox/forge-inbox-owner-fixture-binding'
+import {
+  freePort,
+  listenerOn,
+  postHook,
+  provision
+} from '../../forge-inbox/forge-inbox-owner-service-test-kit'
 import {
   changeSeqs,
   createStreamHarness,
@@ -10,7 +24,49 @@ import {
   seedUntilHead,
   settle
 } from './forge-inbox-rpc-change-stream-test-kit'
-import { configure, seedItem, type ForgeRpcHarness } from './forge-inbox-rpc-test-kit'
+import {
+  configure,
+  createForgeRpcHarness,
+  seedItem,
+  type ForgeRpcHarness
+} from './forge-inbox-rpc-test-kit'
+
+const decision: ProjectEventDecisionResult = {
+  ok: true,
+  provider: 'jev',
+  model: 'jev-1',
+  action: 'notify',
+  confidence: 0.9,
+  probabilities: {
+    record_only: 0.02,
+    notify: 0.9,
+    wait: 0.02,
+    fetch_context: 0.02,
+    dispatch_agent: 0.02,
+    ask_user: 0.02
+  },
+  usage: { inputTokens: 12, outputTokens: 3 }
+}
+
+function createLiveStreamHarness() {
+  const gitlab = createFakeGitlab()
+  return createForgeRpcHarness({
+    http: { fetch: (url) => gitlab.fetch(url) },
+    receiverSettings: createReceiverSettingsFixture(),
+    ownerOptions: { decideProjectEvent: async () => decision }
+  })
+}
+
+async function deliverLiveChange(harness: ForgeRpcHarness) {
+  const service = harness.runtime.forgeInboxService()
+  const port = await freePort()
+  await provision(service, listenerOn(port))
+  ensureOwnerFixtureBinding(harness.dbPath, harness.secretStore)
+  harness.receiverSettings?.update(normalizeProjectEventReceiverSettings(listenerOn(port)))
+  await service.reconcileReceiverSettings()
+  await postHook(port, mergeRequestHookBody({ reviewers: ['me'] }), 'live-1')
+  await service.settled()
+}
 
 describe('forge inbox rpc changes stream', () => {
   let harness: ForgeRpcHarness
@@ -42,16 +98,15 @@ describe('forge inbox rpc changes stream', () => {
   })
 
   it('subscribes to a dormant owner without creating a file and still delivers the first-use changes', async () => {
-    harness = await createStreamHarness()
-    const ownerHostId = String((await harness.ok('forgeInbox.getConfig', {})).ownerHostId)
+    harness = await createLiveStreamHarness()
+    const ownerHostId = String((await harness.ok('forgeInbox.getStatus', {})).ownerHostId)
 
     const stream = harness.stream('forgeInbox.subscribeChanges', { ownerHostId })
     await stream.waitFor((frame) => frame.type === 'ready', 'ready')
     expect(existsSync(harness.dbPath)).toBe(false)
     expect(readyOf(stream)).toMatchObject({ ownerHostId, afterSeq: 0, latestSeq: 0 })
 
-    const ingress = await openWebhookIngress(harness)
-    await ingress.deliver()
+    await deliverLiveChange(harness)
     await stream.waitFor((frame) => frame.type === 'change', 'first change')
 
     expect(changeSeqs(stream)).toEqual(await durableSeqs(harness, ownerHostId))
@@ -172,7 +227,7 @@ describe('forge inbox rpc changes stream', () => {
   })
 
   it('ends only a subscriber whose sink throws and leaves the committed write and others intact', async () => {
-    harness = await createStreamHarness()
+    harness = await createLiveStreamHarness()
     const ownerHostId = await configure(harness)
     const survivor = harness.stream(
       'forgeInbox.subscribeChanges',
@@ -192,8 +247,7 @@ describe('forge inbox rpc changes stream', () => {
     await survivor.waitFor((frame) => frame.type === 'ready', 'ready')
     await broken.waitFor((frame) => frame.type === 'ready', 'ready')
 
-    const ingress = await openWebhookIngress(harness)
-    await ingress.deliver()
+    await deliverLiveChange(harness)
     await broken.done
 
     const durable = await durableSeqs(harness, ownerHostId)

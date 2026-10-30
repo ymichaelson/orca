@@ -1,5 +1,6 @@
+// Escaped superscripts: the orcad bundle refuses non-ASCII bytes, and Win32 treats them as digits.
 const WINDOWS_DEVICE_STEM =
-  /^(?:CON|PRN|AUX|NUL|CONIN\$|CONOUT\$|CLOCK\$|COM[1-9¹²³]|LPT[1-9¹²³])$/u
+  /^(?:CON|PRN|AUX|NUL|CONIN\$|CONOUT\$|CLOCK\$|COM[1-9\u00b9\u00b2\u00b3]|LPT[1-9\u00b9\u00b2\u00b3])$/u
 
 /** Win32 canonicalization, device names, and NTFS streams must not alias ordinary files. */
 export function isSafeWindowsFileNameSegment(segment: string): boolean {

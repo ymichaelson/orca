@@ -18260,7 +18260,13 @@
           "emptyUnread": "未読の項目はありません。",
           "empty": "項目はまだありません。新しい GitLab のアクティビティがここに表示されます。",
           "loadingMore": "読み込み中…",
-          "loadMore": "さらに読み込む"
+          "loadMore": "さらに読み込む",
+          "kindFilter": "種類",
+          "allKinds": "すべての種類",
+          "projectFilter": "プロジェクト",
+          "allProjects": "すべてのプロジェクト",
+          "handlingFilter": "状態",
+          "allHandling": "すべての状態"
         },
         "ForgeInboxPage": {
           "title": "受信トレイ",

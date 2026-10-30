@@ -490,6 +490,10 @@ Self-hosted-git
     expect(parseGlabAuthStatusHosts('Not logged in.')).toEqual([])
   })
 
+  it('does not read a host out of "not logged in to <word>"', () => {
+    expect(parseGlabAuthStatusHosts('Not logged in to any GitLab hosts.')).toEqual([])
+  })
+
   it('captures a non-default port on header-style lines', () => {
     const out = `
 gitlab.example.com:8080:

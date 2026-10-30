@@ -669,6 +669,44 @@ describe('createUISlice hydratePersistedUI', () => {
     expect(store.getState().agentsGroupBy).toBe('status')
   })
 
+  it('persists inbox display preferences and restores them, rejecting unknown values', () => {
+    const setUI = vi.fn().mockResolvedValue(undefined)
+    vi.stubGlobal('window', { api: { ui: { set: setUI } } })
+    const store = createUIStore()
+    expect(store.getState().forgeInboxArchiveView).toBe('active')
+    expect(store.getState().forgeInboxUnreadOnly).toBe(false)
+    expect(store.getState().forgeInboxCompact).toBe(false)
+
+    store.getState().setForgeInboxUnreadOnly(true)
+    store.getState().setForgeInboxArchiveView('archived')
+    store.getState().setForgeInboxCompact(true)
+
+    expect(setUI.mock.calls).toEqual([
+      [{ forgeInboxUnreadOnly: true }],
+      [{ forgeInboxArchiveView: 'archived' }],
+      [{ forgeInboxCompact: true }]
+    ])
+    const reloaded = createUIStore()
+    reloaded.getState().hydratePersistedUI(
+      makePersistedUI({
+        forgeInboxUnreadOnly: true,
+        forgeInboxArchiveView: 'all',
+        forgeInboxCompact: true
+      })
+    )
+    expect(reloaded.getState().forgeInboxUnreadOnly).toBe(true)
+    expect(reloaded.getState().forgeInboxArchiveView).toBe('all')
+    expect(reloaded.getState().forgeInboxCompact).toBe(true)
+
+    reloaded.getState().hydratePersistedUI(
+      makePersistedUI({
+        // oxlint-disable-next-line typescript/consistent-type-assertions -- SAFETY: hydration must be fed a value outside its union to prove it sanitizes.
+        forgeInboxArchiveView: 'bogus' as unknown as PersistedUIState['forgeInboxArchiveView']
+      })
+    )
+    expect(reloaded.getState().forgeInboxArchiveView).toBe('active')
+  })
+
   it('sanitizes malformed agents repo filters before the repo catalog loads', () => {
     const store = createUIStore()
 

@@ -1,25 +1,69 @@
+import { randomUUID } from 'node:crypto'
 import { once } from 'node:events'
 import http from 'node:http'
 import net from 'node:net'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import Database from '../sqlite/sync-database'
+import type { SqliteRow } from '../sqlite/sqlite-statement'
 import type { ForgeInboxLedger } from './forge-inbox-ledger'
+import {
+  getProjectBinding,
+  setProjectBindingProgress,
+  upsertProjectBinding
+} from './forge-inbox-project-binding'
+import { setProjectBindingSecret } from './forge-inbox-project-binding-secret'
+import { linkProjectEventBinding } from './forge-inbox-project-event-link'
+import { updateProjectEventPolicy } from './forge-inbox-project-event-policy'
 import { ForgeWebhookIngress } from './forge-inbox-webhook-ingress'
 import {
   createWebhookHarness,
   fakeSecretStore,
-  INSTANCE_ID,
   PROJECT_ID,
   WEBHOOK_TOKEN,
-  webhookConfig,
-  webhookInstance,
   type WebhookHarness
 } from './forge-inbox-webhook-test-harness'
 
-const PATH = `/webhooks/gitlab/${INSTANCE_ID}`
 const NOTE = JSON.stringify({ object_kind: 'note', project: { id: Number(PROJECT_ID) } })
 
 type Reply = { status: number; text: string }
+type StoredDelivery = {
+  binding_id: string
+  instance_id: string | null
+  project_id: string
+  event_kind: string
+  event_uuid: string | null
+  config_uuid: string | null
+  state: string
+  policy_generation: number | null
+  body: Buffer
+}
+
+function textColumn(row: SqliteRow, column: string): string {
+  const value = row[column]
+  if (typeof value !== 'string') {
+    throw new Error(`forge inbox column ${column} is not text`)
+  }
+  return value
+}
+
+function storedDelivery(row: SqliteRow): StoredDelivery {
+  const body = row.body
+  if (!(body instanceof Uint8Array)) {
+    throw new Error('forge inbox webhook body is not binary')
+  }
+  const generation = row.policy_generation
+  return {
+    binding_id: textColumn(row, 'binding_id'),
+    instance_id: row.instance_id === null ? null : textColumn(row, 'instance_id'),
+    project_id: textColumn(row, 'project_id'),
+    event_kind: textColumn(row, 'event_kind'),
+    event_uuid: row.event_uuid === null ? null : textColumn(row, 'event_uuid'),
+    config_uuid: row.config_uuid === null ? null : textColumn(row, 'config_uuid'),
+    state: textColumn(row, 'state'),
+    policy_generation: typeof generation === 'number' ? generation : null,
+    body: Buffer.from(body)
+  }
+}
 
 function stableHeaders(id: string, extra: Record<string, string> = {}): Record<string, string> {
   return {
@@ -35,19 +79,20 @@ function stableHeaders(id: string, extra: Record<string, string> = {}): Record<s
 
 function send(
   port: number,
+  path: string,
   options: {
     path?: string
     method?: string
     headers?: Record<string, string>
     body?: Buffer | string
-  }
+  } = {}
 ): Promise<Reply> {
   return new Promise((resolve, reject) => {
     const req = http.request(
       {
         host: '127.0.0.1',
         port,
-        path: options.path ?? PATH,
+        path: options.path ?? path,
         method: options.method ?? 'POST',
         headers: options.headers ?? stableHeaders('m-1'),
         agent: false
@@ -84,9 +129,9 @@ function openRaw(port: number): Promise<net.Socket> {
   })
 }
 
-function rawHead(contentLength: number, headers = stableHeaders('m-raw')): string {
+function rawHead(path: string, contentLength: number, headers = stableHeaders('m-raw')): string {
   const lines = Object.entries(headers).map(([k, v]) => `${k}: ${v}`)
-  return `POST ${PATH} HTTP/1.1\r\nHost: x\r\ncontent-length: ${contentLength}\r\n${lines.join('\r\n')}\r\n\r\n`
+  return `POST ${path} HTTP/1.1\r\nHost: x\r\ncontent-length: ${contentLength}\r\n${lines.join('\r\n')}\r\n\r\n`
 }
 
 function readUntilClose(socket: net.Socket): Promise<string> {
@@ -102,19 +147,63 @@ describe('forge inbox webhook ingress', () => {
   let harness: WebhookHarness
   let ledger: ForgeInboxLedger
   let ingress: ForgeWebhookIngress
+  let bindingId: string
   let port: number
+  let path: string
 
   async function startIngress(options: ConstructorParameters<typeof ForgeWebhookIngress>[1] = {}) {
     ingress = new ForgeWebhookIngress(ledger, options)
     port = (await ingress.listen({ host: '127.0.0.1', port: 0 })).port
   }
 
-  const rows = () => ledger.listWebhookDeliveries({ limit: 100 })
+  function connectBinding(): void {
+    const ctx = ledger.ledgerContext()
+    if (getProjectBinding(ctx, bindingId)) {
+      return
+    }
+    upsertProjectBinding(ctx, {
+      bindingId,
+      projectPath: '/repo',
+      gitlabHost: 'gitlab.test',
+      gitlabPath: 'group/demo',
+      gitlabProjectId: Number(PROJECT_ID),
+      callbackUrl: `https://orca.example.com/webhooks/gitlab/${bindingId}`
+    })
+    const secret = setProjectBindingSecret(ctx, { bindingId, secret: WEBHOOK_TOKEN })
+    if (!secret.ok) {
+      throw new Error(`fixture could not store the binding secret: ${secret.reason}`)
+    }
+    linkProjectEventBinding(ctx, { repoId: 'repo-1', bindingId })
+    const policy = updateProjectEventPolicy(ctx, {
+      repoId: 'repo-1',
+      expectedGeneration: 0,
+      patch: { enabled: true }
+    })
+    if (!policy.ok) {
+      throw new Error(`fixture could not enable the project policy: ${policy.reason}`)
+    }
+    setProjectBindingProgress(ctx, bindingId, { state: 'connected', hookId: 7 })
+  }
+
+  const rows = (): StoredDelivery[] =>
+    ledger
+      .ledgerContext()
+      .db.prepare(
+        `SELECT binding_id, instance_id, project_id, event_kind, event_uuid, config_uuid, state,
+                policy_generation, body
+         FROM webhook_deliveries`
+      )
+      .all()
+      .map(storedDelivery)
+
+  const post = (options: Parameters<typeof send>[2] = {}) => send(port, path, options)
 
   beforeEach(async () => {
     harness = createWebhookHarness()
     ledger = harness.open()
-    harness.configure(ledger)
+    bindingId = randomUUID()
+    path = `/webhooks/gitlab/${bindingId}`
+    connectBinding()
     await startIngress()
   })
 
@@ -128,8 +217,10 @@ describe('forge inbox webhook ingress', () => {
 
   describe('admission', () => {
     it('durably admits an authenticated delivery before acknowledging, surviving restart', async () => {
-      const reply = await send(port, { body: NOTE })
+      const reply = await post({ body: NOTE })
       expect(reply.status).toBe(202)
+      expect(JSON.parse(reply.text)).toEqual({ code: 'queued' })
+      expect(ledger.listWebhookDeliveries({ limit: 100 })).toEqual([])
       expect(rows()).toHaveLength(1)
 
       await ingress.stop()
@@ -137,76 +228,70 @@ describe('forge inbox webhook ingress', () => {
       ledger = harness.open()
       const [row] = rows()
       expect(row).toMatchObject({
-        instanceId: INSTANCE_ID,
-        projectId: PROJECT_ID,
-        eventKind: 'Note Hook',
-        eventUuid: 'evt-1',
-        configUuid: 'cfg-1'
+        binding_id: bindingId,
+        instance_id: null,
+        project_id: 'group/demo',
+        event_kind: 'Note Hook',
+        event_uuid: 'evt-1',
+        config_uuid: 'cfg-1',
+        state: 'pending',
+        policy_generation: 1
       })
       expect(row.body.toString()).toBe(NOTE)
       expect(JSON.stringify(row)).not.toContain(WEBHOOK_TOKEN)
     })
 
     it('dedupes a GitLab retry across restart without storing the retry', async () => {
-      await send(port, { body: NOTE })
+      await post({ body: NOTE })
       await ingress.stop()
       ledger.close()
       ledger = harness.open()
       await startIngress()
 
-      const retry = await send(port, { body: NOTE.replace('note', 'note ') })
+      const retry = await post({ body: NOTE.replace('note', 'note ') })
       expect(retry.status).toBe(202)
+      expect(JSON.parse(retry.text)).toEqual({ code: 'duplicate' })
       const stored = rows()
       expect(stored).toHaveLength(1)
       expect(stored[0].body.toString()).toBe(NOTE)
     })
 
     it('does not merge deliveries that share config and event UUIDs but differ in message id', async () => {
-      await send(port, { headers: stableHeaders('m-1'), body: NOTE })
-      await send(port, { headers: stableHeaders('m-2'), body: NOTE.replace('note', 'note2') })
-      expect(rows().map((r) => r.dedupeKey)).toHaveLength(2)
+      await post({ headers: stableHeaders('m-1'), body: NOTE })
+      await post({ headers: stableHeaders('m-2'), body: NOTE.replace('note', 'note2') })
+      expect(rows()).toHaveLength(2)
     })
 
     it('accepts Idempotency-Key as the legacy alias and prefers webhook-id', async () => {
       const { 'webhook-id': _drop, ...noId } = stableHeaders('x')
-      await send(port, { headers: { ...noId, 'idempotency-key': 'legacy-1' } })
-      await send(port, { headers: { ...noId, 'idempotency-key': 'legacy-1' } })
+      await post({ headers: { ...noId, 'idempotency-key': 'legacy-1' } })
+      await post({ headers: { ...noId, 'idempotency-key': 'legacy-1' } })
       expect(rows()).toHaveLength(1)
 
-      await send(port, { headers: stableHeaders('wh-9', { 'idempotency-key': 'legacy-1' }) })
+      await post({ headers: stableHeaders('wh-9', { 'idempotency-key': 'legacy-1' }) })
       expect(rows()).toHaveLength(2)
     })
 
     it('treats webhook-id and Idempotency-Key as one identity namespace', async () => {
       const { 'webhook-id': _drop, ...noId } = stableHeaders('x')
-      await send(port, { headers: stableHeaders('same-7') })
-      const migrated = await send(port, { headers: { ...noId, 'idempotency-key': 'same-7' } })
+      await post({ headers: stableHeaders('same-7') })
+      const migrated = await post({ headers: { ...noId, 'idempotency-key': 'same-7' } })
       expect(migrated.status).toBe(202)
+      expect(JSON.parse(migrated.text)).toEqual({ code: 'duplicate' })
       expect(rows()).toHaveLength(1)
     })
 
-    it('refuses a delivery with no stable message id unless the instance opted into digest dedupe', async () => {
+    it('refuses a delivery with no stable message id', async () => {
       const { 'webhook-id': _drop, ...noId } = stableHeaders('x')
-      const refused = await send(port, { headers: noId })
+      const refused = await post({ headers: noId })
       expect(refused.status).toBe(400)
       expect(JSON.parse(refused.text)).toEqual({ code: 'missing-delivery-id' })
       expect(rows()).toHaveLength(0)
-
-      const optIn = webhookConfig([webhookInstance({ allowLegacyPayloadDigestDedupe: true })])
-      const revision = ledger.getConfig().configRevision
-      const updated = ledger.updateConfig(revision, optIn)
-      expect(updated.ok).toBe(true)
-      expect((await send(port, { headers: noId })).status).toBe(202)
-      expect((await send(port, { headers: noId })).status).toBe(202)
-      expect(rows()).toHaveLength(1)
-      const changed = await send(port, { headers: noId, body: NOTE.replace('note', 'note3') })
-      expect(changed.status).toBe(202)
-      expect(rows()).toHaveLength(2)
     })
 
     it('refuses ambiguous duplicate identity headers', async () => {
       const socket = await openRaw(port)
-      const head = rawHead(NOTE.length, stableHeaders('m-1')).replace(
+      const head = rawHead(path, NOTE.length, stableHeaders('m-1')).replace(
         '\r\n\r\n',
         '\r\nwebhook-id: m-2\r\n\r\n'
       )
@@ -215,52 +300,78 @@ describe('forge inbox webhook ingress', () => {
       expect(text).toMatch(/^HTTP\/1\.1 400 /)
       expect(rows()).toHaveLength(0)
     })
+
+    it('parks a delivery whose binding has no policy yet and keeps its body', async () => {
+      ledger.ledgerContext().db.prepare('DELETE FROM project_event_policies').run()
+
+      const reply = await post()
+
+      expect(reply.status).toBe(202)
+      expect(JSON.parse(reply.text)).toEqual({ code: 'parked' })
+      expect(rows()).toMatchObject([
+        { state: 'parked', policy_generation: null, body: Buffer.from(NOTE) }
+      ])
+      expect(ledger.listWebhookDeliveries({ limit: 100 })).toEqual([])
+    })
+
+    it('finishes a disabled project policy as done with an empty body and still queues', async () => {
+      const disabled = updateProjectEventPolicy(ledger.ledgerContext(), {
+        repoId: 'repo-1',
+        expectedGeneration: 1,
+        patch: { enabled: false }
+      })
+      expect(disabled.ok).toBe(true)
+
+      const reply = await post()
+
+      expect(reply.status).toBe(202)
+      expect(JSON.parse(reply.text)).toEqual({ code: 'queued' })
+      expect(rows()).toMatchObject([{ state: 'done', body: Buffer.alloc(0) }])
+      expect(ledger.getWebhookQueueStatus().pending).toBe(0)
+    })
   })
 
   describe('rejections never leave a row or a run', () => {
     const cases: [string, () => Promise<Reply>, number][] = [
       [
         'wrong token',
-        () => send(port, { headers: stableHeaders('a', { 'x-gitlab-token': 'nope' }) }),
+        () => post({ headers: stableHeaders('a', { 'x-gitlab-token': 'nope' }) }),
         401
       ],
       [
         'longer wrong token',
-        () => send(port, { headers: stableHeaders('a', { 'x-gitlab-token': 'x'.repeat(5000) }) }),
+        () => post({ headers: stableHeaders('a', { 'x-gitlab-token': 'x'.repeat(5000) }) }),
         401
       ],
       [
         'missing token',
         () => {
           const { 'x-gitlab-token': _t, ...rest } = stableHeaders('a')
-          return send(port, { headers: rest })
+          return post({ headers: rest })
         },
         401
       ],
-      ['unknown instance', () => send(port, { path: '/webhooks/gitlab/other' }), 404],
-      ['query target override', () => send(port, { path: `${PATH}?instance=other` }), 404],
-      ['wrong path', () => send(port, { path: '/hooks' }), 404],
-      ['GET', () => send(port, { method: 'GET', body: '' }), 405],
+      ['non-uuid path', () => post({ path: '/webhooks/gitlab/gitlab-main' }), 404],
+      ['unknown binding', () => post({ path: `/webhooks/gitlab/${randomUUID()}` }), 404],
+      ['query target override', () => post({ path: `${path}?instance=other` }), 404],
+      ['wrong path', () => post({ path: '/hooks' }), 404],
+      ['GET', () => post({ method: 'GET', body: '' }), 405],
       [
         'text/plain',
-        () => send(port, { headers: stableHeaders('a', { 'content-type': 'text/plain' }) }),
+        () => post({ headers: stableHeaders('a', { 'content-type': 'text/plain' }) }),
         415
       ],
-      ['malformed JSON', () => send(port, { body: '{"project":' }), 400],
-      ['invalid UTF-8', () => send(port, { body: Buffer.from([0x7b, 0xff, 0x7d]) }), 400],
-      ['array body', () => send(port, { body: '[1]' }), 400],
-      ['unconfigured project', () => send(port, { body: '{"project":{"id":777}}' }), 422],
-      [
-        'unsafe project id',
-        () => send(port, { body: '{"project":{"id":99999999999999999999}}' }),
-        400
-      ],
+      ['malformed JSON', () => post({ body: '{"project":' }), 400],
+      ['invalid UTF-8', () => post({ body: Buffer.from([0x7b, 0xff, 0x7d]) }), 400],
+      ['array body', () => post({ body: '[1]' }), 400],
+      ['unconfigured project', () => post({ body: '{"project":{"id":777}}' }), 422],
+      ['unsafe project id', () => post({ body: '{"project":{"id":99999999999999999999}}' }), 400],
       [
         'conflicting project ids',
-        () => send(port, { body: `{"project_id":${PROJECT_ID},"project":{"id":43}}` }),
+        () => post({ body: `{"project_id":${PROJECT_ID},"project":{"id":43}}` }),
         400
       ],
-      ['no project id', () => send(port, { body: '{"object_kind":"note"}' }), 400]
+      ['no project id', () => post({ body: '{"object_kind":"note"}' }), 400]
     ]
 
     it.each(cases)('%s', async (_name, run, status) => {
@@ -273,7 +384,7 @@ describe('forge inbox webhook ingress', () => {
 
     it('rejects a UTF-8 BOM-prefixed body that would not parse from the stored bytes', async () => {
       const bom = Buffer.concat([Buffer.from([0xef, 0xbb, 0xbf]), Buffer.from(NOTE)])
-      const reply = await send(port, { body: bom })
+      const reply = await post({ body: bom })
       expect(reply.status).toBe(400)
       expect(JSON.parse(reply.text)).toEqual({ code: 'invalid-body' })
       expect(rows()).toHaveLength(0)
@@ -282,41 +393,35 @@ describe('forge inbox webhook ingress', () => {
     it('answers a missing token 401 without consulting storage', async () => {
       ledger.close()
       const { 'x-gitlab-token': _t, ...rest } = stableHeaders('a')
-      expect((await send(port, { headers: rest })).status).toBe(401)
-      expect(
-        (await send(port, { headers: stableHeaders('a', { 'x-gitlab-token': '' }) })).status
-      ).toBe(401)
+      expect((await post({ headers: rest })).status).toBe(401)
+      expect((await post({ headers: stableHeaders('a', { 'x-gitlab-token': '' }) })).status).toBe(
+        401
+      )
     })
 
-    it('rejects a delivery for a disabled project', async () => {
-      const disabled = webhookInstance({
-        projects: [{ projectId: PROJECT_ID, repoId: 'repo-1', enabled: false }]
-      })
-      harness.configure(ledger, webhookConfig([disabled]))
-      const reply = await send(port, {})
+    it('refuses a binding that is not connected', async () => {
+      setProjectBindingProgress(ledger.ledgerContext(), bindingId, { state: 'registering' })
+
+      const reply = await post()
+
+      expect(reply.status).toBe(409)
+      expect(JSON.parse(reply.text)).toEqual({ code: 'binding-not-ready' })
+      expect(rows()).toHaveLength(0)
+    })
+
+    it('names a project id that is not the binding project', async () => {
+      const reply = await post({ body: '{"project":{"id":777}}' })
       expect(reply.status).toBe(422)
-      expect(JSON.parse(reply.text)).toEqual({ code: 'project-disabled' })
+      expect(JSON.parse(reply.text)).toEqual({ code: 'project-not-configured' })
       expect(rows()).toHaveLength(0)
     })
 
-    it('reports an absent webhook credential as unavailable without admitting', async () => {
-      ledger.clearCredential({
-        instanceId: INSTANCE_ID,
-        kind: 'webhook',
-        expectedRevision: ledger.getConfig().configRevision
-      })
-      const reply = await send(port, {})
-      expect(reply.status).toBe(503)
-      expect(reply.text).not.toContain(WEBHOOK_TOKEN)
-      expect(rows()).toHaveLength(0)
-    })
-
-    it('reports an undecryptable credential as unavailable and never falls back', async () => {
+    it('reports an undecryptable binding secret as unavailable and never falls back', async () => {
       await ingress.stop()
       ledger.close()
       ledger = ledgerWithOtherKey()
       await startIngress()
-      const reply = await send(port, {})
+      const reply = await post()
       expect(reply.status).toBe(503)
       expect(reply.text).not.toContain(WEBHOOK_TOKEN)
       expect(rows()).toHaveLength(0)
@@ -330,7 +435,7 @@ describe('forge inbox webhook ingress', () => {
   describe('bounds', () => {
     it('rejects an oversized declared body without buffering it', async () => {
       const socket = await openRaw(port)
-      socket.write(rawHead(2 * 1024 * 1024))
+      socket.write(rawHead(path, 2 * 1024 * 1024))
       const text = await readUntilClose(socket)
       expect(text).toMatch(/^HTTP\/1\.1 413/)
       expect(rows()).toHaveLength(0)
@@ -338,7 +443,10 @@ describe('forge inbox webhook ingress', () => {
 
     it('rejects an oversized chunked body', async () => {
       const socket = await openRaw(port)
-      const head = rawHead(0).replace('content-length: 0\r\n', 'transfer-encoding: chunked\r\n')
+      const head = rawHead(path, 0).replace(
+        'content-length: 0\r\n',
+        'transfer-encoding: chunked\r\n'
+      )
       socket.write(head)
       const chunk = Buffer.alloc(256 * 1024, 'a')
       const reply = readUntilClose(socket)
@@ -358,7 +466,7 @@ describe('forge inbox webhook ingress', () => {
       const socket = await openRaw(port)
       const closed = closedOf(socket)
       socket.on('error', () => undefined)
-      socket.write(rawHead(100))
+      socket.write(rawHead(path, 100))
       socket.write('{')
       await closed
       expect(rows()).toHaveLength(0)
@@ -369,7 +477,7 @@ describe('forge inbox webhook ingress', () => {
       await startIngress({ requestDeadlineMs: 120 })
       const socket = await openRaw(port)
       const closed = closedOf(socket)
-      socket.write('POST /webhooks/gitlab/gitlab-main HTTP/1.1\r\nHost: x\r\nx-slow: ')
+      socket.write(`POST ${path} HTTP/1.1\r\nHost: x\r\nx-slow: `)
       await closed
       expect(rows()).toHaveLength(0)
     })
@@ -380,7 +488,7 @@ describe('forge inbox webhook ingress', () => {
       const socket = await openRaw(port)
       const closed = closedOf(socket)
       socket.on('error', () => undefined)
-      socket.write(rawHead(1000))
+      socket.write(rawHead(path, 1000))
       const trickle = setInterval(() => socket.destroyed || socket.write('x'), 20)
       try {
         await closed
@@ -399,15 +507,15 @@ describe('forge inbox webhook ingress', () => {
         return closedOf(s)
       })
       for (const s of stalled) {
-        s.write(rawHead(100))
+        s.write(rawHead(path, 100))
       }
       await vi.waitFor(() => expect(ingress.status().inFlight).toBe(2))
-      const refused = await send(port, {})
+      const refused = await post()
       expect(refused.status).toBe(503)
       expect(rows()).toHaveLength(0)
 
       await Promise.all(closes)
-      expect((await send(port, {})).status).toBe(202)
+      expect((await post()).status).toBe(202)
     })
   })
 
@@ -415,7 +523,7 @@ describe('forge inbox webhook ingress', () => {
     async function partialThen(change: () => void): Promise<string> {
       const socket = await openRaw(port)
       const reply = readUntilClose(socket)
-      socket.write(rawHead(NOTE.length))
+      socket.write(rawHead(path, NOTE.length))
       socket.write(NOTE.slice(0, 5))
       await vi.waitFor(() => expect(ingress.status().inFlight).toBe(1))
       change()
@@ -423,24 +531,23 @@ describe('forge inbox webhook ingress', () => {
       return reply
     }
 
-    it('does not commit when the webhook secret rotates during the body', async () => {
+    it('does not commit when the binding secret rotates during the body', async () => {
       const text = await partialThen(() => {
-        ledger.setCredential({
-          instanceId: INSTANCE_ID,
-          kind: 'webhook',
-          secret: 'rotated-token',
-          expectedRevision: ledger.getConfig().configRevision
+        const rotated = setProjectBindingSecret(ledger.ledgerContext(), {
+          bindingId,
+          secret: 'rotated-token'
         })
+        expect(rotated.ok).toBe(true)
       })
-      expect(text).toMatch(/^HTTP\/1\.1 503 /)
+      expect(text).toMatch(/^HTTP\/1\.1 401 /)
       expect(rows()).toHaveLength(0)
     })
 
-    it('does not commit when the project is removed during the body', async () => {
+    it('does not commit when the binding leaves connected during the body', async () => {
       const text = await partialThen(() => {
-        harness.configure(ledger, webhookConfig([webhookInstance({ projects: [] })]))
+        setProjectBindingProgress(ledger.ledgerContext(), bindingId, { state: 'registering' })
       })
-      expect(text).toMatch(/^HTTP\/1\.1 503 /)
+      expect(text).toMatch(/^HTTP\/1\.1 409 /)
       expect(rows()).toHaveLength(0)
     })
   })
@@ -454,7 +561,7 @@ describe('forge inbox webhook ingress', () => {
            BEGIN SELECT RAISE(ABORT, 'disk full'); END`
         )
         const warn = vi.spyOn(console, 'warn').mockImplementation(() => undefined)
-        const failed = await send(port, {})
+        const failed = await post()
         expect(warn).toHaveBeenCalledWith(
           '[forge-inbox] webhook admission failed',
           expect.any(String)
@@ -468,7 +575,7 @@ describe('forge inbox webhook ingress', () => {
       } finally {
         side.close()
       }
-      expect((await send(port, {})).status).toBe(202)
+      expect((await post()).status).toBe(202)
       expect(rows()).toHaveLength(1)
     })
 
@@ -476,27 +583,31 @@ describe('forge inbox webhook ingress', () => {
       await ingress.stop()
       ledger.close()
       ledger = harness.open({ webhookQueueLimits: { maxPending: 1, maxQueuedBytes: 1024 } })
+      connectBinding()
       await startIngress()
-      expect((await send(port, { headers: stableHeaders('m-1') })).status).toBe(202)
-      expect((await send(port, { headers: stableHeaders('m-2') })).status).toBe(503)
-      expect((await send(port, { headers: stableHeaders('m-1') })).status).toBe(202)
+      expect((await post({ headers: stableHeaders('m-1') })).status).toBe(202)
+      expect((await post({ headers: stableHeaders('m-2') })).status).toBe(503)
+      const duplicate = await post({ headers: stableHeaders('m-1') })
+      expect(duplicate.status).toBe(202)
+      expect(JSON.parse(duplicate.text)).toEqual({ code: 'duplicate' })
       expect(rows()).toHaveLength(1)
     })
 
-    it('settles a stored delivery when its project is disabled and rejects its duplicate, storing nothing', async () => {
-      expect((await send(port, {})).status).toBe(202)
-      harness.configure(
-        ledger,
-        webhookConfig([
-          webhookInstance({
-            projects: [{ projectId: PROJECT_ID, repoId: 'repo-1', enabled: false }]
-          })
-        ])
-      )
-      const retry = await send(port, {})
-      expect(retry.status).toBe(422)
-      expect(JSON.parse(retry.text)).toEqual({ code: 'project-disabled' })
-      expect(rows()).toHaveLength(0)
+    it('answers a duplicate after the disabled policy already finished its delivery', async () => {
+      expect((await post()).status).toBe(202)
+      const disabled = updateProjectEventPolicy(ledger.ledgerContext(), {
+        repoId: 'repo-1',
+        expectedGeneration: 1,
+        patch: { enabled: false }
+      })
+      expect(disabled.ok).toBe(true)
+
+      const retry = await post()
+
+      expect(retry.status).toBe(202)
+      expect(JSON.parse(retry.text)).toEqual({ code: 'duplicate' })
+      // Nothing may decide a delivery whose policy is off, so it must not keep its slot or payload.
+      expect(rows()).toMatchObject([{ state: 'failed', body: Buffer.alloc(0) }])
       expect(ledger.getWebhookQueueStatus().pending).toBe(0)
     })
 
@@ -504,9 +615,10 @@ describe('forge inbox webhook ingress', () => {
       await ingress.stop()
       ledger.close()
       ledger = harness.open({ webhookQueueLimits: { maxPending: 3, maxQueuedBytes: 1024 } })
+      connectBinding()
       await startIngress()
       const replies = await Promise.all(
-        Array.from({ length: 8 }, (_, i) => send(port, { headers: stableHeaders(`c-${i}`) }))
+        Array.from({ length: 8 }, (_, i) => post({ headers: stableHeaders(`c-${i}`) }))
       )
       expect(replies.filter((r) => r.status === 202)).toHaveLength(3)
       expect(rows()).toHaveLength(3)
@@ -514,9 +626,9 @@ describe('forge inbox webhook ingress', () => {
   })
 
   describe('lifecycle', () => {
-    it('does not listen when the persisted listener is disabled', async () => {
+    it('does not listen until given an explicit bind target', async () => {
       const idle = new ForgeWebhookIngress(ledger)
-      expect(await idle.start()).toEqual({ listening: false })
+      expect(idle.status()).toMatchObject({ listening: false, port: null })
       await idle.stop()
     })
 
@@ -535,18 +647,6 @@ describe('forge inbox webhook ingress', () => {
           code: 'EADDRINUSE'
         })
         await clash.stop()
-
-        const config = ledger.getConfig()
-        const enabled = webhookConfig([webhookInstance()], {
-          enabled: true,
-          bindAddress: '127.0.0.1',
-          port: taken
-        })
-        const updated = ledger.updateConfig(config.configRevision, enabled)
-        expect(updated.ok).toBe(true)
-        const viaConfig = new ForgeWebhookIngress(ledger)
-        await expect(viaConfig.start()).rejects.toMatchObject({ code: 'EADDRINUSE' })
-        await viaConfig.stop()
       } finally {
         blocker.close()
       }
@@ -642,12 +742,12 @@ describe('forge inbox webhook ingress', () => {
       const stalled = await openRaw(port)
       stalled.on('error', () => undefined)
       const closed = closedOf(stalled)
-      stalled.write(rawHead(100))
-      expect((await send(port, {})).status).toBe(202)
+      stalled.write(rawHead(path, 100))
+      expect((await post()).status).toBe(202)
 
       await Promise.all([ingress.stop(), ingress.stop()])
       await closed
-      await expect(send(port, {})).rejects.toBeDefined()
+      await expect(post()).rejects.toBeDefined()
       await ingress.stop()
 
       ledger.close()

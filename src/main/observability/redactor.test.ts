@@ -167,12 +167,16 @@ describe('redactor — attribute-key blocklist', () => {
     const out = redactAttributes({
       token: 'plain-token',
       api_key: 'plain-api-key',
+      projectEventDecisionKey: 'plain-decision-key',
+      projectEventDecisionLayaKey: 'plain-laya-key',
       password: 'plain-password',
       secret: 'plain-secret',
       keep: 'ok'
     })
     expect(out).not.toHaveProperty('token')
     expect(out).not.toHaveProperty('api_key')
+    expect(out).not.toHaveProperty('projectEventDecisionKey')
+    expect(out).not.toHaveProperty('projectEventDecisionLayaKey')
     expect(out).not.toHaveProperty('password')
     expect(out).not.toHaveProperty('secret')
     expect(out.keep).toBe('ok')

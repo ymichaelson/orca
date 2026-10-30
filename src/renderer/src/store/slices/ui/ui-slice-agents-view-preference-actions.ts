@@ -3,6 +3,7 @@ import {
   DEFAULT_AGENTS_GROUP_BY,
   DEFAULT_AGENTS_READ_FILTER
 } from '../../../../../shared/agents-view-thread-filters'
+import { DEFAULT_FORGE_INBOX_ARCHIVE_VIEW } from '../../../../../shared/forge-inbox-display-preferences'
 import { normalizeVisibleExecutionHostIds } from '../../../../../shared/execution-host'
 
 /** Agents-view preferences; each setter persists immediately and stays separate from workspace-nav state. */
@@ -58,6 +59,21 @@ export function createAgentsViewPreferenceActions(set: UISliceSet): Partial<UISl
     setAgentsGroupBy: (v) => {
       set({ agentsGroupBy: v })
       window.api.ui.set({ agentsGroupBy: v }).catch(console.error)
+    },
+    forgeInboxUnreadOnly: false,
+    setForgeInboxUnreadOnly: (v) => {
+      set({ forgeInboxUnreadOnly: v })
+      window.api.ui.set({ forgeInboxUnreadOnly: v }).catch(console.error)
+    },
+    forgeInboxArchiveView: DEFAULT_FORGE_INBOX_ARCHIVE_VIEW,
+    setForgeInboxArchiveView: (v) => {
+      set({ forgeInboxArchiveView: v })
+      window.api.ui.set({ forgeInboxArchiveView: v }).catch(console.error)
+    },
+    forgeInboxCompact: false,
+    setForgeInboxCompact: (v) => {
+      set({ forgeInboxCompact: v })
+      window.api.ui.set({ forgeInboxCompact: v }).catch(console.error)
     }
   }
 }

@@ -11,6 +11,10 @@ import { setLocalPtyProvider } from '../ipc/pty/provider/registry'
 import { shutdownProviderAndDetectExit } from '../ipc/pty/provider/shutdown-detect'
 import type { PtyRuntimeControllerDeps } from '../ipc/pty/runtime/controller-deps'
 import {
+  listProcessesFromRuntimeController,
+  listProcessesWithHostScopeFromRuntimeController
+} from '../ipc/pty/runtime/inventory-operations'
+import {
   killPtyFromRuntimeController,
   stopAndWaitPtyFromRuntimeController
 } from '../ipc/pty/runtime/kill'
@@ -21,7 +25,25 @@ export type ObservedExitSocketScenario =
   | 'unrelated-endpoint-gone'
   | 'physical-exit-observed'
 
-export async function runObservedExitSocketScenario(scenario: ObservedExitSocketScenario) {
+type ObservedExitHarness = Awaited<ReturnType<typeof startLateExitHarness>>
+
+export type ObservedExitScope = {
+  runtime: OrcaRuntimeService
+  harness: ObservedExitHarness
+  router: DaemonPtyRouter
+  legacy: Awaited<ReturnType<typeof startDaemonAdapterHarness>>
+  terminal: Awaited<ReturnType<OrcaRuntimeService['listTerminals']>>['terminals'][number]
+  worktreeId: string
+  fallbackKills: () => number
+}
+
+/** The real runtime, PTY controller and daemon adapter of the observed-exit scenarios, torn down after `run`. */
+export async function withObservedExitRuntime<T>(
+  scenario: ObservedExitSocketScenario,
+  run: (scope: ObservedExitScope) => Promise<T>,
+  /** Gives the controller the process inventory a real one has, which a fresh terminal listing needs. */
+  options: { inventory?: boolean } = {}
+): Promise<T> {
   const harness = await startLateExitHarness()
   const legacy = await startDaemonAdapterHarness(() => createMockSubprocess())
   const router = new DaemonPtyRouter({ current: harness.adapter, legacy: [legacy.adapter] })
@@ -49,7 +71,14 @@ export async function runObservedExitSocketScenario(scenario: ObservedExitSocket
         return killPtyFromRuntimeController(deps, id)
       },
       stopAndWait: (id) =>
-        stopAndWaitPtyFromRuntimeController(deps, id, { deadlineMs: Date.now() + 1_500 })
+        stopAndWaitPtyFromRuntimeController(deps, id, { deadlineMs: Date.now() + 1_500 }),
+      ...(options.inventory
+        ? {
+            listProcesses: (hostId, opts) => listProcessesFromRuntimeController(deps, hostId, opts),
+            listProcessesWithHostScope: (opts) =>
+              listProcessesWithHostScopeFromRuntimeController(deps, opts)
+          }
+        : {})
     })
     const list = await harness.runtime.listTerminals()
     const terminal = list.terminals.find((entry) => entry.ptyId === harness.id)
@@ -62,27 +91,15 @@ export async function runObservedExitSocketScenario(scenario: ObservedExitSocket
     if (scenario !== 'physical-exit-observed') {
       harness.pauseStream()
     }
-    const close = await harness.runtime.closeTerminal(terminal.handle)
-    const targetInventory = await harness.adapter.listProcesses()
-    const targetProbe = await harness.adapter.probePtyLiveness(harness.id)
-    const routerProbe = await router.probePtyLiveness(harness.id)
-    const beforeStreamResume = await harness.capture()
-    harness.resumeStream()
-    await harness.waitForExit()
-    const settled = await harness.capture()
-    return {
-      scenario,
-      close: {
-        ptyKilled: close.ptyKilled,
-        ptyStopVerdict: close.ptyStopVerdict ?? null
-      },
-      fallbackKills,
-      targetInventoryCount: targetInventory.length,
-      targetProbe,
-      routerProbe,
-      beforeStreamResume,
-      settled
-    }
+    return await run({
+      runtime: harness.runtime,
+      harness,
+      router,
+      legacy,
+      terminal,
+      worktreeId: terminal.worktreeId,
+      fallbackKills: () => fallbackKills
+    })
   } finally {
     router.disposeRouterOnly()
     await harness.dispose()
@@ -90,6 +107,35 @@ export async function runObservedExitSocketScenario(scenario: ObservedExitSocket
     await legacy.server.shutdown()
     rmSync(legacy.dir, { recursive: true, force: true })
   }
+}
+
+export async function runObservedExitSocketScenario(scenario: ObservedExitSocketScenario) {
+  return withObservedExitRuntime(
+    scenario,
+    async ({ runtime, harness, router, terminal, fallbackKills }) => {
+      const close = await runtime.closeTerminal(terminal.handle)
+      const targetInventory = await harness.adapter.listProcesses()
+      const targetProbe = await harness.adapter.probePtyLiveness(harness.id)
+      const routerProbe = await router.probePtyLiveness(harness.id)
+      const beforeStreamResume = await harness.capture()
+      harness.resumeStream()
+      await harness.waitForExit()
+      const settled = await harness.capture()
+      return {
+        scenario,
+        close: {
+          ptyKilled: close.ptyKilled,
+          ptyStopVerdict: close.ptyStopVerdict ?? null
+        },
+        fallbackKills: fallbackKills(),
+        targetInventoryCount: targetInventory.length,
+        targetProbe,
+        routerProbe,
+        beforeStreamResume,
+        settled
+      }
+    }
+  )
 }
 
 const CONTROL_PTY_ID = 'repo::/tmp/observed-exit-control@@pty'

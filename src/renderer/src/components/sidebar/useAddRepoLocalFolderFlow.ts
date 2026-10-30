@@ -15,6 +15,7 @@ import type { RepoSlice } from '@/store/repos/repo-state'
 import { createNestedRepoScanId } from './add-repo-dialog-types'
 import { translate } from '@/i18n/i18n'
 import { worktreeRefreshOptions } from './add-repo-runtime-owner'
+import type { GitRepoBatchHandoff } from './use-add-repo-project-event-setup'
 import type { ExecutionHostId } from '../../../../shared/execution-host'
 
 type ShowNestedRepoReview = (args: {
@@ -46,6 +47,7 @@ export function useAddRepoLocalFolderFlow({
   setNestedScanInProgress,
   showNestedRepoReview,
   onGitRepoReady,
+  onGitRepoBatchReady,
   setIsAdding,
   setAddProjectBusyLabel
 }: {
@@ -64,6 +66,7 @@ export function useAddRepoLocalFolderFlow({
     source: AddRepoExistingWorkspaceSource,
     executionHostId?: ExecutionHostId
   ) => Promise<void>
+  onGitRepoBatchReady: (handoff: GitRepoBatchHandoff) => Promise<void>
   setIsAdding: (isAdding: boolean) => void
   setAddProjectBusyLabel: (label: string | null) => void
 }): {
@@ -270,14 +273,11 @@ export function useAddRepoLocalFolderFlow({
         )
       }
       if (shouldDeferGitRepoReady && gitRepoIds.length > 0) {
-        await onGitRepoReady(
-          gitRepoIds[0],
-          source,
-          worktreeRefreshOptions(activeRuntimeEnvironmentId ?? null).executionHostId
-        )
+        const { executionHostId } = worktreeRefreshOptions(activeRuntimeEnvironmentId ?? null)
+        await onGitRepoBatchReady({ repoIds: gitRepoIds, source, executionHostId })
       }
     },
-    [activeRuntimeEnvironmentId, addLocalPathForGeneration, onGitRepoReady]
+    [activeRuntimeEnvironmentId, addLocalPathForGeneration, onGitRepoBatchReady]
   )
 
   useEffect(() => {

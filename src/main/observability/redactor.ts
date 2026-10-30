@@ -53,6 +53,8 @@ const CLIENT_ATTR_BLOCKLIST = new Set([
   'api_key',
   'api-key',
   'apikey',
+  'projecteventdecisionkey',
+  'projecteventdecisionlayakey',
   'authorization',
   'bearer',
   'cookie',

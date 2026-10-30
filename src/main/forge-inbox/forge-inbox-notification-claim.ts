@@ -5,7 +5,11 @@ import {
   forgeNotificationPriority,
   type ForgeNotification
 } from './forge-inbox-notification-candidates'
-import { getForgeClientCursor, listForgeChanges, setForgeClientCursor } from './forge-inbox-queries'
+import {
+  getForgeClientCursor,
+  listForgeChanges,
+  setForgeClientCursor
+} from './forge-inbox-change-cursors'
 
 /** Reserved reader id; the prefix cannot be produced by any RPC caller key the host stamps. */
 export const FORGE_NOTIFICATION_CURSOR_ID = 'orca-internal:forge-notification-producer'

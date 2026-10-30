@@ -1,16 +1,14 @@
 import { Button } from '@/components/ui/button'
 import { cn } from '@/lib/utils'
 import { translate } from '@/i18n/i18n'
-import type { ForgeItem } from '../../../../shared/forge-inbox-types'
-import { forgeItemKindLabel, formatForgeDateTime } from './forge-inbox-display'
+import type { ForgeInboxArchiveView } from '../../../../shared/forge-inbox-display-preferences'
+import type { ForgeItemHandlingState } from '../../../../shared/forge-inbox-item-handling'
+import type { ForgeItem, ForgeItemKind } from '../../../../shared/forge-inbox-types'
+import { forgeItemIdentityParts, formatForgeDateTime } from './forge-inbox-display'
+import { ForgeInboxListToolbar } from './ForgeInboxListToolbar'
 
 function itemMeta(item: ForgeItem): string {
-  const parts = [
-    forgeItemKindLabel(item.kind),
-    `#${item.iid}`,
-    item.state,
-    formatForgeDateTime(item.updatedAt)
-  ]
+  const parts = [...forgeItemIdentityParts(item), formatForgeDateTime(item.updatedAt)]
   return parts.filter((part) => part.length > 0).join(' · ')
 }
 
@@ -18,42 +16,67 @@ export function ForgeInboxList({
   items,
   selectedItemId,
   unreadOnly,
+  archiveView,
+  archiveSupported,
+  projectFilter,
+  kindFilter,
+  handlingFilter,
+  projects,
+  compact,
   loading,
   loadingMore,
   hasMore,
   error,
   onSelect,
   onToggleUnreadOnly,
+  onArchiveViewChange,
+  onProjectFilterChange,
+  onKindFilterChange,
+  onHandlingFilterChange,
   onLoadMore,
   onRetry
 }: {
   items: ForgeItem[]
   selectedItemId: number | null
   unreadOnly: boolean
+  archiveView: ForgeInboxArchiveView
+  archiveSupported: boolean | null
+  projectFilter: string | null
+  kindFilter: ForgeItemKind | null
+  handlingFilter: ForgeItemHandlingState | null
+  projects: string[]
+  compact: boolean
   loading: boolean
   loadingMore: boolean
   hasMore: boolean
   error: string | null
   onSelect: (itemId: number) => void
   onToggleUnreadOnly: () => void
+  onArchiveViewChange: (view: ForgeInboxArchiveView) => void
+  onProjectFilterChange: (projectId: string | null) => void
+  onKindFilterChange: (kind: ForgeItemKind | null) => void
+  onHandlingFilterChange: (handling: ForgeItemHandlingState | null) => void
   onLoadMore: () => void
   onRetry: () => void
 }): React.JSX.Element {
   return (
     <div className="flex w-[340px] shrink-0 flex-col border-r border-border">
-      <div className="flex items-center gap-2 border-b border-border px-3 py-2">
-        <Button
-          size="xs"
-          variant={unreadOnly ? 'secondary' : 'ghost'}
-          aria-pressed={unreadOnly}
-          onClick={onToggleUnreadOnly}
-        >
-          {translate('auto.components.forge-inbox.ForgeInboxList.unreadOnly', 'Unread only')}
-        </Button>
-        <Button size="xs" variant="ghost" className="ml-auto" disabled={loading} onClick={onRetry}>
-          {translate('auto.components.forge-inbox.ForgeInboxList.refresh', 'Refresh')}
-        </Button>
-      </div>
+      <ForgeInboxListToolbar
+        unreadOnly={unreadOnly}
+        archiveView={archiveView}
+        archiveSupported={archiveSupported}
+        projectFilter={projectFilter}
+        kindFilter={kindFilter}
+        handlingFilter={handlingFilter}
+        projects={projects}
+        loading={loading}
+        onToggleUnreadOnly={onToggleUnreadOnly}
+        onArchiveViewChange={onArchiveViewChange}
+        onProjectFilterChange={onProjectFilterChange}
+        onKindFilterChange={onKindFilterChange}
+        onHandlingFilterChange={onHandlingFilterChange}
+        onRetry={onRetry}
+      />
 
       {error !== null ? (
         <div className="flex items-start gap-2 border-b border-border px-3 py-2">
@@ -71,15 +94,20 @@ export function ForgeInboxList({
           </p>
         ) : items.length === 0 ? (
           <p className="px-3 py-4 text-xs text-muted-foreground">
-            {unreadOnly
+            {archiveView === 'archived'
               ? translate(
-                  'auto.components.forge-inbox.ForgeInboxList.emptyUnread',
-                  'No unread items.'
+                  'auto.components.forge-inbox.ForgeInboxList.emptyArchived',
+                  'No archived items.'
                 )
-              : translate(
-                  'auto.components.forge-inbox.ForgeInboxList.empty',
-                  'No items yet. New GitLab activity will appear here.'
-                )}
+              : unreadOnly
+                ? translate(
+                    'auto.components.forge-inbox.ForgeInboxList.emptyUnread',
+                    'No unread items.'
+                  )
+                : translate(
+                    'auto.components.forge-inbox.ForgeInboxList.empty',
+                    'No items yet. New project activity will appear here.'
+                  )}
           </p>
         ) : (
           <ul>
@@ -93,7 +121,8 @@ export function ForgeInboxList({
                     aria-current={selected ? 'true' : undefined}
                     data-current={selected ? 'true' : undefined}
                     className={cn(
-                      'flex w-full flex-col gap-1 border-b border-border/60 px-3 py-2 text-left transition-colors',
+                      'flex w-full flex-col gap-1 border-b border-border/60 px-3 text-left transition-colors',
+                      compact ? 'py-1' : 'py-2',
                       selected ? 'bg-accent' : 'hover:bg-accent/60'
                     )}
                   >
@@ -110,12 +139,14 @@ export function ForgeInboxList({
                           item.unread ? 'font-semibold text-foreground' : 'text-foreground/85'
                         )}
                       >
-                        {item.title || `${forgeItemKindLabel(item.kind)} #${item.iid}`}
+                        {item.title || forgeItemIdentityParts(item).slice(0, 2).join(' ')}
                       </span>
                     </span>
-                    <span className="truncate text-2xs text-muted-foreground">
-                      {itemMeta(item)}
-                    </span>
+                    {compact ? null : (
+                      <span className="truncate text-2xs text-muted-foreground">
+                        {itemMeta(item)}
+                      </span>
+                    )}
                   </button>
                 </li>
               )

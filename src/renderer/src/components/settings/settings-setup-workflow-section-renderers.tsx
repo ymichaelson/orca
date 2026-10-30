@@ -80,7 +80,7 @@ export function renderGeneralSettingsSection(context: SettingsRenderContext): Re
 export function renderIntegrationsSettingsSection(
   context: SettingsRenderContext
 ): React.JSX.Element {
-  const { navigation, view } = context
+  const { model, navigation, view } = context
   return (
     <SettingsSection
       id="integrations"
@@ -92,7 +92,14 @@ export function renderIntegrationsSettingsSection(
       searchEntries={navigation.getSectionSearchEntries('integrations')}
       bodyClassName="rounded-none border-0 bg-transparent p-0 shadow-none"
     >
-      {view.isSectionMounted('integrations') ? <IntegrationsPane /> : null}
+      {view.isSectionMounted('integrations') ? (
+        <IntegrationsPane
+          hostScope={model.settingsHostScope}
+          runtimeEnvironments={model.runtimeEnvironments}
+          settings={model.settings}
+          updateSettings={model.updateSettingsOrThrow}
+        />
+      ) : null}
     </SettingsSection>
   )
 }

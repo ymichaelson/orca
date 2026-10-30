@@ -3,18 +3,29 @@ import { Settings as SettingsIcon } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { useAppStore } from '@/store'
 import { translate } from '@/i18n/i18n'
+import { isRepoOnCatalogHost } from '../../../../shared/execution-host'
+import { getRuntimeTargetHostId } from '@/runtime/runtime-client-target'
+import { forgeGenericErrorLabel } from './forge-inbox-error-code-copy'
 import { ForgeInboxDetail } from './ForgeInboxDetail'
 import { ForgeInboxList } from './ForgeInboxList'
+import { ForgeInboxOwnerSelector } from './ForgeInboxOwnerSelector'
 import { ForgeInboxSettingsPanel } from './ForgeInboxSettingsPanel'
 import { ForgeInboxStatusStrip } from './ForgeInboxStatusStrip'
 import { useForgeInboxFeed } from './use-forge-inbox-feed'
 
 export default function ForgeInboxPage(): React.JSX.Element {
   const closePage = useAppStore((state) => state.closeInboxPage)
+  const openSettingsTarget = useAppStore((state) => state.openSettingsTarget)
+  const repos = useAppStore((state) => state.repos)
   const pendingInboxItem = useAppStore((state) => state.pendingInboxItem)
   const clearPendingInboxItem = useAppStore((state) => state.clearPendingInboxItem)
+  const ownerTarget = useAppStore((state) => state.forgeInboxOwnerTarget)
+  const setOwnerTarget = useAppStore((state) => state.setForgeInboxOwnerTarget)
+  const runtimeEnvironments = useAppStore((state) => state.runtimeEnvironments)
+  const routeError = useAppStore((state) => state.forgeInboxRouteError)
+  const clearRouteError = useAppStore((state) => state.clearForgeInboxRouteError)
   const [settingsOpen, setSettingsOpen] = useState(false)
-  const [settingsDirty, setSettingsDirty] = useState(false)
+  const compact = useAppStore((state) => state.forgeInboxCompact)
   const {
     status,
     statusError,
@@ -25,30 +36,51 @@ export default function ForgeInboxPage(): React.JSX.Element {
     loadingMore,
     hasMore,
     unreadOnly,
+    archiveView,
+    archiveSupported,
+    projectFilter,
+    kindFilter,
+    handlingFilter,
+    projects,
     selectedItemId,
     detail,
-    events,
+    questions,
     detailError,
     loadingDetail,
     reload,
     loadMore,
     setUnreadOnly,
+    setArchiveView,
+    setProjectFilter,
+    setKindFilter,
+    setHandlingFilter,
+    setItemArchived,
     selectItem
-  } = useForgeInboxFeed()
+  } = useForgeInboxFeed(ownerTarget)
+  // The repo catalog is this computer's, so only a repo on this computer gets a project-settings shortcut.
+  const linkedRepos = detail?.repoId
+    ? repos.filter((repo) => repo.id === detail.repoId && isRepoOnCatalogHost(repo))
+    : []
+  const linkedRepo = linkedRepos.length === 1 ? linkedRepos[0] : null
 
-  // Why: the settings draft lives inside the panel, which stays mounted so leaving it never discards edits.
-  const handleDirtyChange = useCallback((dirty: boolean) => setSettingsDirty(dirty), [])
-
-  // Why: a banner click opened this page for one item; select it once the owner is known, then drop the request.
+  // Why: a banner click opened this page for one item; select it once that target's owner answers, then drop the request.
   useEffect(() => {
     if (pendingInboxItem === null || status === null) {
       return
     }
-    if (status.ownerHostId === pendingInboxItem.ownerHostId) {
+    if (getRuntimeTargetHostId(pendingInboxItem.target) === getRuntimeTargetHostId(ownerTarget)) {
       selectItem(pendingInboxItem.itemId)
     }
     clearPendingInboxItem()
-  }, [pendingInboxItem, status, selectItem, clearPendingInboxItem])
+  }, [pendingInboxItem, status, ownerTarget, selectItem, clearPendingInboxItem])
+
+  const selectInboxItem = useCallback(
+    (itemId: number | null) => {
+      clearRouteError()
+      selectItem(itemId)
+    },
+    [clearRouteError, selectItem]
+  )
 
   useEffect(() => {
     function onKeyDown(event: KeyboardEvent): void {
@@ -84,6 +116,28 @@ export default function ForgeInboxPage(): React.JSX.Element {
     return () => window.removeEventListener('keydown', onKeyDown)
   }, [closePage, selectItem, selectedItemId, settingsOpen])
 
+  const openLinkedProjectSettings = linkedRepo
+    ? () =>
+        openSettingsTarget({
+          pane: 'repo',
+          repoId: linkedRepo.id,
+          hostId: 'local',
+          hostScope: { kind: 'local' }
+        })
+    : undefined
+  const openReceiverSettings = useCallback(
+    () =>
+      openSettingsTarget({
+        pane: 'integrations',
+        repoId: null,
+        hostScope: { kind: 'local' },
+        sectionId: 'integrations-webhook'
+      }),
+    [openSettingsTarget]
+  )
+  // Why: the receiver settings edit this computer's webhook pane, not a remote owner's.
+  const receiverSettings = ownerTarget.kind === 'local' ? openReceiverSettings : undefined
+
   return (
     <main className="relative flex h-full min-h-0 flex-1 flex-col bg-background pt-5 text-foreground md:pt-6">
       <header
@@ -94,11 +148,11 @@ export default function ForgeInboxPage(): React.JSX.Element {
         <h1 className="truncate text-base font-semibold leading-8">
           {translate('auto.components.forge-inbox.ForgeInboxPage.title', 'Inbox')}
         </h1>
-        {!settingsOpen && settingsDirty ? (
-          <span className="text-xs text-muted-foreground">
-            {translate('auto.components.forge-inbox.settings.unsaved', 'Unsaved changes')}
-          </span>
-        ) : null}
+        <ForgeInboxOwnerSelector
+          target={ownerTarget}
+          environments={runtimeEnvironments}
+          onChange={setOwnerTarget}
+        />
         <Button
           type="button"
           variant={settingsOpen ? 'secondary' : 'ghost'}
@@ -112,12 +166,22 @@ export default function ForgeInboxPage(): React.JSX.Element {
         </Button>
       </header>
 
+      {routeError ? (
+        <div
+          role="alert"
+          className="border-b border-border px-3 py-2 text-xs text-destructive md:px-5"
+        >
+          {forgeGenericErrorLabel()}
+        </div>
+      ) : null}
+
       <div className={settingsOpen ? 'hidden' : 'flex min-h-0 flex-1 flex-col'}>
         <ForgeInboxStatusStrip
           status={status}
           error={statusError}
           loading={loadingStatus}
           onRetry={reload}
+          onOpenReceiverSettings={receiverSettings}
         />
 
         <div className="flex min-h-0 flex-1">
@@ -125,33 +189,60 @@ export default function ForgeInboxPage(): React.JSX.Element {
             items={items}
             selectedItemId={selectedItemId}
             unreadOnly={unreadOnly}
+            archiveView={archiveView}
+            archiveSupported={archiveSupported}
+            projectFilter={projectFilter}
+            kindFilter={kindFilter}
+            handlingFilter={handlingFilter}
+            projects={projects}
+            compact={compact}
             loading={loadingItems}
             loadingMore={loadingMore}
             hasMore={hasMore}
             error={itemsError}
-            onSelect={selectItem}
+            onSelect={selectInboxItem}
             onToggleUnreadOnly={() => setUnreadOnly(!unreadOnly)}
+            onArchiveViewChange={setArchiveView}
+            onProjectFilterChange={setProjectFilter}
+            onKindFilterChange={setKindFilter}
+            onHandlingFilterChange={setHandlingFilter}
             onLoadMore={loadMore}
             onRetry={reload}
           />
           <ForgeInboxDetail
+            key={JSON.stringify([
+              getRuntimeTargetHostId(ownerTarget),
+              status?.ownerHostId ?? null,
+              selectedItemId
+            ])}
             ownerHostId={status?.ownerHostId ?? null}
+            ownerTarget={ownerTarget}
             detail={detail}
-            events={events}
+            questions={questions}
             loading={loadingDetail}
             error={detailError}
             onChanged={reload}
+            archiveSupported={archiveSupported === true}
+            onSetArchived={setItemArchived}
+            repairActions={{
+              openHostSettings: openSettingsTarget,
+              openProjectSettings: openLinkedProjectSettings
+            }}
           />
         </div>
       </div>
 
-      <div className={settingsOpen ? 'flex min-h-0 flex-1 flex-col' : 'hidden'}>
-        <ForgeInboxSettingsPanel
-          onClose={() => setSettingsOpen(false)}
-          onChanged={reload}
-          onDirtyChange={handleDirtyChange}
-        />
-      </div>
+      {settingsOpen ? (
+        <div className="flex min-h-0 flex-1 flex-col">
+          <ForgeInboxSettingsPanel
+            ownerHostId={status?.ownerHostId ?? null}
+            archiveSupported={archiveSupported}
+            onClose={() => setSettingsOpen(false)}
+            onOpenProjectSettings={openLinkedProjectSettings}
+            onOpenReceiverSettings={receiverSettings}
+          />
+        </div>
+      ) : null}
     </main>
   )
 }

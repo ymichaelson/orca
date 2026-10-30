@@ -34,6 +34,7 @@ export function buildWindowApi(args: {
       ui: {
         onStateChanged: () => () => {},
         onOpenSettings: () => () => {},
+        onOpenForgeInboxItem: () => () => {},
         consumePendingOpenSettings: () => Promise.resolve(false),
         onOpenFeatureTour: () => () => {},
         onToggleLeftSidebar: () => () => {},

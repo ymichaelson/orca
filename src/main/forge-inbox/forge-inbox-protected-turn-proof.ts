@@ -103,6 +103,15 @@ export async function readForgeProtectedTurnProof(
   return proveReply(items, submissionKey, submissions.get(clientMessageId)?.providerItemId)
 }
 
+/** A missing host cannot prove a turn, which reads the same as an unprovable one. */
+export async function readForgeProtectedTurnProofIfHosted(
+  host: Pick<ForgeProtectedSessionTurnHost, 'history'> | null,
+  sessionId: string,
+  clientMessageId: string
+): Promise<ForgeProtectedTurnProof | null> {
+  return host ? readForgeProtectedTurnProof(host, sessionId, clientMessageId) : null
+}
+
 function proveReply(
   items: ReadonlyMap<string, AgentJournalRenderItem>,
   submissionKey: string,

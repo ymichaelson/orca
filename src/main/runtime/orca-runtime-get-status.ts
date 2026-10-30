@@ -1,3 +1,4 @@
+import { PROJECT_EVENT_DECISION_SETTINGS_CAPABILITY } from '../../shared/project-event-decision-settings'
 import { OrcaRuntimeWithGetRuntimeId } from './workspaces/session-hosts/get-runtime-id'
 import type { RuntimeDegradation, RuntimeStatus } from '../../shared/runtime-types'
 import {
@@ -120,6 +121,9 @@ export abstract class OrcaRuntimeWithGetStatus extends OrcaRuntimeWithGetRuntime
         (capability !== USAGE_CREDENTIALS_RUNTIME_CAPABILITY ||
           statusHost.getUsageRateLimits() !== null)
     )
+    if (this.supportsDecisionSettingsManagement() && this.forgeInboxServiceIfAttached()) {
+      capabilities.push(PROJECT_EVENT_DECISION_SETTINGS_CAPABILITY)
+    }
     if (hasOffscreen || hasHeadlessCommands) {
       capabilities.push(BROWSER_HEADLESS_RUNTIME_CAPABILITY)
     }

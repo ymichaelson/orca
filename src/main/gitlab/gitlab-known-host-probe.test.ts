@@ -53,6 +53,26 @@ describe('getGlabKnownHosts', () => {
     await expect(getGlabKnownHosts()).resolves.toEqual(['gitlab.com'])
   })
 
+  it('keeps the hosts glab printed before a failing auth status exit, without caching', async () => {
+    glabExecFileAsyncMock.mockRejectedValueOnce(
+      Object.assign(new Error('Command failed: glab auth status'), {
+        stderr:
+          'gitlab.com\n  x gitlab.com: API call failed: 401 Unauthorized\n  ✓ Logged in to gitlab.internal:8443 as root (keyring)\n'
+      })
+    )
+
+    // Why: glab exits 1 when any one configured instance fails, so a stale gitlab.com entry used to
+    // hide a working self-hosted host and make a valid project URL look like it was not GitLab.
+    await expect(getGlabKnownHosts()).resolves.toEqual(['gitlab.com', 'gitlab.internal:8443'])
+
+    glabExecFileAsyncMock.mockResolvedValueOnce({
+      stdout: '✓ Logged in to gitlab.internal:8443 as root\n',
+      stderr: ''
+    })
+    await getGlabKnownHosts()
+    expect(glabExecFileAsyncMock).toHaveBeenCalledTimes(2)
+  })
+
   it('caches the result across calls', async () => {
     glabExecFileAsyncMock.mockResolvedValueOnce({
       stdout: '✓ Logged in to gitlab.com as user\n',

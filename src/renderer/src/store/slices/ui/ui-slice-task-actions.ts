@@ -27,6 +27,8 @@ export function createUiTaskActions(set: UISliceSet, get: UISliceGet): Partial<U
     previousViewBeforeArtifacts: 'terminal',
     previousViewBeforeInbox: 'terminal',
     pendingInboxItem: null,
+    forgeInboxOwnerTarget: { kind: 'local' },
+    forgeInboxRouteError: false,
     setActiveView: (view) => set({ activeView: view }),
     taskPageData: {},
     taskResumeState: undefined,

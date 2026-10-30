@@ -101,24 +101,43 @@ export function createUiViewActions(set: UISliceSet, get: UISliceGet): Partial<U
       set((state) => ({
         activeView: 'inbox',
         previousViewBeforeInbox:
-          state.activeView === 'inbox' ? state.previousViewBeforeInbox : state.activeView
+          state.activeView === 'inbox' ? state.previousViewBeforeInbox : state.activeView,
+        // Why: a fail-closed error belongs to one navigation, not to every later visit.
+        forgeInboxRouteError: false
       }))
     },
     closeInboxPage: () =>
       set((state) => ({
         activeView: state.previousViewBeforeInbox,
-        worktreeNavHistoryIndex: rewindHistoryIndexPastView(state, 'inbox')
+        worktreeNavHistoryIndex: rewindHistoryIndexPastView(state, 'inbox'),
+        forgeInboxRouteError: false
       })),
-    openInboxItem: (target) => {
+    openInboxItem: (pending) => {
       get().recordViewVisit('inbox')
       set((state) => ({
         activeView: 'inbox',
         previousViewBeforeInbox:
           state.activeView === 'inbox' ? state.previousViewBeforeInbox : state.activeView,
-        pendingInboxItem: target
+        pendingInboxItem: pending,
+        forgeInboxOwnerTarget: pending.target,
+        forgeInboxRouteError: false
       }))
     },
     clearPendingInboxItem: () => set({ pendingInboxItem: null }),
+    setForgeInboxOwnerTarget: (target) =>
+      // Why: a pending banner click belongs to the owner it named, not to the owner now shown.
+      set({ forgeInboxOwnerTarget: target, pendingInboxItem: null }),
+    openUnroutableInboxItem: () => {
+      get().recordViewVisit('inbox')
+      set((state) => ({
+        activeView: 'inbox',
+        previousViewBeforeInbox:
+          state.activeView === 'inbox' ? state.previousViewBeforeInbox : state.activeView,
+        pendingInboxItem: null,
+        forgeInboxRouteError: true
+      }))
+    },
+    clearForgeInboxRouteError: () => set({ forgeInboxRouteError: false }),
     openMobilePage: () =>
       set((state) => ({
         activeView: 'mobile',

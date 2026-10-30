@@ -3,13 +3,9 @@ import type net from 'node:net'
 import type { ForgeInboxLedger } from './forge-inbox-ledger'
 import { forgeErrorLabel } from './forge-inbox-error-label'
 import { readWebhookBody } from './forge-inbox-webhook-body-reader'
-import { authenticateWebhookRequest } from './forge-inbox-webhook-auth'
-import {
-  legacyDigestDedupeKey,
-  messageDedupeKey,
-  parseWebhookBody,
-  WEBHOOK_REJECTIONS
-} from './forge-inbox-webhook-request'
+import { authorizeProjectEventBinding } from './forge-inbox-project-event-binding-auth'
+import { commitProjectEventDelivery } from './forge-inbox-project-event-commit'
+import { readProjectEventHeaders } from './forge-inbox-project-event-headers'
 
 const MAX_HEADER_BYTES = 16 * 1024
 const MAX_HEADER_COUNT = 64
@@ -57,16 +53,6 @@ export class ForgeWebhookIngress {
     this.maxConcurrent = options.maxConcurrentRequests ?? 16
     this.graceMs = options.shutdownGraceMs ?? 1000
     this.onAdmitted = options.onAdmitted
-  }
-
-  /** Binds the persisted listener config; a disabled listener never touches the network. */
-  async start(): Promise<{ listening: false } | { listening: true; port: number }> {
-    const { listener } = this.ledger.getConfig().config
-    if (!listener.enabled) {
-      return { listening: false }
-    }
-    const { port } = await this.listen({ host: listener.bindAddress, port: listener.port })
-    return { listening: true, port }
   }
 
   /** Exact host and port, no fallback; port 0 is for tests, config validation keeps 1..65535. */
@@ -233,46 +219,40 @@ export class ForgeWebhookIngress {
     req: http.IncomingMessage,
     reply: (status: number, code: string, keepOpen?: boolean) => void
   ): void {
-    const auth = authenticateWebhookRequest(this.ledger, req)
-    if (!auth.ok) {
-      return reply(auth.status, auth.code)
+    const headers = readProjectEventHeaders(req)
+    if (!headers.ok) {
+      return reply(headers.status, headers.code)
     }
-    const { instanceId, eventKind, messageId, correlation } = auth
+    const admitted = authorizeProjectEventBinding(this.ledger.ledgerContext(), {
+      bindingId: headers.bindingId,
+      token: headers.token
+    })
+    if (!admitted.ok) {
+      return reply(admitted.status, admitted.code)
+    }
     readWebhookBody(req, reply, (body) => {
-      const parsed = parseWebhookBody(body)
-      if (!parsed.ok) {
-        return reply(400, 'invalid-body')
+      if (this.stage === 'stopped') {
+        return reply(503, 'receiver-stopped')
       }
-      const dedupeKey =
-        messageId === null
-          ? legacyDigestDedupeKey(parsed.projectId, eventKind, body)
-          : messageDedupeKey(messageId)
+      // A secret or binding that moved while the body was in flight must not commit.
+      const still = authorizeProjectEventBinding(this.ledger.ledgerContext(), {
+        bindingId: headers.bindingId,
+        token: headers.token
+      })
+      if (!still.ok) {
+        return reply(still.status, still.code)
+      }
       if (this.deadlineExceeded(req.socket)) {
         return reply(503, 'deadline-exceeded')
       }
-      try {
-        // Synchronous SQLite can block the loop up to the ledger busy timeout; no worker by design.
-        const result = this.ledger.admitWebhookDelivery({
-          instanceId,
-          projectId: parsed.projectId,
-          expectedConfigRevision: auth.configRevision,
-          eventKind,
-          dedupeKey,
-          correlation,
-          body
-        })
-        if (result.ok) {
-          if (!result.duplicate) {
-            this.wake()
-          }
-          return reply(202, result.duplicate ? 'duplicate' : 'queued')
-        }
-        const [status, code] = WEBHOOK_REJECTIONS[result.reason]
-        reply(status, code)
-      } catch (error) {
-        console.warn('[forge-inbox] webhook admission failed', forgeErrorLabel(error))
-        reply(500, 'storage-failed')
+      const committed = commitProjectEventDelivery(this.ledger, headers, still, body)
+      if ('failed' in committed) {
+        return reply(500, 'storage-failed')
       }
+      if (committed.wake) {
+        this.wake()
+      }
+      reply(committed.status, committed.code)
     })
   }
 

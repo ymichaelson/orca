@@ -1,17 +1,16 @@
 import './unused-default-rpc-methods.test-fixture'
 import { afterEach, describe, expect, it } from 'vitest'
 import Database from '../../sqlite/sync-database'
-import {
-  FORGE_PATCH_REQUEST_MAX_IDENTIFIER_CHARS,
-  FORGE_PATCH_REQUEST_MAX_MESSAGE_CHARS,
-  FORGE_PATCH_REQUEST_MAX_PATHS
-} from '../../../shared/forge-patch-request'
 import { FORGE_INBOX_RUNTIME_CAPABILITY } from '../../../shared/forge-inbox-runtime-capabilities'
-import { FORGE_PUSH_MAX_MESSAGE_CHARS } from '../../../shared/forge-push'
+import { PROJECT_EVENT_RECEIVER_LISTENER_ERROR_CODES } from '../../../shared/project-event-receiver-listener-error-codes'
+import { holdPort } from '../../forge-inbox/forge-inbox-owner-service-test-ports'
+import { INSTANCE_ID } from '../../forge-inbox/forge-inbox-webhook-test-harness'
+import { createReceiverSettingsFixture } from '../../project-events/project-event-receiver-settings-test-fixture'
 import {
   CANARY,
   configure,
   createForgeRpcHarness,
+  enabledConfig,
   errorCodeOf,
   recordsOf,
   seedItem,
@@ -20,11 +19,14 @@ import {
 
 const DATA_METHODS = [
   'forgeInbox.listItems',
+  'forgeInbox.listProjects',
   'forgeInbox.getItemDetail',
   'forgeInbox.listRuns',
   'forgeInbox.listEvents',
   'forgeInbox.getChanges',
-  'forgeInbox.markRead'
+  'forgeInbox.markRead',
+  'forgeInbox.archiveItem',
+  'forgeInbox.unarchiveItem'
 ] as const
 
 function dataParams(method: string, ownerHostId: string, itemId = 1) {
@@ -32,6 +34,8 @@ function dataParams(method: string, ownerHostId: string, itemId = 1) {
     case 'forgeInbox.getItemDetail':
     case 'forgeInbox.listEvents':
     case 'forgeInbox.markRead':
+    case 'forgeInbox.archiveItem':
+    case 'forgeInbox.unarchiveItem':
       return { ownerHostId, itemId }
     case 'forgeInbox.getChanges':
       return { ownerHostId, afterSeq: 0 }
@@ -42,11 +46,7 @@ function dataParams(method: string, ownerHostId: string, itemId = 1) {
 
 const STREAM_METHOD_PARAMS = (ownerHostId: string): [string, unknown][] => [
   ['forgeInbox.unsubscribeChanges', { subscriptionId: 'forge-inbox-changes-x-1' }],
-  ['forgeInbox.ackChanges', { ownerHostId, subscriptionId: 'forge-inbox-changes-x-1', seq: 0 }],
-  [
-    'forgeInbox.updateProjectPolicy',
-    { ownerHostId, instanceId: 'gitlab-main', projectId: '42', expectedRevision: 1, patch: {} }
-  ]
+  ['forgeInbox.ackChanges', { ownerHostId, subscriptionId: 'forge-inbox-changes-x-1', seq: 0 }]
 ]
 
 describe('forge inbox rpc access', () => {
@@ -55,17 +55,19 @@ describe('forge inbox rpc access', () => {
 
   it('keeps a never-configured host dormant for every read, with no file created', async () => {
     harness = await createForgeRpcHarness()
-    const config = await harness.ok('forgeInbox.getConfig', {})
-    const ownerHostId = String(config.ownerHostId)
-    expect(config.configRevision).toBe(0)
-    expect(ownerHostId.length).toBeGreaterThan(0)
-
     const status = await harness.ok('forgeInbox.getStatus', {})
+    const ownerHostId = String(status.ownerHostId)
+    expect(harness.runtime.forgeInboxService().getConfig().configRevision).toBe(0)
+    expect(ownerHostId.length).toBeGreaterThan(0)
     expect(status).toMatchObject({ ownerHostId, dormant: true })
 
     expect(await harness.ok('forgeInbox.listItems', { ownerHostId })).toMatchObject({
       rows: [],
       nextCursor: null
+    })
+    expect(await harness.ok('forgeInbox.listProjects', { ownerHostId })).toEqual({
+      ownerHostId,
+      projects: []
     })
     expect(await harness.ok('forgeInbox.getItemDetail', { ownerHostId, itemId: 1 })).toMatchObject({
       detail: null
@@ -86,50 +88,35 @@ describe('forge inbox rpc access', () => {
     expect(existsSync(harness.dbPath)).toBe(false)
   })
 
-  it('lets owner, desktop and paired standard callers read and administer; refuses mobile', async () => {
+  it('lets owner, desktop and paired standard callers use current routes; refuses mobile', async () => {
     harness = await createForgeRpcHarness()
     const ownerHostId = await configure(harness)
     for (const caller of ['cli', 'desktop', 'paired-a'] as const) {
       expect((await harness.call('forgeInbox.getStatus', {}, caller)).ok).toBe(true)
       expect((await harness.call('forgeInbox.listItems', { ownerHostId }, caller)).ok).toBe(true)
     }
-    const config = await harness.ok('forgeInbox.getConfig', {}, 'paired-a')
-    const admin = await harness.call(
-      'forgeInbox.updateConfig',
-      { ownerHostId, expectedRevision: config.configRevision, config: config.config },
+    const policy = await harness.call(
+      'forgeInbox.getProjectEventPolicy',
+      { ownerHostId, repoId: 'repo-1' },
       'paired-a'
     )
-    expect(admin.ok).toBe(true)
+    expect(policy.ok).toBe(true)
 
     const mobileCalls: [string, unknown][] = [
       ['forgeInbox.getStatus', {}],
       ['forgeInbox.getConfig', {}],
       ['forgeInbox.listItems', { ownerHostId }],
-      [
-        'forgeInbox.approvePatch',
-        {
-          ownerHostId,
-          proposalId: 1,
-          expectedHash: 'a'.repeat(64),
-          expectedRevision: 1,
-          expectedPolicyGeneration: 0
-        }
-      ],
-      [
-        'forgeInbox.proposePush',
-        { ownerHostId, runId: 1, patchProposalId: 1, message: 'Publish it' }
-      ],
-      [
-        'forgeInbox.approvePush',
-        {
-          ownerHostId,
-          proposalId: 1,
-          expectedHash: 'a'.repeat(64),
-          expectedRevision: 1,
-          expectedPolicyGeneration: 0
-        }
-      ],
+      ['forgeInbox.archiveItem', { ownerHostId, itemId: 1 }],
+      ['forgeInbox.unarchiveItem', { ownerHostId, itemId: 1 }],
       ['forgeInbox.updateConfig', { ownerHostId, expectedRevision: 1, config: {} }],
+      ['forgeInbox.getProjectEventPolicy', { ownerHostId, repoId: 'repo-1' }],
+      [
+        'forgeInbox.updateProjectEventPolicy',
+        { ownerHostId, repoId: 'repo-1', expectedGeneration: 0, patch: {} }
+      ],
+      ['forgeInbox.retryProjectEvent', { ownerHostId, repoId: 'repo-1' }],
+      ['forgeInbox.getProjectEventActivity', { ownerHostId, repoId: 'repo-1' }],
+      ['forgeInbox.rotateProjectEventSecret', { ownerHostId, repoId: 'repo-1' }],
       [
         'forgeInbox.setCredential',
         {
@@ -157,51 +144,38 @@ describe('forge inbox rpc access', () => {
       ...STREAM_METHOD_PARAMS(wrong).filter(
         ([method]) => method !== 'forgeInbox.unsubscribeChanges'
       ),
+      ['forgeInbox.getProjectEventPolicy', { ownerHostId: wrong, repoId: 'repo-1' }],
       [
-        'forgeInbox.approvePatch',
-        {
-          ownerHostId: wrong,
-          proposalId: 1,
-          expectedHash: 'a'.repeat(64),
-          expectedRevision: 1,
-          expectedPolicyGeneration: 0
-        }
+        'forgeInbox.updateProjectEventPolicy',
+        { ownerHostId: wrong, repoId: 'repo-1', expectedGeneration: 0, patch: {} }
       ],
-      [
-        'forgeInbox.proposePush',
-        { ownerHostId: wrong, runId: 1, patchProposalId: 1, message: 'Publish it' }
-      ],
-      [
-        'forgeInbox.approvePush',
-        {
-          ownerHostId: wrong,
-          proposalId: 1,
-          expectedHash: 'a'.repeat(64),
-          expectedRevision: 1,
-          expectedPolicyGeneration: 0
-        }
-      ],
-      ['forgeInbox.updateConfig', { ownerHostId: wrong, expectedRevision: 1, config: {} }],
-      [
-        'forgeInbox.setCredential',
-        {
-          ownerHostId: wrong,
-          instanceId: 'gitlab-main',
-          kind: 'api-read',
-          secret: 'glpat-x',
-          expectedRevision: 1
-        }
-      ],
-      [
-        'forgeInbox.clearCredential',
-        { ownerHostId: wrong, instanceId: 'gitlab-main', kind: 'api-read', expectedRevision: 1 }
-      ]
+      ['forgeInbox.retryProjectEvent', { ownerHostId: wrong, repoId: 'repo-1' }],
+      ['forgeInbox.getProjectEventActivity', { ownerHostId: wrong, repoId: 'repo-1' }],
+      ['forgeInbox.rotateProjectEventSecret', { ownerHostId: wrong, repoId: 'repo-1' }]
     ]
     for (const [method, params] of calls) {
       const response = await harness.call(method, params)
       expect(errorCodeOf(response), method).toBe('forge_inbox_owner_mismatch')
       expect(JSON.stringify(response)).not.toContain(ownerHostId)
     }
+  })
+
+  it('fences a policy write when lazy open discovers a different owner', async () => {
+    harness = await createForgeRpcHarness()
+    const ownerHostId = String((await harness.ok('forgeInbox.getStatus', {})).ownerHostId)
+    const external = harness.openLedger('external-owner')
+    const before = external.getProjectEventPolicy('repo-1')
+
+    const response = await harness.call('forgeInbox.updateProjectEventPolicy', {
+      ownerHostId,
+      repoId: 'repo-1',
+      expectedGeneration: 0,
+      patch: { rules: 'not saved' }
+    })
+
+    expect(errorCodeOf(response)).toBe('forge_inbox_owner_mismatch')
+    expect(JSON.stringify(response)).not.toContain('external-owner')
+    expect(external.getProjectEventPolicy('repo-1')).toEqual(before)
   })
 
   it('rejects unknown keys, oversized limits and non-integer ids before touching the ledger', async () => {
@@ -211,10 +185,16 @@ describe('forge inbox rpc access', () => {
       ['forgeInbox.listItems', { ownerHostId, path: '/etc/passwd' }],
       ['forgeInbox.listItems', { ownerHostId, limit: 101 }],
       ['forgeInbox.listItems', { ownerHostId, limit: 0 }],
+      ['forgeInbox.getProjectEventActivity', { ownerHostId, repoId: 'repo-1', limit: 0 }],
+      ['forgeInbox.getProjectEventActivity', { ownerHostId, repoId: 'repo-1', limit: 21 }],
       ['forgeInbox.listItems', { ownerHostId, cursor: 1.5 }],
       ['forgeInbox.getItemDetail', { ownerHostId, itemId: 0 }],
       ['forgeInbox.getChanges', { ownerHostId, afterSeq: -1 }],
       ['forgeInbox.listItems', { ownerHostId, clientId: 'someone-else' }],
+      ['forgeInbox.listItems', { ownerHostId, kind: 'label' }],
+      ['forgeInbox.listItems', { ownerHostId, projectId: 42 }],
+      ['forgeInbox.listItems', { ownerHostId, projectFilter: 'group/demo' }],
+      ['forgeInbox.listItems', { ownerHostId, handling: 'read' }],
       ['forgeInbox.getStatus', { extra: true }]
     ]
     for (const [method, params] of bad) {
@@ -222,125 +202,48 @@ describe('forge inbox rpc access', () => {
     }
   })
 
-  it('rejects a patch request that is not a bounded identifier, message or path set', async () => {
+  it('narrows the list to one project and one kind, and names the projects it holds', async () => {
     harness = await createForgeRpcHarness()
     const ownerHostId = await configure(harness)
-    const valid = { ownerHostId, runId: 1, operationId: 'op-1', message: 'Update the value' }
+    const ledger = harness.openLedger(ownerHostId)
+    const ingest = (projectId: string, kind: 'merge_request' | 'issue', iid: number) => {
+      ledger.ingestEvent({
+        hostId: ownerHostId,
+        instanceId: INSTANCE_ID,
+        projectId,
+        kind,
+        iid,
+        dedupeKey: `${projectId}-${kind}-${iid}`,
+        eventKind: `${kind}.updated`,
+        payload: { category: 'review-request', completeness: { complete: true } },
+        versionToken: `v${iid}`,
+        sourceOrder: iid,
+        title: `${kind} ${iid}`,
+        itemState: 'opened'
+      })
+    }
+    ingest('group/demo', 'merge_request', 7)
+    ingest('group/demo', 'issue', 8)
+    ingest('other/tool', 'merge_request', 9)
 
-    expect(await harness.ok('forgeInbox.proposePatch', valid)).toEqual({
+    const titles = async (query: Record<string, unknown>) =>
+      recordsOf((await harness.ok('forgeInbox.listItems', { ownerHostId, ...query })).rows).map(
+        (row) => row.title
+      )
+
+    expect(await titles({})).toHaveLength(3)
+    expect(await titles({ projectId: 'other/tool' })).toEqual(['merge_request 9'])
+    expect(await titles({ kind: 'issue' })).toEqual(['issue 8'])
+    expect(await titles({ projectId: 'group/demo', kind: 'merge_request' })).toEqual([
+      'merge_request 7'
+    ])
+    // Why: hook-only items derive `recorded`, so the state filter reads the same rows.
+    expect(await titles({ handling: 'recorded' })).toHaveLength(3)
+    expect(await titles({ handling: 'needs-user' })).toEqual([])
+    expect(await harness.ok('forgeInbox.listProjects', { ownerHostId })).toEqual({
       ownerHostId,
-      kind: 'refused',
-      reason: 'host-unavailable'
+      projects: ['group/demo', 'other/tool']
     })
-
-    const bad: [string, unknown][] = [
-      ['forgeInbox.proposePatch', { ...valid, extra: true }],
-      ['forgeInbox.proposePatch', { ...valid, message: '' }],
-      [
-        'forgeInbox.proposePatch',
-        { ...valid, message: 'x'.repeat(FORGE_PATCH_REQUEST_MAX_MESSAGE_CHARS + 1) }
-      ],
-      [
-        'forgeInbox.proposePatch',
-        { ...valid, operationId: 'x'.repeat(FORGE_PATCH_REQUEST_MAX_IDENTIFIER_CHARS + 1) }
-      ],
-      ['forgeInbox.proposePatch', { ...valid, operationId: '' }],
-      ['forgeInbox.proposePatch', { ...valid, runId: 0 }],
-      ['forgeInbox.proposePatch', { ...valid, paths: { 'src/a.ts': true } }],
-      [
-        'forgeInbox.proposePatch',
-        {
-          ...valid,
-          paths: Array.from({ length: FORGE_PATCH_REQUEST_MAX_PATHS + 1 }, () => 'src/a.ts')
-        }
-      ],
-      ['forgeInbox.proposePatch', { ...valid, paths: ['src/\u0000.ts'] }]
-    ]
-    for (const [method, params] of bad) {
-      expect((await harness.call(method, params)).ok, JSON.stringify(params)).toBe(false)
-    }
-  })
-
-  it('binds a patch approval to a hex draft hash and positive versions', async () => {
-    harness = await createForgeRpcHarness()
-    const ownerHostId = await configure(harness)
-    const valid = {
-      ownerHostId,
-      proposalId: 999,
-      expectedHash: 'a'.repeat(64),
-      expectedRevision: 1,
-      expectedPolicyGeneration: 0
-    }
-
-    expect(await harness.ok('forgeInbox.approvePatch', valid)).toEqual({
-      ownerHostId,
-      ok: false,
-      reason: 'not-found'
-    })
-
-    const bad: [string, unknown][] = [
-      ['forgeInbox.approvePatch', { ...valid, extra: true }],
-      ['forgeInbox.approvePatch', { ...valid, expectedHash: 'A'.repeat(64) }],
-      ['forgeInbox.approvePatch', { ...valid, expectedHash: 'a'.repeat(63) }],
-      ['forgeInbox.approvePatch', { ...valid, expectedRevision: 0 }],
-      ['forgeInbox.approvePatch', { ...valid, expectedPolicyGeneration: -1 }],
-      ['forgeInbox.approvePatch', { ...valid, proposalId: 1.5 }]
-    ]
-    for (const [method, params] of bad) {
-      expect((await harness.call(method, params)).ok, JSON.stringify(params)).toBe(false)
-    }
-  })
-
-  it('accepts a bounded push request and binds its approval like a patch', async () => {
-    harness = await createForgeRpcHarness()
-    const ownerHostId = await configure(harness)
-    const valid = { ownerHostId, runId: 1, patchProposalId: 1, message: 'Publish it' }
-
-    expect(await harness.ok('forgeInbox.proposePush', valid)).toEqual({
-      ownerHostId,
-      kind: 'refused',
-      reason: 'run-missing'
-    })
-
-    const bad: [string, unknown][] = [
-      ['forgeInbox.proposePush', { ...valid, extra: true }],
-      ['forgeInbox.proposePush', { ...valid, message: '' }],
-      [
-        'forgeInbox.proposePush',
-        { ...valid, message: 'x'.repeat(FORGE_PUSH_MAX_MESSAGE_CHARS + 1) }
-      ],
-      ['forgeInbox.proposePush', { ...valid, runId: 0 }],
-      ['forgeInbox.proposePush', { ...valid, patchProposalId: 1.5 }]
-    ]
-    for (const [method, params] of bad) {
-      expect((await harness.call(method, params)).ok, JSON.stringify(params)).toBe(false)
-    }
-
-    const approval = {
-      ownerHostId,
-      proposalId: 999,
-      expectedHash: 'a'.repeat(64),
-      expectedRevision: 1,
-      expectedPolicyGeneration: 0
-    }
-    expect(await harness.ok('forgeInbox.approvePush', approval)).toEqual({
-      ownerHostId,
-      ok: false,
-      reason: 'not-found'
-    })
-    for (const params of [
-      { ...approval, extra: true },
-      { ...approval, expectedHash: 'A'.repeat(64) },
-      { ...approval, expectedHash: 'a'.repeat(32) },
-      { ...approval, expectedRevision: 0 },
-      { ...approval, expectedPolicyGeneration: -1 },
-      { ...approval, proposalId: 0 }
-    ]) {
-      expect(
-        (await harness.call('forgeInbox.approvePush', params)).ok,
-        JSON.stringify(params)
-      ).toBe(false)
-    }
   })
 
   it('keeps read marks per caller identity and never moves run state', async () => {
@@ -362,17 +265,117 @@ describe('forge inbox rpc access', () => {
     expect(await harness.ok('forgeInbox.listRuns', { ownerHostId })).toEqual(runsBefore)
   })
 
+  it('keeps archive marks per caller identity, hides them from the default list and never moves run state', async () => {
+    harness = await createForgeRpcHarness()
+    const ownerHostId = await configure(harness)
+    const ledger = harness.openLedger(ownerHostId)
+    const { itemId } = seedItem(ledger, ownerHostId, 1)
+    const runsBefore = await harness.ok('forgeInbox.listRuns', { ownerHostId })
+    const list = (caller: 'paired-a' | 'paired-b', archiveView?: string) =>
+      harness.ok(
+        'forgeInbox.listItems',
+        { ownerHostId, ...(archiveView ? { archiveView } : {}) },
+        caller
+      )
+
+    expect(
+      await harness.ok('forgeInbox.archiveItem', { ownerHostId, itemId }, 'paired-a')
+    ).toMatchObject({ applied: true })
+
+    expect((await list('paired-a')).rows).toEqual([])
+    expect(recordsOf((await list('paired-a', 'archived')).rows)).toHaveLength(1)
+    expect(recordsOf((await list('paired-b')).rows)).toHaveLength(1)
+    expect(await harness.ok('forgeInbox.listRuns', { ownerHostId })).toEqual(runsBefore)
+
+    expect(
+      await harness.ok('forgeInbox.unarchiveItem', { ownerHostId, itemId }, 'paired-a')
+    ).toMatchObject({ applied: true })
+    expect(recordsOf((await list('paired-a')).rows)).toHaveLength(1)
+    expect(
+      (await harness.call('forgeInbox.listItems', { ownerHostId, archiveView: 'nope' })).ok
+    ).toBe(false)
+  })
+
   it('refuses reads and marks from a caller with no stamped identity instead of sharing one', async () => {
     harness = await createForgeRpcHarness()
     const ownerHostId = await configure(harness)
     for (const method of [
       'forgeInbox.listItems',
       'forgeInbox.getItemDetail',
-      'forgeInbox.markRead'
+      'forgeInbox.markRead',
+      'forgeInbox.archiveItem',
+      'forgeInbox.unarchiveItem'
     ]) {
       const response = await harness.call(method, dataParams(method, ownerHostId), 'unidentified')
       expect(errorCodeOf(response), method).toBe('forge_inbox_caller_unidentified')
     }
+  })
+
+  it.each([
+    'forgeInbox.getConfig',
+    'forgeInbox.updateConfig',
+    'forgeInbox.setCredential',
+    'forgeInbox.clearCredential'
+  ])('rejects retired management method %s after caller admission', async (method) => {
+    harness = await createForgeRpcHarness()
+    const ownerHostId = String((await harness.ok('forgeInbox.getStatus', {})).ownerHostId)
+    const service = harness.runtime.forgeInboxService()
+    const setup = await service.updateConfig(0, enabledConfig(), ownerHostId)
+    expect(setup.ok).toBe(true)
+    const params = () => {
+      const { configRevision, config } = service.getConfig()
+      switch (method) {
+        case 'forgeInbox.updateConfig':
+          return { ownerHostId, expectedRevision: configRevision, config }
+        case 'forgeInbox.setCredential':
+          return {
+            ownerHostId,
+            instanceId: INSTANCE_ID,
+            kind: 'api-read',
+            expectedRevision: configRevision,
+            secret: 'test-secret'
+          }
+        case 'forgeInbox.clearCredential':
+          return {
+            ownerHostId,
+            instanceId: INSTANCE_ID,
+            kind: 'api-read',
+            expectedRevision: configRevision
+          }
+        default:
+          return {}
+      }
+    }
+    expect(errorCodeOf(await harness.call(method, params(), 'mobile'))).toBe('forbidden')
+    for (const caller of ['cli', 'desktop', 'paired-a'] as const) {
+      expect
+        .soft(errorCodeOf(await harness.call(method, params(), caller)), caller)
+        .toBe('method_not_found')
+    }
+  })
+
+  it.each([
+    'forgeInbox.updateProjectPolicy',
+    'forgeInbox.proposePatch',
+    'forgeInbox.proposePush',
+    'forgeInbox.discuss',
+    'forgeInbox.getProposal',
+    'forgeInbox.getProposalDiff',
+    'forgeInbox.approveComment',
+    'forgeInbox.approvePatch',
+    'forgeInbox.approvePush',
+    'forgeInbox.rejectProposal'
+  ])('rejects retired method %s as unknown', async (method) => {
+    harness = await createForgeRpcHarness()
+    expect(errorCodeOf(await harness.call(method, {}))).toBe('method_not_found')
+  })
+
+  it('advertises project event capabilities without the retired project policy capability', async () => {
+    harness = await createForgeRpcHarness()
+    const capabilities = harness.runtime.getStatus().capabilities
+    expect(capabilities).toContain('forge-inbox.project-event-policy.v1')
+    expect(capabilities).toContain('forge-inbox.project-event-agent.v1')
+    expect(capabilities).not.toContain('forge-inbox.project-policy.v1')
   })
 
   it('keeps advertising the static capability for a stopped service while status reports it unavailable', async () => {
@@ -381,18 +384,21 @@ describe('forge inbox rpc access', () => {
       expect.arrayContaining([
         FORGE_INBOX_RUNTIME_CAPABILITY,
         'forge-inbox.changes-stream.v1',
-        'forge-inbox.project-policy.v1'
+        'forge-inbox.project-event-policy.v1',
+        'forge-inbox.project-event-agent.v1',
+        'forge-inbox.item-archive.v1'
       ])
     )
-    const ownerHostId = String((await harness.ok('forgeInbox.getConfig', {})).ownerHostId)
+    expect(harness.runtime.getStatus().capabilities).not.toContain('forge-inbox.project-policy.v1')
+    const ownerHostId = String((await harness.ok('forgeInbox.getStatus', {})).ownerHostId)
     await harness.stop()
     expect(harness.runtime.getStatus().capabilities).toContain(FORGE_INBOX_RUNTIME_CAPABILITY)
 
     const status = await harness.ok('forgeInbox.getStatus', {})
     expect(status).toMatchObject({ available: false, phase: 'stopped' })
     for (const [method, params] of [
-      ['forgeInbox.getConfig', {}],
-      ['forgeInbox.listItems', { ownerHostId }]
+      ['forgeInbox.listItems', { ownerHostId }],
+      ['forgeInbox.getProjectEventPolicy', { ownerHostId, repoId: 'repo-1' }]
     ] as const) {
       const response = await harness.call(method, params)
       expect(errorCodeOf(response), method).toBe('forge_inbox_unavailable')
@@ -406,10 +412,14 @@ describe('forge inbox rpc access', () => {
       phase: 'unattached',
       ownerHostId: null
     })
+    expect(await harness.ok('forgeInbox.retryReceiver', {})).toMatchObject({
+      available: false,
+      phase: 'unattached',
+      ownerHostId: null
+    })
     for (const [method, params] of [
-      ['forgeInbox.getConfig', {}],
       ['forgeInbox.listItems', { ownerHostId: 'any-host' }],
-      ['forgeInbox.updateConfig', { ownerHostId: 'any-host', expectedRevision: 0, config: {} }]
+      ['forgeInbox.getProjectEventPolicy', { ownerHostId: 'any-host', repoId: 'repo-1' }]
     ] as const) {
       expect(errorCodeOf(await harness.call(method, params)), method).toBe('runtime_unavailable')
     }
@@ -429,6 +439,48 @@ describe('forge inbox rpc access', () => {
     } finally {
       side.close()
     }
+  })
+
+  it('rebinds the real receiver socket only on retry and keeps the configured port', async () => {
+    const receiverSettings = createReceiverSettingsFixture()
+    harness = await createForgeRpcHarness({ receiverSettings })
+    const held = await holdPort()
+    receiverSettings.update({
+      enabled: true,
+      bindAddress: '127.0.0.1',
+      port: held.port,
+      externalBaseUrl: '',
+      acknowledgeExternalPlaintextHttp: false
+    })
+
+    const blocked = await harness.ok('forgeInbox.retryReceiver', {})
+    expect(blocked.listener).toMatchObject({
+      listening: false,
+      error: PROJECT_EVENT_RECEIVER_LISTENER_ERROR_CODES.addressInUse
+    })
+
+    await held.release()
+    expect((await harness.ok('forgeInbox.retryReceiver', {})).listener).toMatchObject({
+      listening: true,
+      port: held.port,
+      error: null
+    })
+
+    expect((await harness.call('forgeInbox.retryReceiver', {}, 'desktop')).ok).toBe(true)
+    expect((await harness.call('forgeInbox.retryReceiver', {}, 'paired-a')).ok).toBe(true)
+    expect(errorCodeOf(await harness.call('forgeInbox.retryReceiver', {}, 'mobile'))).toBe(
+      'forbidden'
+    )
+  })
+
+  it('reports a stopped owner instead of reconciling the receiver', async () => {
+    harness = await createForgeRpcHarness()
+    await harness.stop()
+
+    await expect(harness.ok('forgeInbox.retryReceiver', {})).resolves.toMatchObject({
+      available: false,
+      phase: 'stopped'
+    })
   })
 
   it('has no route that reveals a stored secret', async () => {

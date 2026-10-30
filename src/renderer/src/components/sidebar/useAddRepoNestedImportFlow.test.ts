@@ -87,7 +87,7 @@ function useTestAddRepoNestedImportFlow(
     fetchWorktrees: vi.fn(),
     importNestedRepos: vi.fn<() => Promise<ProjectGroupImportResult | null>>(),
     getNestedRepoRuntimeKind: vi.fn(() => 'local' as const),
-    onGitRepoReady: vi.fn(),
+    onGitRepoBatchReady: vi.fn(),
     setIsAdding: vi.fn(),
     ...overrides
   })
@@ -218,7 +218,7 @@ describe('useAddRepoNestedImportFlow open folder fallback', () => {
       failedCount: 0
     })
     const fetchWorktrees = vi.fn()
-    const onGitRepoReady = vi.fn()
+    const onGitRepoBatchReady = vi.fn()
     mocks.state.repos = []
     const { handleImportNestedRepos } = useTestAddRepoNestedImportFlow({
       activeRuntimeEnvironmentId: null,
@@ -228,7 +228,7 @@ describe('useAddRepoNestedImportFlow open folder fallback', () => {
       nestedSelectedPaths: new Set([importedRepo.path]),
       importNestedRepos,
       fetchWorktrees,
-      onGitRepoReady
+      onGitRepoBatchReady
     })
 
     await handleImportNestedRepos('group')
@@ -246,6 +246,6 @@ describe('useAddRepoNestedImportFlow open folder fallback', () => {
       requireAuthoritative: true,
       executionHostId: 'ssh:ssh-builder'
     })
-    expect(onGitRepoReady).not.toHaveBeenCalled()
+    expect(onGitRepoBatchReady).not.toHaveBeenCalled()
   })
 })

@@ -1,5 +1,6 @@
 // What a paired client reads and may write of this host's settings.
 
+import type { ProjectEventDecisionSettingsView } from '../../shared/project-event-decision-settings'
 import type { GlobalSettings } from '../../shared/global-settings-types'
 import type { ExecutionHostId } from '../../shared/execution-host'
 import type { SourceControlAiActionDefaults } from '../../shared/source-control-ai-actions'
@@ -31,10 +32,12 @@ export type RuntimeClientSettings = Pick<
   | 'artifactSharingEnabled'
   | 'worktreeVisibilityDefaults'
   | 'agentSkillSharingEnabled'
+  | 'projectEventReceiver'
   | 'machineName'
   | 'nativeChatPermissionMode'
   | 'agentNativeChatPermissionModes'
 > & {
+  projectEventDecision?: ProjectEventDecisionSettingsView
   /** Older clients still read these; neither is persisted or accepted as an update. */
   openAgentTabsInChatByDefault?: boolean
   experimentalStructuredNativeChat?: boolean
@@ -71,6 +74,8 @@ export type RuntimeClientSettingsUpdate = Pick<
   | 'zcodePlanSite'
   | 'prBotAuthorOverrides'
   | 'worktreeVisibilityDefaults'
+  | 'projectEventReceiver'
+  | 'projectEventDecision'
   | 'machineName'
   | 'nativeChatPermissionMode'
 >

@@ -13,7 +13,11 @@ import type { TuiAgent } from '../../../../../shared/tui-agent'
 import type { LaunchSource } from '../../../../../shared/telemetry-events'
 import type { TaskSourceContext } from '../../../../../shared/task-source-context'
 import type { ExecutionHostId } from '../../../../../shared/execution-host'
+import type { RuntimeClientTarget } from '../../../../../shared/runtime-client-target'
 import type { TaskResumeState, TopLevelView } from '../../../../../shared/ui-chrome-types'
+
+/** A banner click names one item and the host that raised it; the target is dialable, the owner is not. */
+export type PendingInboxItem = { target: RuntimeClientTarget; itemId: number }
 
 export type PendingSidebarWorktreeReveal = {
   worktreeId: string
@@ -209,9 +213,16 @@ export type UISliceCore = {
   openInboxPage: () => void
   closeInboxPage: () => void
   /** A Forge banner click names one item; the Inbox page selects it, then clears the request. */
-  pendingInboxItem: { ownerHostId: string; itemId: number } | null
-  openInboxItem: (target: { ownerHostId: string; itemId: number }) => void
+  pendingInboxItem: PendingInboxItem | null
+  openInboxItem: (pending: PendingInboxItem) => void
   clearPendingInboxItem: () => void
+  /** The owner whose Inbox the page shows; a banner click selects it and a view switch keeps it. */
+  forgeInboxOwnerTarget: RuntimeClientTarget
+  setForgeInboxOwnerTarget: (target: RuntimeClientTarget) => void
+  /** A click whose execution host cannot be dialed: the Inbox fails closed instead of showing local. */
+  forgeInboxRouteError: boolean
+  openUnroutableInboxItem: () => void
+  clearForgeInboxRouteError: () => void
   openMobilePage: () => void
   closeMobilePage: () => void
   setNewWorkspaceDraft: (draft: NonNullable<UISliceCore['newWorkspaceDraft']>) => void

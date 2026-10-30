@@ -1,3 +1,4 @@
+import type { ForgeInboxArchiveView } from './forge-inbox-display-preferences'
 import type { JiraQuickFilterState } from './jira-quick-filters'
 import type { JiraSavedFilterState } from './jira-saved-filters'
 import type { ReleaseChannel } from './release-channel'
@@ -100,6 +101,12 @@ export type PersistedUIState = {
   agentsReadFilter?: ThreadReadFilter
   /** Agents-view thread grouping. Absent means 'status'. */
   agentsGroupBy?: ActivityGroupBy
+  /** Inbox unread-only list filter. Absent means off. */
+  forgeInboxUnreadOnly?: boolean
+  /** Inbox archive view. Absent means 'active'. */
+  forgeInboxArchiveView?: ForgeInboxArchiveView
+  /** Inbox compact list rows. Absent means off. */
+  forgeInboxCompact?: boolean
   collapsedGroups: string[]
   uiZoomLevel: number
   editorFontZoomLevel: number

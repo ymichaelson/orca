@@ -29,6 +29,7 @@ import { installOrcadStopRequestListeners } from './orcad-stop-request-listener'
 import { prepareOrcadManagedStop } from './orcad-managed-stop-admission'
 import type { OrcadHandle, OrcadOptions } from './orcad-start-contract'
 import { beginOrcadIdleExit, bindOrcadIdleShutdown } from './orcad-managed-idle-exit-host'
+import { forgeInboxProjectEventAgentLaunchForRuntime } from '../forge-inbox/forge-inbox-project-event-agent-launch'
 import { startOrcadForgeInbox } from './orcad-forge-inbox'
 import { getMainHttpClient } from '../network/http-client'
 import { orcadAutomationsKeepHostBusy, startOrcadAutomations } from './orcad-automations'
@@ -331,6 +332,8 @@ async function startOrcadRuntime(
   await startOrcadForgeInbox({
     runtime,
     profileDirectory,
+    store: profileStore,
+    launchProjectEventAgent: forgeInboxProjectEventAgentLaunchForRuntime(runtime),
     http: getMainHttpClient(),
     registerCleanup
   })

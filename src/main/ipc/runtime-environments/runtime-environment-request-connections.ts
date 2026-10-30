@@ -19,6 +19,12 @@ import type {
 import { isRuntimeEnvironmentManuallyDisconnected } from './runtime-environment-manual-disconnect'
 import { publishRuntimeEnvironmentDiagnostics } from './runtime-environment-diagnostics-broadcast'
 import { sharedControlEnvironmentPolicy } from './runtime-environment-shared-control-policy'
+import { sendRuntimeBoundRequest } from './runtime-environment-runtime-bound-request'
+import {
+  attachRemoteForgeInboxNotifications,
+  detachRemoteForgeInboxNotifications,
+  registerRemoteForgeInboxNotifications as registerForgeNotifications
+} from './remote-forge-inbox-subscriptions'
 import {
   clearSharedControlAnswerSource,
   setSharedControlAnswerSource
@@ -42,6 +48,16 @@ type CachedSharedControlConnection = {
 const requestConnections = new Map<string, CachedRuntimeConnection>()
 const sharedControlConnections = new Map<string, CachedSharedControlConnection>()
 const statusOwners = new Map<string, { key: string; owner: RuntimeHostStatusOwner }>()
+export function registerRemoteForgeInboxNotifications(
+  deliver: Parameters<typeof registerForgeNotifications>[0],
+  initialFailure: Parameters<typeof registerForgeNotifications>[1]
+): () => void {
+  return registerForgeNotifications(
+    deliver,
+    initialFailure,
+    Array.from(sharedControlConnections, ([id, cached]) => [id, cached.connection])
+  )
+}
 
 /** Consult owned authenticated transports without acquiring another host channel. */
 export function isRemoteRuntimeConnectionReady(
@@ -169,35 +185,15 @@ export async function sendRemoteRuntimeSharedControlRequestOnRuntime<TResult>(
   envelope?: RuntimeOrchestrationEnvelope,
   signal?: AbortSignal
 ): Promise<RuntimeRpcResponse<TResult> | null> {
-  const shared = getSharedControlConnection(environmentId, pairedConnection)
-  let statusSocket: number | undefined
-  const status = await shared.request<RuntimeStatus>(
-    'status.get',
-    undefined,
+  return sendRuntimeBoundRequest(
+    getSharedControlConnection(environmentId, pairedConnection),
+    method,
+    params,
     timeoutMs,
-    undefined,
-    signal,
-    () => {
-      statusSocket = shared.socketGeneration.peek()
-    }
+    expectedRuntimeId,
+    envelope,
+    signal
   )
-  if (!status.ok || status.result.runtimeId !== expectedRuntimeId) {
-    return null
-  }
-  let socketChanged = false
-  try {
-    return await shared.request<TResult>(method, params, timeoutMs, envelope, signal, () => {
-      socketChanged = shared.socketGeneration.peek() !== statusSocket
-      if (socketChanged) {
-        throw new Error('Runtime connection changed before sending')
-      }
-    })
-  } catch (error) {
-    if (socketChanged) {
-      return null
-    }
-    throw error
-  }
 }
 
 export function subscribeRemoteRuntimeSharedControlRequest<TResult>(
@@ -224,6 +220,7 @@ export function subscribeRemoteRuntimeSharedControlRequest<TResult>(
 }
 
 export function closeRemoteRuntimeSharedControlConnection(environmentId: string): void {
+  detachRemoteForgeInboxNotifications(environmentId)
   const cached = sharedControlConnections.get(environmentId)
   sharedControlConnections.delete(environmentId)
   clearSharedControlAnswerSource(environmentId)
@@ -274,6 +271,7 @@ function getSharedControlConnection(
   let cached = sharedControlConnections.get(environmentId)
   if (!cached || cached.pairingKey !== pairingKey) {
     advanceRuntimeEnvironmentTransportGeneration(environmentId)
+    detachRemoteForgeInboxNotifications(environmentId)
     cached?.connection.close()
     const transportGeneration = getRuntimeEnvironmentTransportGeneration(environmentId)
     let answeredAt: number | null = null
@@ -317,6 +315,7 @@ function getSharedControlConnection(
       entry.connection.getDiagnostics().state === 'ready' ? entry.answeredAt() : null
     )
   }
+  attachRemoteForgeInboxNotifications(environmentId, cached.connection)
   return cached.connection
 }
 

@@ -10,7 +10,6 @@ import {
   createOwnerFixture,
   freePort,
   listenerOn,
-  provision,
   type OwnerFixture
 } from './forge-inbox-owner-service-test-kit'
 import { INSTANCE_ID, PROJECT_ID } from './forge-inbox-webhook-test-harness'
@@ -30,7 +29,7 @@ describe('forge inbox notifications through the host startup port', () => {
     const port = await freePort()
     const seed = fx.service()
     await seed.start()
-    await provision(seed, listenerOn(port))
+    await fx.provision(seed, listenerOn(port))
     await seed.stop()
     const ledger = ForgeInboxLedger.open(fx.dbPath, { secretStore: fx.store })
     const pending = [
@@ -59,6 +58,8 @@ describe('forge inbox notifications through the host startup port', () => {
     controller.onDispatched((event) => events.push(event))
     await startForgeInboxForHost({
       profileDirectory: fx.root,
+      receiverSettings: fx.receiverSettings,
+      secretStore: fx.store,
       http: fx.gate.http,
       networkReady: Promise.resolve(),
       attach: (service) => services.push(service),

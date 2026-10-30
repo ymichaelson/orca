@@ -16,6 +16,7 @@ import { dirname, join } from 'node:path'
 import { tmpdir } from 'node:os'
 import { randomUUID } from 'node:crypto'
 import { installFakeAppEnvironment } from '../../config/scripts/vitest-host-ports-setup'
+import { PROTECTED_SECRET_SLOT } from './protected-secret-persistence'
 
 const testState = { dir: '' }
 
@@ -27,7 +28,8 @@ vi.mock('./ssh/config/ssh-config-parser', () => ({
 const cipherState = {
   encryptionAvailable: true,
   availabilityThrows: false,
-  decryptAlwaysThrows: false
+  decryptAlwaysThrows: false,
+  protectionGap: false
 }
 
 vi.mock('electron', () => ({
@@ -65,7 +67,7 @@ async function createStore() {
       }
       return decoded.slice('enc:'.length + 36 + 1)
     },
-    describeProtectionGap: () => null
+    describeProtectionGap: () => (cipherState.protectionGap ? 'unprotected-backend' : null)
   })
   const { Store, initDataPath } = await import('./persistence')
   installFakeAppEnvironment({ getPath: () => testState.dir })
@@ -86,6 +88,7 @@ describe('httpProxyUrl secret recovery (STA-3442)', () => {
     cipherState.encryptionAvailable = true
     cipherState.availabilityThrows = false
     cipherState.decryptAlwaysThrows = false
+    cipherState.protectionGap = false
     vi.useFakeTimers()
   })
 
@@ -93,6 +96,111 @@ describe('httpProxyUrl secret recovery (STA-3442)', () => {
     await closeTestStores()
     vi.useRealTimers()
     rmSync(testState.dir, { recursive: true, force: true })
+  })
+
+  it('never uses an undecryptable decision key as plaintext and retains it for recovery', async () => {
+    const store = await createStore()
+    store.updateSettings({ projectEventDecisionKey: 'decision-key-fixture' })
+    vi.advanceTimersByTime(1000)
+    await store.waitForPendingWrite()
+    const encrypted = JSON.parse(readPersistedStateJson(dataFile())).settings
+      .projectEventDecisionKey
+    expect(encrypted).not.toBe('decision-key-fixture')
+
+    cipherState.decryptAlwaysThrows = true
+    const unavailable = await createStore()
+    expect(unavailable.getSettings().projectEventDecisionKey).toBe('')
+    unavailable.updateSettings({ httpProxyBypassRules: 'updated' })
+    vi.advanceTimersByTime(1000)
+    await unavailable.waitForPendingWrite()
+    expect(JSON.parse(readPersistedStateJson(dataFile())).settings.projectEventDecisionKey).toBe(
+      encrypted
+    )
+
+    cipherState.decryptAlwaysThrows = false
+    const recovered = await createStore()
+    expect(recovered.getSettings().projectEventDecisionKey).toBe('decision-key-fixture')
+  })
+
+  it('seals each provider decision key in its own slot and recovers both', async () => {
+    const store = await createStore()
+    store.updateSettings({
+      projectEventDecisionKey: 'jev-key-fixture',
+      projectEventDecisionLayaKey: 'laya-key-fixture'
+    })
+    vi.advanceTimersByTime(1000)
+    await store.waitForPendingWrite()
+    const persisted = JSON.parse(readPersistedStateJson(dataFile())).settings
+    expect(persisted.projectEventDecisionKey).not.toBe('jev-key-fixture')
+    expect(persisted.projectEventDecisionLayaKey).not.toBe('laya-key-fixture')
+    expect(persisted.projectEventDecisionLayaKey).not.toBe(persisted.projectEventDecisionKey)
+    const reopened = await createStore()
+    expect(reopened.getSettings().projectEventDecisionKey).toBe('jev-key-fixture')
+    expect(reopened.getSettings().projectEventDecisionLayaKey).toBe('laya-key-fixture')
+  })
+
+  it('refuses a malformed Laya decision key', async () => {
+    const store = await createStore()
+    expect(() => store.updateSettings({ projectEventDecisionLayaKey: 'a\nb' })).toThrow(
+      'Invalid project event decision key'
+    )
+    expect(store.getSettings().projectEventDecisionLayaKey ?? '').toBe('')
+  })
+
+  it('rejects a new decision key when protected storage is unavailable', async () => {
+    const store = await createStore()
+    cipherState.encryptionAvailable = false
+    expect(() => store.updateSettings({ projectEventDecisionKey: 'must-not-be-applied' })).toThrow(
+      'Protected storage is unavailable for the project event decision key'
+    )
+    expect(store.getSettings().projectEventDecisionKey).toBe('')
+  })
+
+  it('rejects a key on a backend that reports encryption available but no protection', async () => {
+    const store = await createStore()
+    cipherState.protectionGap = true
+    expect(() => store.updateSettings({ projectEventDecisionKey: 'must-not-be-applied' })).toThrow(
+      'Protected storage is unavailable for the project event decision key'
+    )
+    expect(store.getSettings().projectEventDecisionKey).toBe('')
+  })
+
+  it('reports a retained decision key as sealed so a client can still clear it', async () => {
+    const store = await createStore()
+    store.updateSettings({ projectEventDecisionLayaKey: 'laya-key-fixture' })
+    vi.advanceTimersByTime(1000)
+    await store.waitForPendingWrite()
+    cipherState.decryptAlwaysThrows = true
+    const unavailable = await createStore()
+    expect(unavailable.getSettings().projectEventDecisionLayaKey).toBe('')
+    expect(
+      unavailable.hasSealedProtectedSecret(PROTECTED_SECRET_SLOT.projectEventDecisionLayaKey)
+    ).toBe(true)
+    expect(
+      unavailable.hasSealedProtectedSecret(PROTECTED_SECRET_SLOT.projectEventDecisionKey)
+    ).toBe(false)
+
+    unavailable.updateSettings({ projectEventDecisionLayaKey: '' })
+    expect(
+      unavailable.hasSealedProtectedSecret(PROTECTED_SECRET_SLOT.projectEventDecisionLayaKey)
+    ).toBe(false)
+  })
+
+  it('can explicitly forget a sealed decision key while encryption is unavailable', async () => {
+    const store = await createStore()
+    store.updateSettings({ projectEventDecisionKey: 'decision-key-fixture' })
+    vi.advanceTimersByTime(1000)
+    await store.waitForPendingWrite()
+    cipherState.encryptionAvailable = false
+    const unavailable = await createStore()
+    expect(unavailable.getSettings().projectEventDecisionKey).toBe('')
+    unavailable.updateSettings({ projectEventDecisionKey: '' })
+    vi.advanceTimersByTime(1000)
+    await unavailable.waitForPendingWrite()
+    expect(JSON.parse(readPersistedStateJson(dataFile())).settings.projectEventDecisionKey).toBe('')
+    cipherState.encryptionAvailable = true
+    const reopened = await createStore()
+    expect(reopened.getSettings().projectEventDecisionKey).toBe('')
   })
 
   async function seedConfiguredProxy() {

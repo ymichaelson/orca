@@ -24,6 +24,7 @@ import type {
 import { getRepoIdFromWorktreeId } from '../../shared/worktree/id'
 import { parseWorkspaceKey } from '../../shared/workspace-scope'
 import { buildNotificationOptions } from '../ipc/notification-options'
+import type { ForgeDispatchedAgentCompletion } from '../notifications/forge-dispatched-agent-completion'
 import type { MobileNotificationDispatchEvent } from './runtime-mobile-notification-controller'
 import type { RuntimeStore } from './runtime-store-contract'
 import { getRuntimeDesktopSurface } from './runtime-desktop-surface'
@@ -40,6 +41,8 @@ export type StructuredAttentionMobileDeliveryDeps = {
   /** Withdraws a notification this host delivered; a no-op for one it never sent. */
   reconcile: (state: StructuredAttentionState) => void
   now: () => number
+  /** Completions of an agent a project event dispatch started are announced by Forge, not here. */
+  forgeDispatchedAgent?: ForgeDispatchedAgentCompletion
 }
 
 export type StructuredAttentionMobileDelivery = {
@@ -90,6 +93,10 @@ export function createStructuredAttentionMobileDelivery(
       }
       const scope = edge.type === 'prompt' ? edge.prompt.scope : edge.completion.scope
       if (deps.isWorkspaceMuted(scope)) {
+        return
+      }
+      const sessionId = edge.type === 'prompt' ? edge.prompt.sessionId : edge.completion.sessionId
+      if (deps.forgeDispatchedAgent?.defersToForge({ state: news.agentState, sessionId })) {
         return
       }
       const settings = deps.readNotificationSettings()!

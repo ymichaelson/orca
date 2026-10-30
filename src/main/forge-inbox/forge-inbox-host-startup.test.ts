@@ -2,7 +2,6 @@ import { existsSync, mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { afterEach, describe, expect, it, vi } from 'vitest'
-import { mergeRequestHookBody } from './forge-inbox-gitlab-fake-server'
 import { startForgeInboxForHost } from './forge-inbox-host-startup'
 import type { ForgeInboxOwnerService } from './forge-inbox-owner-service'
 import { RuntimeForgeInboxController } from '../runtime/runtime-forge-inbox-controller'
@@ -13,12 +12,8 @@ import {
   seedLedger,
   freePort,
   listenerOn,
-  postHook,
-  provision,
   type OwnerFixture
 } from './forge-inbox-owner-service-test-kit'
-
-const tick = () => new Promise<void>((resolve) => setImmediate(resolve))
 
 describe('forge inbox host startup', () => {
   let fx: OwnerFixture
@@ -51,6 +46,8 @@ describe('forge inbox host startup', () => {
 
     const first = await startForgeInboxForHost({
       profileDirectory: fx.root,
+      receiverSettings: fx.receiverSettings,
+      secretStore: fx.store,
       http: fx.gate.http,
       networkReady: Promise.resolve(),
       notify: () => undefined,
@@ -70,119 +67,37 @@ describe('forge inbox host startup', () => {
     expect(a).toHaveLength(1)
     expect(b).toHaveLength(1)
     const port = await freePort()
-    await provision(a[0]!, { enabled: false, bindAddress: '127.0.0.1', port })
+    await fx.provision(a[0]!, { enabled: false, bindAddress: '127.0.0.1', port })
     expect(existsSync(join(fx.root, 'forge-inbox.db'))).toBe(true)
     expect(existsSync(join(other, 'forge-inbox.db'))).toBe(false)
     expect(a[0]!.getConfig().config.instances).not.toEqual(b[0]!.getConfig().config.instances)
   })
 
-  it('runs a queued analysis through the injected factory', async () => {
+  it('forwards the project binding resolver into the owner service', async () => {
     fx = createOwnerFixture()
-    const port = await freePort()
+    const calls: string[] = []
     const services: ForgeInboxOwnerService[] = []
-    const kinds: string[] = []
-    let revisionAtFactory = -1
-
     await startForgeInboxForHost({
       profileDirectory: fx.root,
+      receiverSettings: fx.receiverSettings,
+      secretStore: fx.store,
       http: fx.gate.http,
+      resolveProjectBindingContext: (repoId) => {
+        calls.push(repoId)
+        return { ok: false, code: 'no-git-remote', retryable: false }
+      },
       networkReady: Promise.resolve(),
       notify: () => undefined,
-      attach: attachTo(services),
-      analyse: (ledger) => {
-        revisionAtFactory = ledger.getConfig().configRevision
-        return async ({ run, bindSession }) => {
-          kinds.push(run.analysisKind)
-          bindSession('session-1')
-          return { kind: 'analysed', result: { summary: 'Looks fine', concerns: [] } }
-        }
-      }
-    })
-    await provision(services[0]!, listenerOn(port), {
-      project: { automaticAnalysis: true, agentId: 'claude', model: 'claude-test' }
-    })
-    await postHook(port, mergeRequestHookBody({ reviewers: ['me'] }), 'm-1')
-    await services[0]!.settled()
-
-    expect(revisionAtFactory).toBe(0)
-    expect(kinds).toEqual(['merge_request'])
-    expect(fx.rows('SELECT state, session_id FROM runs ORDER BY id')).toEqual([
-      { state: 'succeeded', session_id: 'session-1' }
-    ])
-  })
-
-  it('does not drain a recovered backlog until the network is ready', async () => {
-    fx = createOwnerFixture()
-    const port = await freePort()
-    const seed = fx.service({ now: () => Date.now() - 120_000 })
-    await seed.start()
-    await provision(seed, listenerOn(port))
-    fx.gate.hold()
-    fx.gate.delayAbortCompletion()
-    await postHook(port, mergeRequestHookBody({ reviewers: ['me'] }), 'm-1')
-    await fx.gate.requestBlocked()
-    const stopping = seed.stop()
-    await fx.gate.abortObserved()
-    fx.gate.releaseAbortedRequests()
-    await stopping
-    fx.gate.release()
-    const requestsBefore = fx.gitlab.requests.length
-    const ready = Promise.withResolvers<void>()
-    const services: ForgeInboxOwnerService[] = []
-
-    await startForgeInboxForHost({
-      profileDirectory: fx.root,
-      http: fx.gate.http,
-      networkReady: ready.promise,
-      notify: () => undefined,
       attach: attachTo(services)
     })
-    for (let i = 0; i < 10; i++) {
-      await tick()
-    }
 
-    expect(services[0]!.getConfig().config.listener).toMatchObject({ enabled: true, port })
-    expect(services[0]!.status().listener.listening).toBe(true)
-    expect(fx.gitlab.requests).toHaveLength(requestsBefore)
-    expect(fx.deliveries()).toMatchObject([{ state: 'pending' }])
-
-    ready.resolve()
-    await services[0]!.settled()
-    // No credential in the default store, so a drain that ran parks the row instead of fetching.
-    expect(fx.deliveries()).toMatchObject([{ state: 'needs-auth' }])
-  })
-
-  it('treats a rejected network readiness as ready and logs one value-free line', async () => {
-    fx = createOwnerFixture()
-    const port = await freePort()
-    const seed = fx.service({ now: () => Date.now() - 120_000 })
-    await seed.start()
-    await provision(seed, listenerOn(port))
-    fx.gate.hold()
-    fx.gate.delayAbortCompletion()
-    await postHook(port, mergeRequestHookBody({ reviewers: ['me'] }), 'm-1')
-    await fx.gate.requestBlocked()
-    const stopping = seed.stop()
-    await fx.gate.abortObserved()
-    fx.gate.releaseAbortedRequests()
-    await stopping
-    fx.gate.release()
-    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {})
-    const services: ForgeInboxOwnerService[] = []
-
-    await startForgeInboxForHost({
-      profileDirectory: fx.root,
-      http: fx.gate.http,
-      networkReady: Promise.reject(new Error('proxy secret-value')),
-      notify: () => undefined,
-      attach: attachTo(services)
+    await expect(services[0]!.retryProjectEvent('repo-1')).resolves.toEqual({
+      ok: false,
+      binding: null,
+      code: 'no-git-remote',
+      retryable: false
     })
-    await services[0]!.settled()
-
-    // No credential in the default store, so a drain that ran parks the row instead of fetching.
-    expect(fx.deliveries()).toMatchObject([{ state: 'needs-auth' }])
-    expect(warn).toHaveBeenCalledOnce()
-    expect(JSON.stringify(warn.mock.calls)).not.toContain('secret-value')
+    expect(calls).toEqual(['repo-1'])
   })
 
   it('stops promptly even if network readiness never settles', async () => {
@@ -190,6 +105,8 @@ describe('forge inbox host startup', () => {
     const services: ForgeInboxOwnerService[] = []
     await startForgeInboxForHost({
       profileDirectory: fx.root,
+      receiverSettings: fx.receiverSettings,
+      secretStore: fx.store,
       http: fx.gate.http,
       networkReady: new Promise<void>(() => {}),
       notify: () => undefined,
@@ -226,6 +143,8 @@ describe('forge inbox host startup', () => {
 
     const result = await startForgeInboxForHost({
       profileDirectory: fx.root,
+      receiverSettings: fx.receiverSettings,
+      secretStore: fx.store,
       http: fx.gate.http,
       networkReady: Promise.resolve(),
       notify: () => undefined,
@@ -246,7 +165,7 @@ describe('forge inbox host startup', () => {
     const port = await freePort()
     const seed = fx.service()
     await seed.start()
-    await provision(seed, listenerOn(port))
+    await fx.provision(seed, listenerOn(port))
     await seed.stop()
     return port
   }
@@ -257,6 +176,8 @@ describe('forge inbox host startup', () => {
 
     const starting = startForgeInboxForHost({
       profileDirectory: fx.root,
+      receiverSettings: fx.receiverSettings,
+      secretStore: fx.store,
       http: fx.gate.http,
       networkReady: Promise.resolve(),
       notify: () => undefined,
@@ -280,6 +201,8 @@ describe('forge inbox host startup', () => {
 
     const result = await startForgeInboxForHost({
       profileDirectory: fx.root,
+      receiverSettings: fx.receiverSettings,
+      secretStore: fx.store,
       http: fx.gate.http,
       networkReady: Promise.resolve(),
       notify: () => undefined,
@@ -301,6 +224,8 @@ describe('forge inbox host startup', () => {
 
     const starting = startForgeInboxForHost({
       profileDirectory: fx.root,
+      receiverSettings: fx.receiverSettings,
+      secretStore: fx.store,
       http: fx.gate.http,
       networkReady: Promise.resolve(),
       notify: () => undefined,

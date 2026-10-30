@@ -38,7 +38,14 @@ if (process.argv[1] && resolve(process.argv[1]) === resolve(import.meta.filename
     : []
   execFileSync(
     process.platform === 'win32' ? 'pnpm.cmd' : 'pnpm',
-    ['exec', 'electron-builder', '--config', 'config/electron-builder.config.cjs', '--mac', ...publishArgs],
+    [
+      'exec',
+      'electron-builder',
+      '--config',
+      'config/electron-builder.config.cjs',
+      '--mac',
+      ...publishArgs
+    ],
     {
       env: {
         ...process.env,

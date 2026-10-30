@@ -6,14 +6,29 @@ import {
   freePort,
   holdPort,
   listenerOn,
-  ownerConfig,
   postHook,
   provision,
   type OwnerFixture
 } from '../forge-inbox/forge-inbox-owner-service-test-kit'
+import type { ProjectEventDecisionResult } from '../../shared/project-event-decision'
 import { RuntimeForgeInboxController } from './runtime-forge-inbox-controller'
 
-const DISABLED = (port: number) => ({ enabled: false, bindAddress: '127.0.0.1', port })
+const decided = (action: 'record_only' | 'ask_user'): ProjectEventDecisionResult => ({
+  ok: true,
+  provider: 'jev',
+  model: 'jev-1',
+  action,
+  confidence: 0.8,
+  probabilities: {
+    record_only: action === 'record_only' ? 0.8 : 0.04,
+    notify: 0.04,
+    wait: 0.04,
+    fetch_context: 0.04,
+    dispatch_agent: 0.04,
+    ask_user: action === 'ask_user' ? 0.8 : 0.04
+  },
+  usage: { inputTokens: 10, outputTokens: 2 }
+})
 
 describe('runtime forge inbox controller', () => {
   let fx: OwnerFixture
@@ -64,6 +79,7 @@ describe('runtime forge inbox controller', () => {
       const { controller, service } = await attached()
       try {
         await provision(service, listenerOn(held.port))
+        await fx.configureReceiver(service, listenerOn(held.port))
         expect(service.status().listener).toMatchObject({ enabled: true, listening: false })
         expect(controller.keepsHostBusy()).toBe(true)
       } finally {
@@ -74,64 +90,40 @@ describe('runtime forge inbox controller', () => {
     it('not once the only work is finished history', async () => {
       fx = createOwnerFixture()
       const port = await freePort()
-      const { controller, service } = await attached()
-      await provision(service, listenerOn(port))
+      const { controller, service } = await attached({
+        decideProjectEvent: async () => decided('record_only')
+      })
+      await fx.provision(service, listenerOn(port))
       await postHook(port, mergeRequestHookBody({ reviewers: ['me'] }), 'm-1')
-      await vi.waitFor(() => expect(fx.deliveries()).toMatchObject([{ state: 'done' }]))
-      await service.updateConfig(service.getConfig().configRevision, ownerConfig(DISABLED(port)))
+      await vi.waitFor(() =>
+        expect(fx.rows('SELECT action_state FROM project_event_decisions')).toEqual([
+          { action_state: 'done' }
+        ])
+      )
+      await fx.configureReceiver(service, { ...listenerOn(port), enabled: false })
       await service.settled()
 
       expect(service.status().listener.enabled).toBe(false)
       expect(controller.keepsHostBusy()).toBe(false)
     })
 
-    it('while a retry is waiting for its next attempt with nothing draining', async () => {
+    it('not while an action waits for the user to answer', async () => {
       fx = createOwnerFixture()
       const port = await freePort()
-      const unavailable = { fetch: async () => new Response('{}', { status: 503 }) }
-      const { controller, service } = await attached({ http: unavailable })
-      await provision(service, listenerOn(port))
+      const { controller, service } = await attached({
+        decideProjectEvent: async () => decided('ask_user')
+      })
+      await fx.provision(service, listenerOn(port))
       await postHook(port, mergeRequestHookBody({ reviewers: ['me'] }), 'm-1')
-      await vi.waitFor(() => expect(fx.deliveries()).toMatchObject([{ attempts: 1 }]))
-      await service.settled()
-      await service.updateConfig(service.getConfig().configRevision, ownerConfig(DISABLED(port)))
-      await service.settled()
-
-      const { work } = service.status()
-      expect(work).toMatchObject({ pending: 1, draining: false })
-      expect(work.nextAttemptAtMs).toBeGreaterThan(Date.now())
-      expect(controller.keepsHostBusy()).toBe(true)
-    })
-
-    it('not for rows parked on a missing credential', async () => {
-      fx = createOwnerFixture()
-      const port = await freePort()
-      const { controller, service } = await attached()
-      await provision(service, listenerOn(port), { apiRead: null })
-      await postHook(port, mergeRequestHookBody({ reviewers: ['me'] }), 'm-1')
-      await vi.waitFor(() => expect(service.status().work.needsAuth).toBe(1))
-      await service.settled()
-      await service.updateConfig(service.getConfig().configRevision, ownerConfig(DISABLED(port)))
-      await service.settled()
-
-      expect(service.status().work.needsAuth).toBe(1)
-      expect(controller.keepsHostBusy()).toBe(false)
-    })
-
-    it('not for a delivery that failed for good', async () => {
-      fx = createOwnerFixture()
-      const port = await freePort()
-      const { controller, service } = await attached()
-      await provision(service, listenerOn(port))
-      await postHook(
-        port,
-        { ...mergeRequestHookBody({ reviewers: ['me'] }), object_kind: 'bogus' },
-        'm-1'
+      await vi.waitFor(() =>
+        expect(
+          fx.rows('SELECT action_state, last_error_code FROM project_event_decisions')
+        ).toEqual([{ action_state: 'blocked', last_error_code: 'awaiting-user' }])
       )
-      await vi.waitFor(() => expect(fx.deliveries()).toMatchObject([{ state: 'failed' }]))
-      await service.updateConfig(service.getConfig().configRevision, ownerConfig(DISABLED(port)))
+      await fx.configureReceiver(service, { ...listenerOn(port), enabled: false })
       await service.settled()
 
+      expect(service.status().work).toMatchObject({ pending: 0, draining: false })
       expect(controller.keepsHostBusy()).toBe(false)
     })
 
@@ -148,6 +140,7 @@ describe('runtime forge inbox controller', () => {
       const port = await freePort()
       const { controller, service } = await attached()
       await provision(service, listenerOn(port))
+      await fx.configureReceiver(service, listenerOn(port))
       expect(controller.keepsHostBusy()).toBe(true)
       await controller.stopForgeInboxService()
       expect(controller.keepsHostBusy()).toBe(false)

@@ -4,6 +4,7 @@ import { normalizeRepoBadgeColor } from '../repo-badge-color'
 import { sanitizeRepoIcon } from '../repo-icon'
 import { normalizeGhAccountBinding } from '../github/account-binding'
 import { normalizeJiraProjectReference } from '../jira-project-reference'
+import { normalizeProjectEventGitlabProject } from '../project-event-gitlab-project'
 import {
   normalizeCustomWorktreeVisibilitySources,
   normalizeWorktreeVisibilitySourcePreferences
@@ -59,6 +60,10 @@ export function createRepoUpdateSchema<T extends Readonly<Record<string, z.ZodTy
       symlinkPaths: z.array(z.string()).optional(),
       issueSourcePreference: z.enum(['auto', 'upstream', 'origin']).optional(),
       defaultJiraProject: z.unknown().optional().transform(normalizeJiraProjectReference),
+      projectEventGitlabProject: z
+        .unknown()
+        .optional()
+        .transform(normalizeProjectEventGitlabProject),
       ghAccount: z
         .unknown()
         .optional()

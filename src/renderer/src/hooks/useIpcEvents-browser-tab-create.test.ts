@@ -148,6 +148,7 @@ describe('useIpcEvents browser tab create routing', () => {
         ui: {
           onStateChanged: () => () => {},
           onOpenSettings: () => () => {},
+          onOpenForgeInboxItem: () => () => {},
           consumePendingOpenSettings: () => Promise.resolve(false),
           onOpenFeatureTour: () => () => {},
           onToggleLeftSidebar: () => () => {},

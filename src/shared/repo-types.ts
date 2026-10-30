@@ -84,6 +84,11 @@ export type Repo = {
   /** Host-owned Jira project default; users can override it in each composer. */
   defaultJiraProject?: JiraProjectReference | null
   /**
+   * GitLab project the user typed for a folder workspace's event binding (`group/proj` or URL).
+   * The chat host parses it at bind time; a folder has no remote to infer one from.
+   */
+  projectEventGitlabProject?: string | null
+  /**
    * Per-project gh account binding (host + login only — never a token).
    * At spawn, Orca resolves a short-lived token via `gh auth token --user`
    * and injects it into that child env only.

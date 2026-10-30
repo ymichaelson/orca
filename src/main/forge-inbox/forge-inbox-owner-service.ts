@@ -1,9 +1,6 @@
 import { existsSync } from 'node:fs'
-import {
-  DEFAULT_FORGE_INBOX_CONFIG,
-  FORGE_INBOX_CONFIG_SCHEMA_VERSION,
-  type ForgeInboxConfigView
-} from '../../shared/forge-inbox-config'
+import { forgeErrorLabel } from './forge-inbox-error-label'
+import type { ForgeInboxConfigView } from '../../shared/forge-inbox-config'
 import type { ForgeCommentApprovalOutcome } from '../../shared/forge-inbox-rpc-types'
 import { approveAndPublishForgeComment } from './forge-inbox-comment-approval'
 import type { ForgeInboxLedger } from './forge-inbox-ledger'
@@ -23,45 +20,70 @@ import {
   openForgeOwnerRunning,
   type ForgeOwnerRunning
 } from './forge-inbox-owner-running'
+import { forgeOwnerDormantView } from './forge-inbox-owner-dormant-view'
+import { createForgeOwnerProjectEvents } from './forge-inbox-owner-project-events'
+import { recoverRunsOnOpen } from './forge-inbox-project-event-run-recovery-startup'
 import {
   forgeOwnerIdle,
   forgeOwnerStatus,
   type ForgeOwnerServicePhase as Phase
 } from './forge-inbox-owner-service-status'
 
-export type {
-  ForgeAnalysisRunnerFactory,
-  ForgeInboxOwnerServiceOptions
-} from './forge-inbox-owner-service-options'
+export type { ForgeInboxOwnerServiceOptions } from './forge-inbox-owner-service-options'
 
 export type ForgeInboxOwnerService = ReturnType<typeof createForgeInboxOwnerService>
 
-/**
- * The single owner-host service: one ledger, one listener, one worker, shared by every host shell.
- * With no ledger file it stays dormant: nothing is created or opened until the first config or
- * credential write, so a profile that never used the feature pays nothing.
- * It is one-shot: after stop() or a failed start()/first open every ledger-backed call throws
- * ForgeInboxOwnerNotRunningError and a new service must be created.
- */
+/** One-shot host owner; an unused profile stays dormant until receiver enable or a domain write. */
 export function createForgeInboxOwnerService(options: ForgeInboxOwnerServiceOptions) {
   let phase: Phase = 'new'
   let running: ForgeOwnerRunning | null = null
   let opening: Promise<ForgeOwnerRunning> | null = null
   let reconciling: Promise<void> = Promise.resolve()
   let stopping: Promise<void> | null = null
+  let bindingsWork: Promise<void> = Promise.resolve()
   const hints = createForgeOwnerHints()
   const dormantHostId = mintForgeHostId(options)
   let knownHostId = dormantHostId
+  let unsubscribeReceiver: (() => void) | undefined
+
+  function detachReceiver(): void {
+    unsubscribeReceiver?.()
+    unsubscribeReceiver = undefined
+  }
+
+  function trackBindings<T>(task: Promise<T>): Promise<T> {
+    const settled = task.then(
+      () => undefined,
+      () => undefined
+    )
+    bindingsWork = Promise.all([bindingsWork, settled]).then(() => undefined)
+    return task
+  }
+
+  const projectEvents = createForgeOwnerProjectEvents(options, {
+    isRunning: () => phase === 'running',
+    getRunning: () => running,
+    runningFor: (expectedOwner) => (running ? fenced(running, expectedOwner) : null),
+    stateFor: async (expectedOwner) => fenced(running ?? (await ready()), expectedOwner),
+    ready,
+    reconcile,
+    track: trackBindings
+  })
 
   function reconcile(state: ForgeOwnerRunning): Promise<void> {
-    const next = reconciling.then(() => state.listener.reconcile())
+    const next = reconciling.then(() => {
+      if (phase === 'running') {
+        state.ledger.getConfig()
+      }
+      return state.listener.reconcile()
+    })
     reconciling = next.catch(() => undefined)
     return next
   }
 
   // A failing open and a concurrent stop share one teardown so the ledger closes exactly once.
   function teardown(state: ForgeOwnerRunning): Promise<void> {
-    state.closing ??= closeForgeOwnerRunning(state, reconciling)
+    state.closing ??= closeForgeOwnerRunning(state, reconciling, bindingsWork)
     return state.closing
   }
 
@@ -82,6 +104,7 @@ export function createForgeInboxOwnerService(options: ForgeInboxOwnerServiceOpti
         )
       } catch (error) {
         phase = 'stopped'
+        detachReceiver()
         hints.end('open-failed')
         throw error
       }
@@ -89,12 +112,18 @@ export function createForgeInboxOwnerService(options: ForgeInboxOwnerServiceOpti
       hints.attach(state.ledger, knownHostId)
       knownHostId = state.ledger.hostId
       try {
+        if (options.recoverProjectEventRuns) {
+          await recoverRunsOnOpen(options, state.ledger)
+        }
         await reconcile(state)
-        state.scheduler.wake()
-        state.analysis?.wake()
+        state.decisions?.wake()
+        state.actions.wake()
+        state.confirmations?.wake()
         state.notifications?.wake()
+        projectEvents.bindings.scheduleEnabled(state)
       } catch (error) {
         phase = 'stopped'
+        detachReceiver()
         running = null
         hints.end('open-failed')
         await teardown(state)
@@ -122,23 +151,24 @@ export function createForgeInboxOwnerService(options: ForgeInboxOwnerServiceOpti
     return state
   }
 
-  function dormantView(): ForgeInboxConfigView {
-    return {
-      hostId: dormantHostId,
-      configRevision: 0,
-      schemaVersion: FORGE_INBOX_CONFIG_SCHEMA_VERSION,
-      config: structuredClone(DEFAULT_FORGE_INBOX_CONFIG),
-      credentials: []
-    }
-  }
-
   async function start(): Promise<void> {
     if (phase !== 'new') {
       throw new ForgeInboxOwnerNotRunningError()
     }
     phase = 'running'
-    if (existsSync(options.dbPath)) {
-      await open()
+    try {
+      unsubscribeReceiver = projectEvents.subscribeReceiver((error) => {
+        if (phase === 'running') {
+          console.warn('[forge-inbox] receiver reconcile failed', forgeErrorLabel(error))
+        }
+      })
+      if (existsSync(options.dbPath) || options.receiverSettings?.read()?.enabled) {
+        await open()
+      }
+    } catch (error) {
+      detachReceiver()
+      phase = 'stopped'
+      throw error
     }
   }
 
@@ -190,11 +220,10 @@ export function createForgeInboxOwnerService(options: ForgeInboxOwnerServiceOpti
       const result = state.ledger.updateProjectPolicy(expectedRevision, input)
       if (result.ok && result.configRevision !== expectedRevision) {
         await reconcile(state)
-        state.scheduler.wake()
-        state.analysis?.wake()
       }
       return result
     },
+    ...projectEvents.actions,
     /** The durable owner id once a ledger opened; the pending one while dormant, so a stopped host can still name itself. */
     ownerHostId(): string {
       return knownHostId
@@ -203,6 +232,8 @@ export function createForgeInboxOwnerService(options: ForgeInboxOwnerServiceOpti
       stopping ??= (async () => {
         const state = running
         phase = 'stopped'
+        detachReceiver()
+        projectEvents.cancelRetries()
         running = null
         hints.end('stopped')
         if (state) {
@@ -216,7 +247,7 @@ export function createForgeInboxOwnerService(options: ForgeInboxOwnerServiceOpti
       if (phase !== 'running') {
         throw new ForgeInboxOwnerNotRunningError()
       }
-      return running ? running.ledger.getConfig() : dormantView()
+      return running ? running.ledger.getConfig() : forgeOwnerDormantView(dormantHostId)
     },
     status() {
       return forgeOwnerStatus(phase, running)
@@ -229,8 +260,6 @@ export function createForgeInboxOwnerService(options: ForgeInboxOwnerServiceOpti
       const result = state.ledger.updateConfig(expectedRevision, config)
       if (result.ok) {
         await reconcile(state)
-        state.scheduler.wake()
-        state.analysis?.wake()
       }
       return result
     },
@@ -241,7 +270,7 @@ export function createForgeInboxOwnerService(options: ForgeInboxOwnerServiceOpti
       const state = fenced(running ?? (await ready()), expectedOwner)
       const result = state.ledger.setCredential(input)
       if (result.ok && input.kind === 'api-read') {
-        state.scheduler.wake()
+        state.actions.wake()
       }
       return result
     },
@@ -270,9 +299,11 @@ export function createForgeInboxOwnerService(options: ForgeInboxOwnerServiceOpti
       if (!state) {
         return
       }
-      // The worker queues an analysis, so it settles first; analysis commits only wake itself.
-      await state.scheduler.settled()
-      await state.analysis?.settled()
+      // Each drain settles in turn; a commit only wakes the drains that follow it.
+      await state.decisions?.settled()
+      await state.actions.settled()
+      await state.confirmations?.settled()
+      await bindingsWork
     }
   }
 }

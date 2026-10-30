@@ -25,6 +25,7 @@ import {
   mergeWebUIState,
   runtimeChatPermissionSetting
 } from './web-preference-normalization'
+import { normalizeRuntimePreferences } from './web-runtime-preference-normalization'
 import { callRuntimeResult } from './web-runtime-calls'
 import { requireActiveEnvironmentOrNull, webRuntimeState } from './web-runtime-session'
 import { zcodePlanSiteOwner, settingsForZcodePlanSiteOwner } from './web-zcode-plan-site'
@@ -123,7 +124,6 @@ export async function getRuntimeBackedStoredSettings(): Promise<GlobalSettings> 
       undefined,
       15_000
     )
-    const runtimeSettings: Partial<GlobalSettings> = {}
     const currentEnvironment = requireActiveEnvironmentOrNull()
     if (currentEnvironment?.id === requestedEnvironment.id) {
       const visibilityDefaults = normalizeWorktreeVisibilityDefaults(
@@ -134,45 +134,13 @@ export async function getRuntimeBackedStoredSettings(): Promise<GlobalSettings> 
         : null
       webRuntimeState.worktreeVisibilityDefaultsRuntimeValue = visibilityDefaults ?? null
     }
-    if (typeof result.settings.experimentalNewWorktreeCardStyle === 'boolean') {
-      runtimeSettings.experimentalNewWorktreeCardStyle =
-        result.settings.experimentalNewWorktreeCardStyle
-    }
-    if (typeof result.settings.compactWorktreeCards === 'boolean') {
-      runtimeSettings.compactWorktreeCards = result.settings.compactWorktreeCards
-    }
-    if (typeof result.settings.minimaxGroupId === 'string') {
-      runtimeSettings.minimaxGroupId = result.settings.minimaxGroupId
-    }
-    if (typeof result.settings.minimaxUsageModels === 'string') {
-      runtimeSettings.minimaxUsageModels = result.settings.minimaxUsageModels
-    }
     if (zcodePlanSiteOwner(currentEnvironment) === requestedSiteOwner) {
       webRuntimeState.zcodePlanSiteRuntimeOwner = requestedSiteOwner
       const site = result.settings.zcodePlanSite
       webRuntimeState.zcodePlanSiteRuntimeValue =
         site === 'zai' || site === 'bigmodel' ? site : null
     }
-    if (
-      result.settings.minimaxEndpoint === 'overseas' ||
-      result.settings.minimaxEndpoint === 'cn'
-    ) {
-      runtimeSettings.minimaxEndpoint = result.settings.minimaxEndpoint
-    }
-    if (Array.isArray(result.settings.prBotAuthorOverrides)) {
-      runtimeSettings.prBotAuthorOverrides = normalizePRBotAuthorOverrides(
-        result.settings.prBotAuthorOverrides
-      )
-    }
-    Object.assign(runtimeSettings, runtimeChatPermissionSetting(result.settings))
-    // Read-only mirror: the host owns this capability and `syncRuntimeBackedSettings` never
-    // sends it back, so web shows what the host enforces instead of a local value it ignores.
-    if (typeof result.settings.artifactSharingEnabled === 'boolean') {
-      runtimeSettings.artifactSharingEnabled = result.settings.artifactSharingEnabled
-    }
-    if (typeof result.settings.agentSkillSharingEnabled === 'boolean') {
-      runtimeSettings.agentSkillSharingEnabled = result.settings.agentSkillSharingEnabled
-    }
+    const runtimeSettings = normalizeRuntimePreferences(result.settings)
     const next = mergeSettings(local, runtimeSettings)
     writeStoredSettings(next)
     return settingsForActiveVisibilityOwner(next)
@@ -235,6 +203,10 @@ export async function syncRuntimeBackedSettings(
     )
   }
   Object.assign(runtimeUpdates, runtimeChatPermissionSetting(updates, false))
+  const forwardsReceiver = updates.projectEventReceiver !== undefined
+  if (forwardsReceiver) {
+    runtimeUpdates.projectEventReceiver = updates.projectEventReceiver
+  }
   if (Object.keys(runtimeUpdates).length === 0) {
     return localNext
   }
@@ -261,7 +233,7 @@ export async function syncRuntimeBackedSettings(
     writeStoredSettings(next)
     return next
   } catch (error) {
-    if (visibilityDefaults) {
+    if (visibilityDefaults || forwardsReceiver) {
       throw error
     }
     // Why: unpaired/offline web clients still need local settings persistence.

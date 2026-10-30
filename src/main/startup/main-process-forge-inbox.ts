@@ -1,8 +1,10 @@
 import { startForgeInboxForHost } from '../forge-inbox/forge-inbox-host-startup'
-import { forgeInboxAnalysisForRuntime } from '../forge-inbox/forge-inbox-analysis-runtime'
-import { forgeInboxDiscussForRuntime } from '../forge-inbox/forge-inbox-discuss-runtime'
-import { forgeInboxPatchProducerForRuntime } from '../forge-inbox/forge-inbox-patch-produce-runtime'
+import { projectEventDecisionSourceForSettings } from '../forge-inbox/forge-inbox-decision-runtime'
+import { forgeInboxProjectBindingContextForRuntime } from '../forge-inbox/forge-inbox-project-binding-runtime'
+import { forgeInboxProjectEventAgentLaunchForRuntime } from '../forge-inbox/forge-inbox-project-event-agent-launch'
+import { forgeInboxProjectEventRunRecoveryForRuntime } from '../forge-inbox/forge-inbox-project-event-run-recovery-runtime'
 import { getMainHttpClient } from '../network/http-client'
+import { projectEventReceiverSettingsForStore } from '../project-events/project-event-receiver-settings-source'
 import { mainProcessState as state } from './main-process-state'
 
 /** One owner service per profile; a failed start is logged and never blocks the rest of startup. */
@@ -16,25 +18,19 @@ export async function initializeMainProcessForgeInbox(): Promise<void> {
   await startForgeInboxForHost({
     profileDirectory: profile.profileDirectory,
     http,
+    receiverSettings: projectEventReceiverSettingsForStore(runtime.requireStore()),
+    decisionSource: projectEventDecisionSourceForSettings(() =>
+      runtime.requireStore().getSettings()
+    ),
+    launchProjectEventAgent: forgeInboxProjectEventAgentLaunchForRuntime(runtime),
+    recoverProjectEventRuns: forgeInboxProjectEventRunRecoveryForRuntime({
+      ensureHost: () => runtime.ensureStructuredAgentSessionHost()
+    }),
+    resolveProjectBindingContext: forgeInboxProjectBindingContextForRuntime({
+      requireStore: () => runtime.requireStore()
+    }),
     networkReady: state.initialProxyApplicationReady,
     attach: (service) => runtime.attachForgeInboxService(service),
-    notify: (event) => runtime.dispatchMobileNotification(event),
-    analyse: forgeInboxAnalysisForRuntime({
-      runtime: {
-        requireStore: () => runtime.requireStore(),
-        resolveRuntimeFileTarget: (selector) => runtime.resolveRuntimeFileTarget(selector),
-        ensureStructuredAgentSessionHost: () => runtime.ensureStructuredAgentSessionHost()
-      },
-      http
-    }),
-    discuss: forgeInboxDiscussForRuntime({
-      ensureStructuredAgentSessionHost: () => runtime.ensureStructuredAgentSessionHost()
-    }),
-    proposePatch: forgeInboxPatchProducerForRuntime({
-      runtime: {
-        ensureStructuredAgentSessionHost: () => runtime.ensureStructuredAgentSessionHost()
-      },
-      http
-    })
+    notify: (event) => runtime.dispatchMobileNotification(event)
   })
 }

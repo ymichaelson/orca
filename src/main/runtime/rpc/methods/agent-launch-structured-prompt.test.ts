@@ -49,6 +49,7 @@ describe('committing a launch prompt', () => {
 
     const [caller, params] = send.mock.calls[0]
     expect(caller).toEqual(CALLER)
+    expect(messageId).toMatch(/^\d{13}-[0-9a-f]{32}$/)
     expect(messageId).toBe(params.envelope.clientOperationId)
     expect(params.envelope).toMatchObject({ sessionId: 'sess-1', expectedRuntimeFence: 4 })
     expect(params.body).toEqual(structuredAgentSessionSendBody('do the thing', []))
@@ -60,6 +61,30 @@ describe('committing a launch prompt', () => {
         method: 'agentSession.send',
         sessionId: 'sess-1',
         fields: { body: params.body }
+      })
+    )
+  })
+
+  it('preserves a preallocated identity when settlement throws after append', async () => {
+    const clientMessageId = 'preallocated-launch-message'
+    const send = vi.fn(async () => {
+      throw new Error('settlement failed')
+    })
+    const journalSnapshot = vi.fn(() => ({ submissions: [{ clientMessageId }] }))
+    await expect(
+      commitStructuredAgentSessionLaunchPrompt({
+        host: hostWith(send, journalSnapshot),
+        caller: CALLER,
+        sessionId: 'sess-1',
+        fence: 4,
+        text: 'do the thing',
+        clientMessageId
+      })
+    ).resolves.toBe(clientMessageId)
+    expect(send).toHaveBeenCalledExactlyOnceWith(
+      CALLER,
+      expect.objectContaining({
+        envelope: expect.objectContaining({ clientOperationId: clientMessageId })
       })
     )
   })

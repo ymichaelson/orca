@@ -2,6 +2,7 @@ import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
 import { translate } from '@/i18n/i18n'
 import type { ForgeInboxStatus } from '../../../../shared/forge-inbox-rpc-types'
+import { receiverListenerErrorText } from '../settings/project-event-receiver-error-text'
 import { forgePhaseLabel } from './forge-inbox-display'
 
 function listenerSummary(status: Extract<ForgeInboxStatus, { ownerHostId: string }>): string {
@@ -9,7 +10,7 @@ function listenerSummary(status: Extract<ForgeInboxStatus, { ownerHostId: string
     return translate(
       'auto.components.forge-inbox.ForgeInboxStatusStrip.listenerError',
       'Listener error: {{error}}',
-      { error: status.listener.error }
+      { error: receiverListenerErrorText(status.listener.error) }
     )
   }
   if (!status.listener.enabled) {
@@ -36,21 +37,22 @@ export function ForgeInboxStatusStrip({
   status,
   error,
   loading,
-  onRetry
+  onRetry,
+  onOpenReceiverSettings
 }: {
   status: ForgeInboxStatus | null
   error: string | null
   loading: boolean
   onRetry: () => void
+  onOpenReceiverSettings?: () => void
 }): React.JSX.Element {
   if (error !== null) {
     return (
       <div className="flex items-center gap-3 border-b border-border px-3 py-2 md:px-5">
         <p className="flex-1 text-xs text-destructive">
           {translate(
-            'auto.components.forge-inbox.ForgeInboxStatusStrip.statusFailed',
-            'Could not read the inbox status: {{error}}',
-            { error }
+            'auto.components.forge-inbox.ForgeInboxStatusStrip.statusFailedGeneric',
+            'Could not read the inbox status from this host.'
           )}
         </p>
         <Button size="xs" variant="outline" onClick={onRetry}>
@@ -86,6 +88,11 @@ export function ForgeInboxStatusStrip({
         {forgePhaseLabel(status.phase)}
       </Badge>
       <span>{listenerSummary(status)}</span>
+      {status.listener.error !== null && onOpenReceiverSettings !== undefined ? (
+        <Button size="xs" variant="outline" onClick={onOpenReceiverSettings}>
+          {translate('webhook.settings.openShort', 'Open webhook settings')}
+        </Button>
+      ) : null}
       <span>
         {translate(
           'auto.components.forge-inbox.ForgeInboxStatusStrip.queue',

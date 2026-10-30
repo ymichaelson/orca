@@ -164,6 +164,7 @@ export class RepoLifecycleOperations {
         | 'upstream'
         | 'gitRemoteIdentity'
         | 'defaultJiraProject'
+        | 'projectEventGitlabProject'
         | 'hookSettings'
         | 'worktreeBaseRef'
         | 'worktreeBasePath'

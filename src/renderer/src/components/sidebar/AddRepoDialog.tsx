@@ -12,6 +12,8 @@ import { useCompleteGitRepoAdd } from './use-complete-git-repo-add'
 import { useCreateProjectDefaults } from './useCreateProjectDefaults'
 import { useAddRepoHostChangeReset } from './use-add-repo-host-change-reset'
 import { AddRepoDialogChrome } from './AddRepoDialogChrome'
+import { useAddRepoProjectEventSetup } from './use-add-repo-project-event-setup'
+import { useAddRepoDialogDismissal } from './use-add-repo-dialog-dismissal'
 import { AddRepoHostSelectorSlot } from './AddRepoHostSelectorSlot'
 import { useAddRepoNestedReviewController } from './useAddRepoNestedReviewController'
 import {
@@ -55,6 +57,14 @@ export default React.memo(function AddRepoDialog({
     setHideDefaultBranchWorkspace,
     finishProjectAdd
   })
+  // Why: every Git add path ends here, so a GitLab repo gets its event-agent step before the final handoff.
+  const {
+    onGitRepoReady: completeAddedGitRepo,
+    onGitRepoBatchReady: completeAddedGitRepoBatch,
+    step: projectEventStep,
+    requestDismiss: dismissProjectEventStep,
+    reset: resetProjectEventSetup
+  } = useAddRepoProjectEventSetup({ completeGitRepoAdd, setStep })
   const hostSelection = useAddRepoHostSelection({
     isOpen,
     setStep,
@@ -88,7 +98,7 @@ export default React.memo(function AddRepoDialog({
     closeModal: closeForFolderHandoff,
     fetchWorktrees,
     importNestedRepos,
-    onGitRepoReady: completeGitRepoAdd,
+    onGitRepoBatchReady: completeAddedGitRepoBatch,
     setIsAdding,
     activeRuntimeEnvironmentId: selectedRuntimeEnvironmentId,
     setStep
@@ -111,7 +121,7 @@ export default React.memo(function AddRepoDialog({
     setStep,
     // Why: useRemoteRepo closes only for the non-git → confirm-dialog handoff.
     closeForFolderHandoff,
-    (repoId, executionHostId) => completeGitRepoAdd(repoId, 'ssh_remote_path', executionHostId),
+    (repoId, executionHostId) => completeAddedGitRepo(repoId, 'ssh_remote_path', executionHostId),
     selectedRuntimeEnvironmentId
   )
   const {
@@ -128,7 +138,7 @@ export default React.memo(function AddRepoDialog({
   } = useCreateRepo(
     fetchWorktrees,
     closeForFolderHandoff,
-    (repoId, executionHostId) => completeGitRepoAdd(repoId, 'create_project', executionHostId),
+    (repoId, executionHostId) => completeAddedGitRepo(repoId, 'create_project', executionHostId),
     {
       hostId: hostSelection.selectedHostId,
       runtimeEnvironmentId: selectedRuntimeEnvironmentId
@@ -167,7 +177,7 @@ export default React.memo(function AddRepoDialog({
     activeRuntimeEnvironmentId: selectedRuntimeEnvironmentId,
     workspaceDir: settings?.workspaceDir,
     fetchWorktrees,
-    onGitRepoReady: completeGitRepoAdd
+    onGitRepoReady: completeAddedGitRepo
   })
 
   const isRuntimeEnvironmentActive = Boolean(selectedRuntimeEnvironmentId)
@@ -184,7 +194,8 @@ export default React.memo(function AddRepoDialog({
     setActiveNestedScanId,
     setNestedScanInProgress,
     showNestedRepoReview,
-    onGitRepoReady: completeGitRepoAdd,
+    onGitRepoReady: completeAddedGitRepo,
+    onGitRepoBatchReady: completeAddedGitRepoBatch,
     setIsAdding,
     setAddProjectBusyLabel
   })
@@ -205,7 +216,7 @@ export default React.memo(function AddRepoDialog({
     setActiveNestedScanId,
     setNestedScanInProgress,
     showNestedRepoReview,
-    onGitRepoReady: completeGitRepoAdd,
+    onGitRepoReady: completeAddedGitRepo,
     setAddProjectBusyLabel
   })
 
@@ -224,10 +235,12 @@ export default React.memo(function AddRepoDialog({
     resetCreateDefaultState()
     resetCreateState()
     resetRemoteState()
+    resetProjectEventSetup()
   }, [
     resetCloneFlow,
     resetLocalFolderFlow,
     resetNestedRepoReviewState,
+    resetProjectEventSetup,
     resetCreateDefaultState,
     resetServerPathFlow,
     resetNestedImportFlow,
@@ -269,30 +282,19 @@ export default React.memo(function AddRepoDialog({
     setStep
   })
 
-  const handleBack = useCallback(() => {
-    if (step === 'nested') {
-      trackNestedBackAction()
-    }
-    resetState()
-  }, [resetState, step, trackNestedBackAction])
-
-  const handleOpenChange = useCallback(
-    (open: boolean) => {
-      if (!open) {
-        if (step === 'nested' && !isAdding) {
-          trackNestedBackAction()
-        }
-        closeModal()
-        resetState()
-      }
-    },
-    [closeModal, isAdding, resetState, step, trackNestedBackAction]
-  )
+  const { handleBack, handleOpenChange } = useAddRepoDialogDismissal({
+    step,
+    isAdding,
+    closeModal,
+    resetState,
+    trackNestedBackAction,
+    dismissProjectEventStep
+  })
 
   return (
     <AddRepoDialogChrome
       isOpen={isOpen}
-      step={step}
+      step={projectEventStep ? 'project-event' : step}
       isAdding={isAdding}
       isCloning={isCloning}
       onBack={handleBack}
@@ -301,6 +303,7 @@ export default React.memo(function AddRepoDialog({
     >
       <AddRepoDialogStepContent
         step={step}
+        projectEventStep={projectEventStep}
         isRuntimeEnvironmentActive={isRuntimeEnvironmentActive}
         activeRuntimeEnvironmentId={selectedRuntimeEnvironmentId}
         repoCount={repos.length}

@@ -201,6 +201,14 @@ export async function revealStructuredSession(target: {
     runtimeTargetForOwnerEnvironment(
       runtimeEnvironmentIdWithLegacyFallbackUnlessTwin(useAppStore.getState(), target.worktreeId)
     )
+  return (await revealStructuredSessionOnHost(target.sessionId, host)).outcome
+}
+
+/** The reveal for a surface that holds only a session id; the host's own record names the workspace. */
+export async function revealStructuredSessionOnHost(
+  sessionId: string,
+  host: RuntimeClientTarget
+): Promise<{ outcome: StructuredSessionRevealOutcome; workspaceId: string | null }> {
   // Negotiated against the host that will answer this call, not the local one: a paired host runs
   // its own build, and its method-not-found is indistinguishable from a refusal we should surface.
   // A local host is this build, so it always has the method and needs no round trip to prove it.
@@ -221,10 +229,13 @@ export async function revealStructuredSession(target: {
       // A version block is the host's age, stated outright; anything else means we never got to
       // ask, which is not evidence about the chat or the host. `remote-agent-session-launch`
       // splits the same probe's failures the same way.
-      return isRuntimeCompatBlockError(error) ? 'host-cannot-open' : 'unreachable'
+      return {
+        outcome: isRuntimeCompatBlockError(error) ? 'host-cannot-open' : 'unreachable',
+        workspaceId: null
+      }
     }
     if (!supported) {
-      return 'host-cannot-open'
+      return { outcome: 'host-cannot-open', workspaceId: null }
     }
   }
   let result: AgentSessionRevealReply | undefined
@@ -233,24 +244,28 @@ export async function revealStructuredSession(target: {
       callRuntimeRpc<AgentSessionRevealReply>(
         host,
         'agentSession.reveal',
-        { sessionId: target.sessionId },
+        { sessionId },
         {
           timeoutMs: STRUCTURED_SESSION_RESTORE_TIMEOUT_MS
         }
       )
     )
   } catch {
-    return 'unreachable'
+    return { outcome: 'unreachable', workspaceId: null }
   }
   if (result?.ok === true) {
-    return 'revealed'
+    return { outcome: 'revealed', workspaceId: result.workspaceId ?? null }
   }
   // The host raises two different refusals here and they mean opposite things to a user: it holds
   // no such record, or it holds one it cannot open. Only the first is the chat being gone.
-  return result?.refusal?.code === 'agent_session_identity_required' ? 'gone' : 'host-cannot-open'
+  return {
+    outcome:
+      result?.refusal?.code === 'agent_session_identity_required' ? 'gone' : 'host-cannot-open',
+    workspaceId: null
+  }
 }
 
-type AgentSessionRevealReply = { ok?: boolean; refusal?: { code?: string } }
+type AgentSessionRevealReply = { ok?: boolean; workspaceId?: string; refusal?: { code?: string } }
 
 async function refreshStructuredSessionTabs(
   worktreeId: string,

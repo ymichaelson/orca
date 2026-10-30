@@ -15,6 +15,7 @@ import type { OrcaRuntimeService } from '../runtime/orca-runtime'
 import { buildNotificationOptions } from '../ipc/notification-options'
 import { translateMain } from '../i18n/main-i18n'
 import { reserveNotificationCooldown } from '../../shared/notification-burst-cooldown'
+import type { ForgeDispatchedAgentCompletion } from './forge-dispatched-agent-completion'
 
 export type NotificationDeliveryDependencies = {
   readNotificationSettings: () => NotificationSettings
@@ -38,12 +39,26 @@ export type NotificationDeliveryDependencies = {
   now: () => number
   /** Told once per path that actually announced the request: a desktop banner shown, or a mobile alert sent. */
   recordAnnounced?: (request: NotificationDispatchRequest) => void
+  /** Absent when no Forge inbox is wired; completions of an agent it dispatched are announced by Forge instead. */
+  forgeDispatchedAgent?: ForgeDispatchedAgentCompletion
 }
 
 export type NotificationDeliveryService = {
   dispatch: (
     request: NotificationDispatchRequest
   ) => NotificationDispatchResult | Promise<NotificationDispatchResult>
+}
+
+// Ordinary success is recorded in the Inbox; it only interrupts once completed runs are opted in.
+function forgeInboxAllowed(
+  request: NotificationDispatchRequest,
+  settings: NotificationSettings
+): boolean {
+  return (
+    settings.forgeInbox &&
+    (request.forgeInbox?.subject.reason !== 'run-succeeded' ||
+      settings.forgeInboxCompletedRuns === true)
+  )
 }
 
 export function createNotificationDeliveryService(
@@ -73,6 +88,16 @@ export function createNotificationDeliveryService(
 
   return {
     dispatch: (request) => {
+      if (
+        request.source === 'agent-task-complete' &&
+        deps.forgeDispatchedAgent?.defersToForge({
+          state: request.agentState,
+          sessionId: request.structuredOrigin?.sessionId,
+          paneKey: request.paneKey
+        })
+      ) {
+        return { delivered: false, reason: 'source-disabled' }
+      }
       // Why: light the tray attention dot before the cooldown/focus/enabled gates so they
       // can't hold it back (clears on window show/restore; see index.ts).
       if (request.source === 'agent-task-complete' || request.source === 'terminal-bell') {
@@ -90,7 +115,7 @@ export function createNotificationDeliveryService(
         settings.enabled &&
         (request.source !== 'agent-task-complete' || settings.agentTaskComplete) &&
         (request.source !== 'terminal-bell' || settings.terminalBell) &&
-        (request.source !== 'forge-inbox' || settings.forgeInbox)
+        (request.source !== 'forge-inbox' || forgeInboxAllowed(request, settings))
 
       const notificationOptions = buildNotificationOptions(request, translateMain)
 

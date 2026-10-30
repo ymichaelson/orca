@@ -10,25 +10,34 @@ const REASON_BODY: Record<ForgeNotificationReason, string> = {
   'pipeline-failure': 'A pipeline failed.',
   'issue-mention': 'You were mentioned on an issue.',
   'issue-assignment': 'An issue was assigned to you.',
+  'project-event': 'A project event needs your attention.',
   'run-succeeded': 'An analysis finished.',
   'run-failed': 'An analysis failed.',
   'proposal-pending': 'A proposal is waiting for your approval.'
 }
 
+export function forgeNotificationCopy(reason: ForgeNotificationReason): {
+  title: string
+  body: string
+} {
+  return { title: 'Forge Inbox', body: REASON_BODY[reason] }
+}
+
 export function forgeNotificationEvent(
   notification: ForgeNotification
 ): MobileNotificationDispatchEvent {
-  const { ownerId, instanceId, itemId, reason, eventId, runId, proposalId } = notification
+  const { ownerId, instanceId, itemId, reason, eventId, runId, proposalId, trigger } = notification
   const entityId = proposalId ?? runId ?? eventId
+  // Why: pushes share one project item, so the trigger tells their bursts apart.
+  const item = trigger === undefined ? `${itemId}` : `${itemId}:${trigger}`
   return {
     type: 'notification',
     source: 'forge-inbox',
-    title: 'Forge Inbox',
-    body: REASON_BODY[reason],
+    ...forgeNotificationCopy(reason),
     notificationId: `forge-inbox:${ownerId}:${instanceId}:${itemId}:${reason}:${entityId}`,
     // One burst window per item, so several distinct reasons for it still collapse.
-    attentionKey: `forge-inbox:${ownerId}:${instanceId}:${itemId}`,
-    forgeInbox: { ownerId, instanceId, itemId, reason, eventId, runId, proposalId }
+    attentionKey: `forge-inbox:${ownerId}:${instanceId}:${item}`,
+    forgeInbox: { ownerId, instanceId, itemId, reason, eventId, runId, proposalId, trigger }
   }
 }
 

@@ -19,6 +19,7 @@ import {
   normalizeWorktreeCardProperties,
   normalizeAgentActivityDisplayMode
 } from '../../../../../shared/constants'
+import { normalizeForgeInboxArchiveView } from '../../../../../shared/forge-inbox-display-preferences'
 import {
   normalizeActivityGroupBy,
   normalizeThreadReadFilter
@@ -162,6 +163,9 @@ export function createUiHydrationActions(set: UISliceSet, _get: UISliceGet): Par
           agentsShowSearch: ui.agentsShowSearch !== false,
           agentsReadFilter: normalizeThreadReadFilter(ui.agentsReadFilter),
           agentsGroupBy: normalizeActivityGroupBy(ui.agentsGroupBy),
+          forgeInboxUnreadOnly: ui.forgeInboxUnreadOnly === true,
+          forgeInboxArchiveView: normalizeForgeInboxArchiveView(ui.forgeInboxArchiveView),
+          forgeInboxCompact: ui.forgeInboxCompact === true,
           collapsedGroups: new Set(ui.collapsedGroups ?? []),
           uiZoomLevel: ui.uiZoomLevel ?? 0,
           editorFontZoomLevel: ui.editorFontZoomLevel ?? 0,

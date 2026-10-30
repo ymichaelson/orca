@@ -17,7 +17,20 @@ import { activeNotificationsById } from './native-notification-lifecycle'
 import { deliverNativeNotification } from './native-notification-delivery'
 import { removeReadMacosNotifications } from './macos-notification-center'
 import { createNotificationDeliveryService } from '../notifications/notification-delivery-service'
+import { createForgeDispatchedAgentCompletion } from '../notifications/forge-dispatched-agent-completion'
 import { createForgeInboxDesktopNotifier } from '../notifications/forge-inbox-desktop-notifier'
+import { remoteForgeInboxNotification } from '../notifications/remote-forge-inbox-notification'
+import { getAppEnvironment, hasAppEnvironment } from '../../shared/app-environment'
+import { listEnvironments, resolveEnvironment } from '../../shared/runtime-environment-store'
+import { getPreferredPairedRuntimeConnection } from '../../shared/runtime-environments'
+import {
+  ensureRemoteRuntimeSharedControlConnection,
+  getRuntimeEnvironmentStatusOwner,
+  reconnectRemoteRuntimeSharedControlConnection,
+  registerRemoteForgeInboxNotifications
+} from './runtime-environments/runtime-environment-request-connections'
+import { isRuntimeEnvironmentManuallyDisconnected } from './runtime-environments/runtime-environment-manual-disconnect'
+import { isGatedOffWslHost } from '../wsl/wsl-host-gate'
 import { createAnnouncedNotificationRegistry } from '../notifications/announced-notification-registry'
 import { registerNotificationSoundHandlers } from './notification-sound-ipc'
 import { openNotificationSystemSettings } from './notification-system-settings-link'
@@ -32,11 +45,14 @@ import {
 } from './notification-permission-probe'
 
 let stopForgeInboxDesktopNotifier: (() => void) | null = null
+let stopRemoteForgeInboxNotifications: (() => void) | null = null
 
 export function registerNotificationHandlers(store: Store, runtime?: OrcaRuntimeService): void {
   // Why: a window attached later re-registers these handlers; two live subscribers would double every Forge banner.
   stopForgeInboxDesktopNotifier?.()
   stopForgeInboxDesktopNotifier = null
+  stopRemoteForgeInboxNotifications?.()
+  stopRemoteForgeInboxNotifications = null
   ipcMain.removeHandler('notifications:getDesktopAwayState')
   ipcMain.handle('notifications:getDesktopAwayState', () => readDesktopAwayState(powerMonitor))
   resetNotificationPermissionEvidence()
@@ -167,6 +183,14 @@ export function registerNotificationHandlers(store: Store, runtime?: OrcaRuntime
     deliverNative: deliverNativeNotification,
     platform: process.platform,
     now: () => Date.now(),
+    ...(runtime
+      ? {
+          forgeDispatchedAgent: createForgeDispatchedAgentCompletion({
+            forgeInbox: () => runtime.forgeInboxServiceIfAttached(),
+            terminalHandleForPaneKey: (paneKey) => runtime.getTerminalHandleForPaneKey(paneKey)
+          })
+        }
+      : {}),
     recordAnnounced: (request) => {
       if (request.paneKey && request.notificationId) {
         announced.record(request.paneKey, request.notificationId, request.structuredOrigin)
@@ -179,6 +203,55 @@ export function registerNotificationHandlers(store: Store, runtime?: OrcaRuntime
     stopForgeInboxDesktopNotifier = runtime.onNotificationDispatched(
       createForgeInboxDesktopNotifier((request) => deliveryService.dispatch(request))
     )
+  }
+
+  if (hasAppEnvironment()) {
+    const appEnvironment = getAppEnvironment()
+    const userDataPath = appEnvironment.getPath('userData')
+    const stop = registerRemoteForgeInboxNotifications(
+      (environmentId, event) => {
+        try {
+          const environment = resolveEnvironment(userDataPath, environmentId)
+          void deliveryService.dispatch(remoteForgeInboxNotification(environment, event))
+        } catch {
+          // A removed or replaced environment must not fall back to this desktop.
+        }
+      },
+      (environmentId) => {
+        try {
+          getRuntimeEnvironmentStatusOwner(userDataPath, environmentId).activate()
+        } catch {
+          // An unreadable or removed environment cannot be recovered here.
+        }
+      }
+    )
+    stopRemoteForgeInboxNotifications = stop
+    appEnvironment.onWillQuit(stop)
+    try {
+      for (const environment of listEnvironments(userDataPath)) {
+        try {
+          if (
+            isRuntimeEnvironmentManuallyDisconnected(environment.id) ||
+            isGatedOffWslHost(environment)
+          ) {
+            continue
+          }
+          if (environment.connectionDependency === 'ssh-tunnel') {
+            getRuntimeEnvironmentStatusOwner(userDataPath, environment.id).activate()
+          } else {
+            ensureRemoteRuntimeSharedControlConnection(
+              environment.id,
+              getPreferredPairedRuntimeConnection(environment)
+            )
+            reconnectRemoteRuntimeSharedControlConnection(environment.id)
+          }
+        } catch {
+          // One invalid environment must not block unrelated notification handlers.
+        }
+      }
+    } catch {
+      // Fail closed on unreadable environment state without disabling local notifications.
+    }
   }
 
   // A remote host reported no pending prompt: its alerts relayed to this desktop's phones are over.

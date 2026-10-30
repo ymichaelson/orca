@@ -29,6 +29,12 @@ vi.mock('../tray/system-tray', async () =>
 
 import { registerNotificationHandlers } from './notifications'
 
+/** The runtime members the handlers below read; no other part of the service is reached. */
+function runtimeDouble(members: Record<string, unknown>): never {
+  // oxlint-disable-next-line typescript/consistent-type-assertions -- SAFETY: the handlers read only the members given here.
+  return members as never
+}
+
 describe('registerNotificationHandlers', () => {
   beforeEach(() => {
     vi.useFakeTimers()
@@ -50,7 +56,10 @@ describe('registerNotificationHandlers', () => {
           }
         })
       } as never,
-      { dispatchMobileNotification } as never
+      runtimeDouble({
+        dispatchMobileNotification,
+        onNotificationDispatched: vi.fn(() => () => {})
+      })
     )
 
     const handler = getDispatchHandler()
@@ -94,7 +103,10 @@ describe('registerNotificationHandlers', () => {
           }
         })
       } as never,
-      { dispatchMobileNotification } as never
+      runtimeDouble({
+        dispatchMobileNotification,
+        onNotificationDispatched: vi.fn(() => () => {})
+      })
     )
 
     const handler = getDispatchHandler()
@@ -121,7 +133,10 @@ describe('registerNotificationHandlers', () => {
           }
         })
       } as never,
-      { dispatchMobileNotification } as never
+      runtimeDouble({
+        dispatchMobileNotification,
+        onNotificationDispatched: vi.fn(() => () => {})
+      })
     )
 
     const handler = getDispatchHandler()
@@ -154,7 +169,10 @@ describe('registerNotificationHandlers', () => {
           }
         })
       } as never,
-      { dispatchMobileNotification } as never
+      runtimeDouble({
+        dispatchMobileNotification,
+        onNotificationDispatched: vi.fn(() => () => {})
+      })
     )
 
     const handler = getDispatchHandler()
@@ -192,7 +210,10 @@ describe('registerNotificationHandlers', () => {
           }
         })
       } as never,
-      { dispatchMobileNotification } as never
+      runtimeDouble({
+        dispatchMobileNotification,
+        onNotificationDispatched: vi.fn(() => () => {})
+      })
     )
 
     const handler = getDispatchHandler()
@@ -223,7 +244,10 @@ describe('registerNotificationHandlers', () => {
           }
         })
       } as never,
-      { dispatchMobileNotification } as never
+      runtimeDouble({
+        dispatchMobileNotification,
+        onNotificationDispatched: vi.fn(() => () => {})
+      })
     )
 
     const handler = getDispatchHandler()
@@ -246,7 +270,11 @@ describe('registerNotificationHandlers', () => {
           }
         })
       } as never,
-      { dispatchMobileNotification, dismissMobileNotification } as never
+      runtimeDouble({
+        dispatchMobileNotification,
+        dismissMobileNotification,
+        onNotificationDispatched: vi.fn(() => () => {})
+      })
     )
 
     const dispatchHandler = getDispatchHandler()
@@ -276,7 +304,10 @@ describe('registerNotificationHandlers', () => {
           }
         })
       } as never,
-      { dismissMobileNotification } as never
+      runtimeDouble({
+        dismissMobileNotification,
+        onNotificationDispatched: vi.fn(() => () => {})
+      })
     )
 
     const dismissHandler = getDismissHandler()

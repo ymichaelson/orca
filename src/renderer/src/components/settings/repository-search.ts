@@ -43,6 +43,21 @@ export function getRepositoryPaneSearchEntries(
       ]
     },
     {
+      title: translate('projectEventAgent.title', 'Project event agent'),
+      description: translate(
+        'projectEventAgent.description',
+        'Let this project answer GitLab events with an agent: review requests, participating merge requests, pipeline failures, issue mentions and assignments.'
+      ),
+      keywords: [
+        repo.displayName,
+        ...translateSearchKeyword('projectEventAgent.keywordProjectEvent', 'project event'),
+        ...translateSearchKeyword('projectEventAgent.keywordWebhook', 'webhook'),
+        ...translateSearchKeyword('projectEventAgent.keywordAgent', 'agent'),
+        ...translateSearchKeyword('projectEventAgent.keywordRules', 'rules'),
+        ...translateSearchKeyword('projectEventAgent.keywordModel', 'model')
+      ]
+    },
+    {
       title: translate('auto.components.settings.repository.search.7e1e456a95', 'Display Name'),
       description: translate(
         'auto.components.settings.repository.search.883aad2801',

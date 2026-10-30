@@ -42,7 +42,10 @@ export abstract class OrcaRuntimeWithAgentTransitions extends OrcaRuntimeWithMig
       timer.unref?.()
       return { cancel: () => clearTimeout(timer) }
     },
-    now: Date.now
+    now: Date.now,
+    forgeDispatchedAgent: {
+      defersToForge: (identity) => this.forgeDispatchedAgentCompletion().defersToForge(identity)
+    }
   })
 
   constructor(...args: ConstructorParameters<typeof OrcaRuntimeWithMigrationCatalog>) {

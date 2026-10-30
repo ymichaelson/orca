@@ -1,8 +1,11 @@
 import { INSTANCE_ID } from '../../forge-inbox/forge-inbox-webhook-test-harness'
+import { createReceiverSettingsFixture } from '../../project-events/project-event-receiver-settings-test-fixture'
+import { normalizeProjectEventReceiverSettings } from '../../../shared/project-event-receiver-settings'
 import {
   createFakeGitlab,
   mergeRequestHookBody
 } from '../../forge-inbox/forge-inbox-gitlab-fake-server'
+import { ensureOwnerFixtureBinding } from '../../forge-inbox/forge-inbox-owner-fixture-binding'
 import {
   freePort,
   listenerOn,
@@ -56,6 +59,11 @@ export async function openWebhookIngress(harness: ForgeRpcHarness) {
   const service = harness.runtime.forgeInboxService()
   const port = await freePort()
   await provision(service, listenerOn(port))
+  ensureOwnerFixtureBinding(harness.dbPath, harness.secretStore)
+  // The socket binds from the receiver settings, not the forge config's retired listener tuple.
+  const listener = normalizeProjectEventReceiverSettings(listenerOn(port))
+  harness.receiverSettings?.update(listener)
+  await service.reconcileReceiverSettings()
   let delivery = 0
   return {
     async deliver() {
@@ -65,8 +73,8 @@ export async function openWebhookIngress(harness: ForgeRpcHarness) {
         mergeRequestHookBody({ reviewers: ['me'], sha: delivery.toString(16).padStart(40, '0') }),
         `live-${delivery}`
       )
-      if (response.status >= 300) {
-        throw new Error(`hook rejected: ${response.status}`)
+      if (response.status !== 202) {
+        throw new Error(`live delivery refused: ${response.status} ${response.text}`)
       }
       await service.settled()
     }
@@ -76,5 +84,8 @@ export async function openWebhookIngress(harness: ForgeRpcHarness) {
 /** A harness whose owner reads from the in-memory fake GitLab, so webhook deliveries become real items. */
 export function createStreamHarness() {
   const gitlab = createFakeGitlab()
-  return createForgeRpcHarness({ http: { fetch: (url) => gitlab.fetch(url) } })
+  return createForgeRpcHarness({
+    http: { fetch: (url) => gitlab.fetch(url) },
+    receiverSettings: createReceiverSettingsFixture()
+  })
 }

@@ -11,6 +11,7 @@ let host: StructuredAgentSessionHost | null = null
 let held = false
 let stopWatchingHost: (() => void) | null = null
 const heldListeners = new Set<(held: boolean) => void>()
+const hostListeners = new Set<(host: StructuredAgentSessionHost | null) => void>()
 
 // Why typeof: tests install partial hosts.
 function hostHoldsSessions(candidate: StructuredAgentSessionHost | null): boolean {
@@ -47,7 +48,22 @@ export function setStructuredAgentSessionHost(next: StructuredAgentSessionHost |
   } catch (error) {
     console.warn('[structured-agent-session] watching for held chats failed', error)
   }
+  for (const listener of hostListeners) {
+    try {
+      listener(next)
+    } catch (error) {
+      console.warn('[structured-agent-session] a host listener threw', error)
+    }
+  }
   publishHeld()
+}
+
+/** Called each time a different host is installed or cleared, so holders of the old one can let go. */
+export function onStructuredAgentSessionHostChanged(
+  listener: (host: StructuredAgentSessionHost | null) => void
+): () => void {
+  hostListeners.add(listener)
+  return () => hostListeners.delete(listener)
 }
 
 /** Whether this runtime holds a structured chat, saved or live; building the host alone is not one. */

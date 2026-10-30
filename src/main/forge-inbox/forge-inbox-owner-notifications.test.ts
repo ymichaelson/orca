@@ -1,17 +1,39 @@
 import { existsSync } from 'node:fs'
 import { afterEach, describe, expect, it, vi } from 'vitest'
+import type { ProjectEventDecisionResult } from '../../shared/project-event-decision'
 import { issueHookBody, mergeRequestHookBody, SHA_B } from './forge-inbox-gitlab-fake-server'
 import {
   createOwnerFixture,
   freePort,
   listenerOn,
   postHook,
-  provision,
   type OwnerFixture
 } from './forge-inbox-owner-service-test-kit'
-import { INSTANCE_ID } from './forge-inbox-webhook-test-harness'
 
-type Published = { ownerId: string; itemId: number; reason: string; eventId?: number }
+type Published = {
+  ownerId: string
+  instanceId: string
+  itemId: number
+  reason: string
+  eventId?: number
+}
+
+const notifyDecision = (): ProjectEventDecisionResult => ({
+  ok: true,
+  provider: 'jev',
+  model: 'jev-1',
+  action: 'notify',
+  confidence: 0.8,
+  probabilities: {
+    record_only: 0.04,
+    notify: 0.8,
+    wait: 0.04,
+    fetch_context: 0.04,
+    dispatch_agent: 0.04,
+    ask_user: 0.04
+  },
+  usage: { inputTokens: 10, outputTokens: 2 }
+})
 
 describe('forge inbox owner notification producer', () => {
   let fx: OwnerFixture
@@ -27,9 +49,12 @@ describe('forge inbox owner notification producer', () => {
 
   async function startOwner(sinks: ((n: Published) => void)[]) {
     const port = await freePort()
-    const service = fx.service({ notificationSinks: sinks })
+    const service = fx.service({
+      notificationSinks: sinks,
+      decideProjectEvent: async () => notifyDecision()
+    })
     await service.start()
-    await provision(service, listenerOn(port))
+    await fx.provision(service, listenerOn(port))
     return { service, port }
   }
 
@@ -47,7 +72,7 @@ describe('forge inbox owner notification producer', () => {
     await service.stop()
   })
 
-  it('publishes a webhook-driven review request once and not again after a restart or a new message id', async () => {
+  it('publishes a webhook-driven merge request update once and not again after a restart', async () => {
     fx = createOwnerFixture()
     const published: Published[] = []
     const { service, port } = await startOwner([(n) => published.push(n)])
@@ -57,31 +82,15 @@ describe('forge inbox owner notification producer', () => {
     await vi.waitFor(() => expect(published).toHaveLength(1))
     expect(published[0]).toMatchObject({
       ownerId: service.ownerHostId(),
-      reason: 'review-request'
+      reason: 'participating-update'
     })
 
-    await postHook(port, mergeRequest(), 'm-2')
-    await service.settled()
     await service.stop()
 
     const restarted = fx.service({ notificationSinks: [(n) => published.push(n)] })
     await restarted.start()
     await restarted.settled()
     await restarted.stop()
-    expect(published).toHaveLength(1)
-  })
-
-  it('does not alert for a hook-reported new commit the API does not confirm', async () => {
-    fx = createOwnerFixture()
-    const published: Published[] = []
-    const { service, port } = await startOwner([(n) => published.push(n)])
-    await postHook(port, mergeRequest(), 'm-1')
-    await service.settled()
-    await vi.waitFor(() => expect(published).toHaveLength(1))
-
-    await postHook(port, mergeRequest(SHA_B), 'm-2')
-    await service.settled()
-
     expect(published).toHaveLength(1)
   })
 
@@ -92,10 +101,10 @@ describe('forge inbox owner notification producer', () => {
     await postHook(port, mergeRequest(), 'm-1')
     await service.settled()
     await vi.waitFor(() => expect(published).toHaveLength(1))
-    const [{ itemId }] = published
+    const [{ itemId, instanceId }] = published
 
-    await service.ackClientCursor({ instanceId: INSTANCE_ID, readerId: 'reader', seq: 1 })
-    service.markRead({ instanceId: INSTANCE_ID }, { clientId: 'reader', itemId })
+    await service.ackClientCursor({ instanceId, readerId: 'reader', seq: 1 })
+    service.markRead({ instanceId }, { clientId: 'reader', itemId })
     await service.settled()
 
     expect(published).toHaveLength(1)
@@ -128,11 +137,13 @@ describe('forge inbox owner notification producer', () => {
   it('publishes nothing after stop begins and closes the ledger only after the processor settled', async () => {
     fx = createOwnerFixture()
     const port = await freePort()
-    const first = fx.service()
+    const first = fx.service({ decideProjectEvent: async () => notifyDecision() })
     await first.start()
-    await provision(first, listenerOn(port))
+    await fx.provision(first, listenerOn(port))
     await postHook(port, mergeRequest(), 'm-1')
-    await postHook(port, issueHookBody({ assignees: ['me'] }), 'i-1', undefined, 'Issue Hook')
+    const issue = issueHookBody({ assignees: ['me'] })
+    issue.object_attributes.action = 'assign'
+    await postHook(port, issue, 'i-1', undefined, 'Issue Hook')
     await first.settled()
     await first.stop()
     expect(fx.rows('SELECT kind FROM items ORDER BY kind')).toEqual([

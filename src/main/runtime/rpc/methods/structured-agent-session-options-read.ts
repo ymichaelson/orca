@@ -11,6 +11,7 @@
 import { defineMethod } from '../core'
 import {
   requireInstalledStructuredHost,
+  requireInstalledStructuredMetadataHost,
   requireStructuredAgentAudience,
   requireStructuredHost
 } from './structured-agent-session-gate'
@@ -69,7 +70,7 @@ export const STRUCTURED_AGENT_SESSION_OPTIONS_READ_METHODS = [
       const host =
         params.sessionId === undefined
           ? requireStructuredHost(ctx)
-          : await requireInstalledStructuredHost(ctx, params.sessionId)
+          : await requireInstalledStructuredMetadataHost(ctx, params.sessionId)
       const record =
         params.sessionId === undefined ? null : host.deps.store.getRecord(params.sessionId)
       const read = async (): Promise<AgentSessionModelCatalogResult> => {

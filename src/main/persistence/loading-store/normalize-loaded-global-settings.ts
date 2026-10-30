@@ -20,6 +20,8 @@ import {
 } from '../applying-settings/terminal-settings-migrations'
 import { readLegacySidekickFlag } from '../applying-settings/onboarding-normalization'
 import { normalizeMachineName } from '../../../shared/machine-name'
+import { normalizeProjectEventReceiverSettings } from '../../../shared/project-event-receiver-settings'
+import { normalizeProjectEventDecisionSettings } from '../../../shared/project-event-decision-settings'
 import type { PersistedState } from '../../../shared/persisted-state-types'
 import type { PreparedLoadedTerminalSettings } from './prepare-loaded-terminal-settings'
 import type { PreparedLoadedProfileSettings } from './prepare-loaded-profile-settings'
@@ -175,6 +177,13 @@ export function normalizeLoadedGlobalSettings(
     voice: {
       ...getDefaultVoiceSettings(),
       ...parsed.settings?.voice
-    }
+    },
+    // Why: clamp a hand-edited or older-build value so the receiver never yields a bad callback URL.
+    projectEventReceiver: normalizeProjectEventReceiverSettings(
+      parsed.settings?.projectEventReceiver
+    ),
+    projectEventDecision: normalizeProjectEventDecisionSettings(
+      parsed.settings?.projectEventDecision
+    )
   }
 }

@@ -21,14 +21,14 @@ import {
   type ElectronApplication,
   type TestInfo
 } from '@stablyai/playwright-test'
-import { mkdtempSync, mkdirSync, rmSync, writeFileSync } from 'node:fs'
+import { mkdtempSync, mkdirSync } from 'node:fs'
 import os from 'node:os'
 import path from 'node:path'
-import { closeElectronAppForE2E } from './electron-process-shutdown'
-import { recordElectronShutdownTiming } from './electron-shutdown-timing'
+import { closeElectronAppForE2E, removeUserDataDirAfterShutdown } from './electron-process-shutdown'
 import { getOrcaElectronLaunchArgs } from './electron-launch-args'
 import { retryTransientMainEvaluate } from './electron-main-evaluate-retry'
-import { getE2ECompletedOnboardingProfile } from './e2e-completed-onboarding-profile'
+import { writeE2ECompletedOnboardingProfile } from './e2e-completed-onboarding-profile'
+import { createForgeCliStubs } from './forge-cli-stubs'
 import {
   assertElectronResolvedIsolatedHome,
   createElectronHomeIsolation
@@ -49,6 +49,8 @@ type OrcaTestFixtures = {
   // events for every other test. Dismiss it by default; onboarding.spec.ts
   // opts out via `test.use({ dismissOnboarding: false })`.
   dismissOnboarding: boolean
+  disableDesktopNotifications: boolean
+  stubForgeClis: boolean
   // Why: most E2E specs need a ready project before assertions start. Golden
   // first-run specs opt out so they can prove the zero-project onboarding path.
   seedTestRepo: boolean
@@ -90,24 +92,6 @@ const ORCA_E2E_SLOWMO_MS = ((): number => {
   }
   return Math.max(parsed, 0)
 })()
-
-async function removeUserDataDirAfterShutdown(userDataDir: string): Promise<void> {
-  const started = performance.now()
-  for (let attempt = 0; attempt < 5; attempt += 1) {
-    try {
-      rmSync(userDataDir, { recursive: true, force: true })
-      recordElectronShutdownTiming('profile-removal', started)
-      return
-    } catch (error) {
-      if (attempt === 4) {
-        throw error
-      }
-      // Why: Windows can briefly keep Electron profile files locked after the
-      // process exits; retrying avoids turning a passed flow into teardown noise.
-      await new Promise((resolve) => setTimeout(resolve, 250 * (attempt + 1)))
-    }
-  }
-}
 
 function shouldLaunchHeadful(testInfo: TestInfo): boolean {
   // Why: ORCA_E2E_FORCE_HEADFUL lets a developer watch any spec in a real
@@ -176,6 +160,8 @@ export const test = base.extend<OrcaTestFixtures, OrcaWorkerFixtures>({
   electronApp: async (
     {
       dismissOnboarding,
+      disableDesktopNotifications,
+      stubForgeClis,
       launchEnv,
       orcaAppExtraEnv,
       orcaAppExtraArgs,
@@ -196,9 +182,9 @@ export const test = base.extend<OrcaTestFixtures, OrcaWorkerFixtures>({
       // every other test. Seed a completed-onboarding fresh-install profile:
       // an empty file would make persistence treat the profile as an
       // existing-user upgrade cohort and mount the telemetry notice overlay.
-      writeFileSync(
+      writeE2ECompletedOnboardingProfile(
         path.join(userDataDir, 'orca-data.json'),
-        `${JSON.stringify(getE2ECompletedOnboardingProfile(), null, 2)}\n`
+        disableDesktopNotifications
       )
     }
     const headful = shouldLaunchHeadful(testInfo)
@@ -214,6 +200,9 @@ export const test = base.extend<OrcaTestFixtures, OrcaWorkerFixtures>({
       extraEnv: orcaAppExtraEnv,
       userDataDir
     })
+    if (stubForgeClis) {
+      createForgeCliStubs(homeIsolation.isolatedHome, homeIsolation.env)
+    }
     // Why: ORCA_E2E_SLOWMO_MS adds a pause between every Playwright action so a
     // developer running with ORCA_E2E_FORCE_HEADFUL=1 can actually watch what
     // the test does. Defaults to 0 (no slowdown) for normal runs.
@@ -267,6 +256,8 @@ export const test = base.extend<OrcaTestFixtures, OrcaWorkerFixtures>({
 
   // Default: dismiss the onboarding overlay so it doesn't intercept clicks.
   dismissOnboarding: [true, { option: true }],
+  disableDesktopNotifications: [false, { option: true }],
+  stubForgeClis: [false, { option: true }],
   seedTestRepo: [true, { option: true }],
   // Test-scoped so generation scenarios can isolate Git indexes and remotes.
   seededRepoPath: async ({ testRepoPath }, provideFixture) => {

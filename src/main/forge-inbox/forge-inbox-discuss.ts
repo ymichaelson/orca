@@ -1,6 +1,10 @@
 import type { AgentSessionProtectedAnalysis } from '../../shared/agent-session-protected-analysis'
 import type { ForgeDiscussRefusal } from '../../shared/forge-inbox-rpc-types'
-import type { ForgeInstanceScope, ForgeRunState } from '../../shared/forge-inbox-types'
+import {
+  isForgeAnalysisItemKind,
+  type ForgeInstanceScope,
+  type ForgeRunState
+} from '../../shared/forge-inbox-types'
 import {
   buildForgeDiscussPrompt,
   FORGE_DISCUSS_MAX_MESSAGE_CHARS
@@ -78,6 +82,9 @@ export function createForgeInboxDiscuss(deps: {
       ?.projects.find((candidate) => candidate.projectId === item.projectId)
     if (!project || !project.enabled) {
       return { kind: 'refused', reason: 'project-unavailable' }
+    }
+    if (!isForgeAnalysisItemKind(item.kind)) {
+      return { kind: 'refused', reason: 'run-not-analysed' }
     }
     const subject: AgentSessionProtectedAnalysis = {
       ownerId: item.hostId,

@@ -270,6 +270,14 @@ export class StateSerializationSecretHandlingOperations {
       httpProxyUrl: encrypt(
         PROTECTED_SECRET_SLOT.httpProxyUrl,
         this.runtime.state.settings.httpProxyUrl ?? ''
+      ),
+      projectEventDecisionKey: encrypt(
+        PROTECTED_SECRET_SLOT.projectEventDecisionKey,
+        this.runtime.state.settings.projectEventDecisionKey ?? ''
+      ),
+      projectEventDecisionLayaKey: encrypt(
+        PROTECTED_SECRET_SLOT.projectEventDecisionLayaKey,
+        this.runtime.state.settings.projectEventDecisionLayaKey ?? ''
       )
     }
   }

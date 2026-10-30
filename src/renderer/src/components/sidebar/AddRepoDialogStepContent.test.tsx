@@ -185,6 +185,28 @@ describe('AddRepoDialogStepContent nested imports', () => {
     expect(html).not.toContain('Want to import many repos at once?')
   })
 
+  it('shows the held project event step instead of the add step once a Git project is added', () => {
+    const html = renderStepContent({
+      step: 'add',
+      projectEventStep: {
+        repo: {
+          id: 'repo',
+          path: '/repo',
+          displayName: 'Alpha',
+          badgeColor: '',
+          addedAt: 0,
+          kind: 'git'
+        },
+        target: null,
+        onContinue: vi.fn(),
+        onBusyChange: vi.fn()
+      }
+    })
+
+    expect(html).toContain('Project added: Alpha')
+    expect(html).not.toContain('Browse folder')
+  })
+
   it('opens the in-app filesystem browser for a paired runtime', () => {
     const html = renderStepContent({
       step: 'server-path',

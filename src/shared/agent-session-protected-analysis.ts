@@ -1,4 +1,4 @@
-import { FORGE_ITEM_KINDS, type ForgeItemKind } from './forge-inbox-types'
+import { isForgeAnalysisItemKind, type ForgeAnalysisItemKind } from './forge-inbox-types'
 
 /** Ordinary records stay at 2 so every build reads them; a protected record is 3 so a build that
  *  only knows 2 does not recognize it. */
@@ -12,7 +12,7 @@ export type AgentSessionProtectedAnalysis = {
   ownerId: string
   instanceId: string
   itemId: string
-  analysisKind: ForgeItemKind
+  analysisKind: ForgeAnalysisItemKind
 }
 
 const MARKER_KEYS = ['ownerId', 'instanceId', 'itemId', 'analysisKind']
@@ -42,7 +42,7 @@ export function isAgentSessionProtectedAnalysis(
     typeof itemId === 'string' &&
     POSITIVE_INTEGER.test(itemId) &&
     typeof analysisKind === 'string' &&
-    FORGE_ITEM_KINDS.some((kind) => kind === analysisKind)
+    isForgeAnalysisItemKind(analysisKind)
   )
 }
 

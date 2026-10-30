@@ -85,6 +85,9 @@ export function mergeHostWebUIState(
     agentsShowSearch: local.agentsShowSearch,
     agentsReadFilter: local.agentsReadFilter,
     agentsGroupBy: local.agentsGroupBy,
+    forgeInboxUnreadOnly: local.forgeInboxUnreadOnly,
+    forgeInboxArchiveView: local.forgeInboxArchiveView,
+    forgeInboxCompact: local.forgeInboxCompact,
     activityClearedAtByPaneKey: local.activityClearedAtByPaneKey,
     manuallyUnreadTurnsByPaneKey: local.manuallyUnreadTurnsByPaneKey
   } satisfies Record<PairingLocalUiField, unknown> & Partial<PersistedUIState>

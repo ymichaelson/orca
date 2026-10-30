@@ -1,4 +1,5 @@
 import { runCoalescedProbe, type CoalescedProbes } from '../git/coalesced-probe'
+import { extractExecError } from '../git/exec-error'
 import { NEGATIVE_ENTRY_TTL_MS } from '../git/remote-ref-probe-cache'
 import { glabExecFileAsync } from '../git/runner'
 import { DEFAULT_GITLAB_HOSTS, normalizeGitLabHost } from './project-ref-parser'
@@ -185,9 +186,14 @@ async function probeGlabKnownHosts(
       trimKnownHostsCache()
     }
     return merged
-  } catch {
+  } catch (error) {
+    // Why parse a failed exit: glab returns 1 when any one configured instance fails, but still
+    // prints the working ones — dropping them hid a host behind an unrelated stale entry.
+    const { stdout, stderr } = extractExecError(error)
+    const printed = parseGlabAuthStatusHosts(`${stdout}\n${stderr}`)
+    const remembered = knownHostsCacheByExecutionContext.get(key) ?? []
     // Keep failures uncached so auth or tunnel recovery is discovered later.
-    return knownHostsCacheByExecutionContext.get(key) ?? [...DEFAULT_GITLAB_HOSTS]
+    return Array.from(new Set([...DEFAULT_GITLAB_HOSTS, ...remembered, ...printed]))
   }
 }
 
@@ -195,7 +201,8 @@ export function parseGlabAuthStatusHosts(output: string): string[] {
   const hosts = new Set<string>()
   // Why: self-hosted GitLab can run on a non-default port; preserve it so
   // services on the same hostname remain distinct downstream.
-  for (const match of output.matchAll(/logged in to ([a-zA-Z0-9.-]+(?::\d+)?)/gi)) {
+  // Why the lookbehind: "not logged in to X" names no host, and would otherwise read "X" backwards.
+  for (const match of output.matchAll(/(?<!not )logged in to ([a-zA-Z0-9.-]+(?::\d+)?)/gi)) {
     hosts.add(match[1].toLowerCase())
   }
   for (const line of output.split('\n')) {

@@ -49,7 +49,11 @@ function parseJson(text: string | null): unknown {
   return text === null ? null : JSON.parse(text)
 }
 
-export function itemFromRow(row: SqliteRow, readSeq: number | null): ForgeItem {
+export function itemFromRow(
+  row: SqliteRow,
+  readSeq: number | null,
+  archivedSeq: number | null = null
+): ForgeItem {
   const kind: ForgeItemKind = oneOf(FORGE_ITEM_KINDS, str(row, 'kind'), 'kind')
   const activitySeq = num(row, 'activity_seq')
   return {
@@ -65,7 +69,8 @@ export function itemFromRow(row: SqliteRow, readSeq: number | null): ForgeItem {
     activitySeq,
     createdAt: num(row, 'created_at'),
     updatedAt: num(row, 'updated_at'),
-    unread: readSeq === null || readSeq < activitySeq
+    unread: readSeq === null || readSeq < activitySeq,
+    archived: archivedSeq !== null && archivedSeq >= activitySeq
   }
 }
 
