@@ -89,6 +89,42 @@ describe('project event dispatch wiring', () => {
     expect(claimProjectEventAction(ctx())?.action).toBe('dispatch_agent')
   })
 
+  it('hands a spent context budget to the execution agent instead of blocking', async () => {
+    record('fetch_context')
+    const probe = wiringProbe()
+    const deps = {
+      limits: FORGE_WEBHOOK_DEFAULT_QUEUE_LIMITS,
+      observeContext: observe('a'.repeat(40)),
+      launchAgentFactory: () => createForgeProjectEventAgentLaunch(ledger, launchPorts(probe)),
+      launchAgentLedger: ledger
+    }
+
+    expect(await drainProjectEventActions(ctx(), deps)).toEqual({
+      executed: 1,
+      failed: 0,
+      capped: false
+    })
+    expect(runs()).toEqual([])
+
+    const claim = claimProjectEventDecision(ctx())
+    if (!claim) {
+      throw new Error('expected the re-read delivery to be decidable')
+    }
+    // Why: the second round must be told it cannot fetch again, so the chain cannot loop forever.
+    expect(claim.input.context).toMatchObject({ contextRound: 1, contextFetchAvailable: false })
+    decideProjectEventDelivery(ctx(), claim.deliveryId, decisionFor('dispatch_agent'), claim)
+
+    expect(await drainProjectEventActions(ctx(), deps)).toEqual({
+      executed: 1,
+      failed: 0,
+      capped: false
+    })
+    expect(decisionRow()).toMatchObject({ action_state: 'done', run_id: 1, last_error_code: null })
+    expect(runs()).toEqual([
+      expect.objectContaining({ state: 'running', reason: 'project-event-dispatch' })
+    ])
+  })
+
   it('drains a dispatch through the wired action into a running session', async () => {
     record('dispatch_agent')
     const probe = wiringProbe()

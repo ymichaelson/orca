@@ -1,4 +1,5 @@
 import { createHash, randomUUID } from 'node:crypto'
+import { isForgeAnalysisItemKind } from '../../shared/forge-inbox-types'
 import type {
   ProjectEventDecisionInput,
   ProjectEventDecisionResult
@@ -8,10 +9,15 @@ import { runForgeTransaction } from './forge-inbox-database'
 import { recordProjectEventItem } from './forge-inbox-project-event-delivery-item'
 import { getProjectEventRepoLinkByBinding } from './forge-inbox-project-event-link'
 import { getProjectEventPolicy } from './forge-inbox-project-event-policy'
+import { projectEventSubject } from './forge-inbox-project-event-subject'
 import {
   projectEventDecisionFacts,
   PROJECT_EVENT_DECISION_INPUT_VERSION
 } from './forge-inbox-project-event-decision-facts'
+import {
+  projectEventContextFetchAvailable,
+  projectEventContextRound
+} from './forge-inbox-project-event-context-budget'
 import { projectEventQuestionAnswers } from './forge-inbox-project-event-question-answer'
 import { rowNumber, rowText } from './forge-inbox-rows'
 import {
@@ -115,6 +121,12 @@ export function claimProjectEventDecision(
       finishForgeWebhookDelivery(ctx, deliveryId, 'failed', 'invalid-input')
       return null
     }
+    const contextRound = projectEventContextRound(row.body)
+    // Why: a project-level event is the event itself — there is no GitLab object to re-read, so
+    // offering a fetch would only send the decision down an action that cannot succeed.
+    const subject = binding
+      ? projectEventSubject(row.body, rowNumber(binding, 'gitlab_project_id'))
+      : null
     const input: ProjectEventDecisionInput = {
       rules: policy.rules,
       event: { eventKind: rowText(row, 'event_kind'), ...event },
@@ -126,6 +138,11 @@ export function claimProjectEventDecision(
         gitlabHost: binding?.gitlab_host,
         gitlabPath: binding?.gitlab_path,
         gitlabProjectId: binding?.gitlab_project_id,
+        contextRound,
+        contextFetchAvailable:
+          subject !== null &&
+          isForgeAnalysisItemKind(subject.kind) &&
+          projectEventContextFetchAvailable(contextRound),
         ...(answers.length === 0 ? {} : { answers })
       }
     }

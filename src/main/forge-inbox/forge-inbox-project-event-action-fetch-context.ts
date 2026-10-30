@@ -8,15 +8,18 @@ import type {
   ProjectEventActionClaim,
   ProjectEventActionOutcome
 } from './forge-inbox-project-event-action-types'
+import {
+  projectEventContextFetchAvailable,
+  projectEventContextRound
+} from './forge-inbox-project-event-context-budget'
 import { admitProjectEventDelivery } from './forge-inbox-project-event-delivery'
 import { PROJECT_EVENT_DELIVERY_HEAD_JOIN_SQL } from './forge-inbox-project-event-delivery-head-join'
+import { projectEventDecisionFacts } from './forge-inbox-project-event-decision-facts'
 import type { ProjectEventHeadObservation } from './forge-inbox-project-event-observation'
 import { getProjectEventPolicy } from './forge-inbox-project-event-policy'
-import { isRecord, rowNumber, rowText } from './forge-inbox-rows'
+import { rowNumber, rowText } from './forge-inbox-rows'
 import type { ForgeWebhookQueueLimits } from './forge-inbox-webhook-queue'
 
-/** Only round 0 may read: round 1 already reaches the cap, so a chain fetches GitLab once. */
-const PROJECT_EVENT_CONTEXT_MAX_ROUNDS = 2
 const TITLE_LIMIT = 512
 const TEXT_LIMIT = 256
 
@@ -42,26 +45,6 @@ function blocked(code: string): ProjectEventActionOutcome {
 
 function boundedText(value: string | null, limit: number): string | null {
   return value === null ? null : value.slice(0, limit)
-}
-
-/** A missing, unreadable or forged round reads as zero and is clamped to the cap. */
-function projectEventContextRound(body: unknown): number {
-  if (!(body instanceof Uint8Array)) {
-    return 0
-  }
-  try {
-    const parsed: unknown = JSON.parse(new TextDecoder('utf-8', { fatal: true }).decode(body))
-    if (!isRecord(parsed)) {
-      return 0
-    }
-    const round = parsed.context_round
-    if (typeof round !== 'number' || !Number.isSafeInteger(round) || round < 0) {
-      return 0
-    }
-    return Math.min(round, PROJECT_EVENT_CONTEXT_MAX_ROUNDS)
-  } catch {
-    return 0
-  }
 }
 
 type ContextRequest = { itemId: number; kind: string; versionToken: string; category: string }
@@ -118,9 +101,32 @@ function contextAlreadyFetched(
   return row !== undefined
 }
 
-/** The observed head in the shape the normal decision path already parses. */
-function contextBody(observed: ObservedHead, round: number, projectId: number): Buffer {
+function reportedFacts(body: unknown): Record<string, unknown> {
+  try {
+    return projectEventDecisionFacts(body)
+  } catch {
+    return {}
+  }
+}
+
+function reportedText(facts: Record<string, unknown>, key: string): string | null {
+  const value = facts[key]
+  return typeof value === 'string' ? value.slice(0, TEXT_LIMIT) : null
+}
+
+/**
+ * The observed head in the shape the normal decision path already parses. The event's own facts are
+ * carried over too: a re-read that taught the decision less than the event it re-read could only be
+ * answered with the same fetch again.
+ */
+function contextBody(
+  reported: Record<string, unknown>,
+  observed: ObservedHead,
+  round: number,
+  projectId: number
+): Buffer {
   const reread = { context_round: round, context_source: 'observation' }
+  const ref = reportedText(reported, 'ref')
   if (observed.kind === 'pipeline') {
     return Buffer.from(
       JSON.stringify({
@@ -129,17 +135,27 @@ function contextBody(observed: ObservedHead, round: number, projectId: number): 
         object_attributes: {
           id: observed.iid,
           status: boundedText(observed.state, TEXT_LIMIT) ?? '',
-          sha: boundedText(observed.sha, TEXT_LIMIT)
+          sha: boundedText(observed.sha, TEXT_LIMIT),
+          ...(ref === null ? {} : { ref })
         },
         ...reread
       })
     )
   }
+  const itemId = reported.itemId
+  // Why: a note's text is the note, not the request's description, so only a same-kind event carries it.
+  const text = reported.kind === observed.kind ? reportedText(reported, 'text') : null
+  const sourceBranch = reportedText(reported, 'sourceBranch')
+  const targetBranch = reportedText(reported, 'targetBranch')
   const item = {
+    ...(typeof itemId === 'number' && Number.isSafeInteger(itemId) ? { id: itemId } : {}),
     iid: observed.iid,
     title: boundedText(observed.title, TITLE_LIMIT),
     state: boundedText(observed.state, TEXT_LIMIT),
-    sha: boundedText(observed.sha, TEXT_LIMIT)
+    sha: boundedText(observed.sha, TEXT_LIMIT),
+    ...(sourceBranch === null ? {} : { source_branch: sourceBranch }),
+    ...(targetBranch === null ? {} : { target_branch: targetBranch }),
+    ...(text === null ? {} : { description: text })
   }
   return Buffer.from(
     JSON.stringify({
@@ -166,7 +182,7 @@ export async function fetchProjectEventContext(
     return blocked('invalid-input')
   }
   const round = projectEventContextRound(delivery.body)
-  if (round + 1 >= PROJECT_EVENT_CONTEXT_MAX_ROUNDS) {
+  if (!projectEventContextFetchAvailable(round)) {
     return blocked('context-rounds-exhausted')
   }
   const request = requestContext(ctx, claim)
@@ -214,7 +230,7 @@ export async function fetchProjectEventContext(
     eventKind: observed.kind,
     dedupeKey: `context:${claim.decisionId}:${round + 1}:${observed.versionToken}`,
     correlation: { eventUuid: null, configUuid: null },
-    body: contextBody(observed, round + 1, projectId)
+    body: contextBody(reportedFacts(delivery.body), observed, round + 1, projectId)
   })
   return admitted.ok ? { kind: 'done' } : blocked(admitted.reason)
 }

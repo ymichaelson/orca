@@ -438,7 +438,7 @@ describe('project event decision drain', () => {
           'SELECT input_version, length(input_fingerprint) AS bytes FROM project_event_decisions'
         )
         .get()
-    ).toEqual({ input_version: 3, bytes: 64 })
+    ).toEqual({ input_version: 4, bytes: 64 })
   })
 
   it('stops at one batch of eight and leaves the rest due for the next drain', async () => {
