@@ -10,6 +10,7 @@ import {
 } from '../../shared/forge-inbox-project-event-question'
 import type { SqliteRow } from '../sqlite/sqlite-statement'
 import type { ForgeLedgerContext } from './forge-inbox-context'
+import { recordForgeChange } from './forge-inbox-context'
 import { runForgeTransaction } from './forge-inbox-database'
 import { getProjectEventRepoLinkByBinding } from './forge-inbox-project-event-link'
 import { rowNumber, rowText } from './forge-inbox-rows'
@@ -137,6 +138,7 @@ export function answerProjectEventQuestion(
       return { ok: false, reason: 'not-found' }
     }
     settleAnsweredDelivery(ctx, rowNumber(row, 'delivery_id'))
+    recordForgeChange(ctx, rowNumber(row, 'item_id'), 'question', input.questionId, 'answered')
     return {
       ok: true,
       question: {

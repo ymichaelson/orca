@@ -124,6 +124,32 @@ describe('AgentAwakeService', () => {
     expect(linuxAssertion.start).toHaveBeenCalledTimes(1)
   })
 
+  it('keeps the computer awake for a background hold even with auto mode and no agent', () => {
+    const blocker = createBlocker()
+    const macosAssertion = createMacosAssertion()
+    macosAssertion.start.mockReturnValue(true)
+    const service = new AgentAwakeService({
+      blocker,
+      linuxAssertion: createLinuxAssertion(),
+      macosAssertion,
+      now: () => 1_000,
+      platform: 'darwin',
+      powerMonitor: null,
+      logger: { debug: vi.fn(), warn: vi.fn() }
+    })
+    service.setMode('auto')
+    expect(service.getStatus()).toEqual({ mode: 'auto', active: false })
+
+    const hold = service.acquireExternalHold('forge-inbox:open-question')
+    expect(service.getStatus()).toEqual({ mode: 'auto', active: true })
+    expect(macosAssertion.start).toHaveBeenCalledWith('forge-inbox:open-question')
+
+    hold.release()
+    hold.release()
+    expect(service.getStatus()).toEqual({ mode: 'auto', active: false })
+    expect(macosAssertion.stop).toHaveBeenCalled()
+  })
+
   it('stays awake in On mode without a working agent', () => {
     const blocker = createBlocker()
     const service = createService(() => 1_000, blocker)

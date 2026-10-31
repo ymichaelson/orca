@@ -67,6 +67,8 @@ export async function startOrcadForgeInbox(input: {
     }),
     http: input.http,
     networkReady: Promise.resolve(),
+    // Why: a remote host has no display to wake, so an open question never holds it awake.
+    openQuestionHold: null,
     attach: (service) => runtime.attachForgeInboxService(service),
     notify: (event) => runtime.dispatchMobileNotification(event)
   })

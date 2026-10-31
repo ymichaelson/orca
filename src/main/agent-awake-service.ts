@@ -54,6 +54,8 @@ export class AgentAwakeService {
   private readonly platform: NodeJS.Platform
   private readonly now: () => number
   private readonly statusLease: AgentAwakeStatusLease
+  /** Holds asked for by background work (an open Inbox question) that no agent status row covers. */
+  private externalHolds = 0
   private readonly unsubscribeResume: (() => void) | null
 
   constructor(options: AgentAwakeServiceOptions = {}) {
@@ -116,11 +118,34 @@ export class AgentAwakeService {
     }
   }
 
+  /**
+   * Keeps the computer awake until released, whatever the mode: an answer a person must give before
+   * the agent can continue is not something an idle sleep may swallow.
+   */
+  acquireExternalHold(reason: string): { release: () => void } {
+    this.externalHolds += 1
+    this.refresh(reason)
+    let released = false
+    return {
+      release: () => {
+        if (released) {
+          return
+        }
+        released = true
+        this.externalHolds = Math.max(0, this.externalHolds - 1)
+        this.refresh(`${reason}:released`)
+      }
+    }
+  }
+
   getStatus(): ComputerAwakeStatus {
     const workingAgentCount = this.getEligibleRunningStatusCount()
     return {
       mode: this.mode,
-      active: this.mode === 'on' || (this.mode === 'auto' && workingAgentCount > 0)
+      active:
+        this.mode === 'on' ||
+        this.externalHolds > 0 ||
+        (this.mode === 'auto' && workingAgentCount > 0)
     }
   }
 
@@ -148,7 +173,10 @@ export class AgentAwakeService {
   }
 
   private applyAwakeDecision(reason: string, runningStatusCount: number): void {
-    const shouldBlock = this.mode === 'on' || (this.mode === 'auto' && runningStatusCount > 0)
+    const shouldBlock =
+      this.mode === 'on' ||
+      (this.mode === 'auto' && runningStatusCount > 0) ||
+      this.externalHolds > 0
     if (shouldBlock) {
       const macosAssertionActive = this.startMacosAssertion(reason)
       if (this.platform !== 'darwin' || !macosAssertionActive) {

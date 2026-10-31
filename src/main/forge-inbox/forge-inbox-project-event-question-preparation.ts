@@ -277,4 +277,5 @@ function publishQuestion(
       `UPDATE project_event_decisions SET last_error_code = 'awaiting-user', action_finished_at = ? WHERE id = ?`
     )
     .run(ctx.now(), decisionId)
+  recordForgeChange(ctx, itemId, 'question', decisionId, 'opened')
 }

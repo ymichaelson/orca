@@ -1,4 +1,5 @@
 import type { ForgeLedgerContext } from './forge-inbox-context'
+import { recordForgeChange } from './forge-inbox-context'
 import { runForgeTransaction } from './forge-inbox-database'
 import type {
   ProjectEventActionClaim,
@@ -79,6 +80,7 @@ function openQuestion(
       question.subject.title,
       ctx.now()
     )
+  recordForgeChange(ctx, itemId, 'question', claim.decisionId, 'opened')
 }
 
 type ProjectEventSettleFields = {

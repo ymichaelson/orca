@@ -1,4 +1,5 @@
 import type { SecretStore } from '../../shared/secret-store'
+import type { ForgeChangeEntity } from '../../shared/forge-inbox-types'
 import type Database from '../sqlite/sync-database'
 import { forgeCommitSignal } from './forge-inbox-commit-signal'
 import { rowNumber } from './forge-inbox-rows'
@@ -16,7 +17,7 @@ export type ForgeLedgerContext = {
 export function recordForgeChange(
   ctx: ForgeLedgerContext,
   itemId: number,
-  entity: 'event' | 'run' | 'proposal' | 'receipt',
+  entity: ForgeChangeEntity,
   entityId: number,
   change: string
 ): number {

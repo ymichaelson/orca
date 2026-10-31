@@ -19,6 +19,10 @@ import {
 import type { ForgeInboxDiscuss } from './forge-inbox-discuss'
 import type { ForgeInboxPatchProducer } from './forge-inbox-patch-produce'
 import { createForgeOwnerListener } from './forge-inbox-owner-listener'
+import {
+  attachForgeOpenQuestionWatch,
+  type ForgeOpenQuestionWatch
+} from './forge-inbox-owner-open-question-watch'
 import { getProjectEventActionSchedule } from './forge-inbox-project-event-action'
 import {
   drainProjectEventActions,
@@ -46,6 +50,8 @@ export type ForgeOwnerRunning = {
   confirmations: ReturnType<typeof createForgeWorkerScheduler> | null
   /** Exists only when a sink asked for notifications, so an unwatched ledger is never claimed from. */
   notifications: ForgeNotificationProcessor | null
+  /** Keeps the machine awake while a background question waits for a person; null when it cannot. */
+  openQuestions: ForgeOpenQuestionWatch | null
   /** The only holder of the GitLab write credential; approvals reach GitLab through it. */
   comments: ForgeCommentBroker
   /** Exists only when the host can prove a session record; without one Discuss is refused. */
@@ -217,6 +223,11 @@ export function openForgeOwnerRunning(
   )
   const sinks = options.notificationSinks ?? []
   const notifications = sinks.length > 0 ? createForgeNotificationProcessor(ledger, sinks) : null
+  const openQuestions = attachForgeOpenQuestionWatch(
+    ledger,
+    options.openQuestionHold ?? null,
+    (error) => console.warn('[forge-inbox] open question hold failed', forgeErrorLabel(error))
+  )
   const comments = createForgeCommentBroker({ ledger, http: options.http })
   const patchApply = createForgeOwnerPatchApply({
     ledger,
@@ -248,6 +259,7 @@ export function openForgeOwnerRunning(
     actions,
     confirmations,
     notifications,
+    openQuestions,
     comments,
     discuss: null,
     proposePatch: null,
@@ -276,6 +288,7 @@ export async function closeForgeOwnerRunning(
   const acting = state.actions.stop()
   const confirming = state.confirmations?.stop()
   const published = state.notifications?.stop()
+  state.openQuestions?.stop()
   // Fenced before any wait, so a launch or stop in flight cannot act after the owner began closing.
   state.abort.abort()
   const settled = await Promise.allSettled([

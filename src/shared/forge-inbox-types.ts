@@ -151,10 +151,13 @@ export type ForgeReceipt = {
   updatedAt: number
 }
 
+/** What a change row is about; a question is raised by a decision, so its rows name the question id. */
+export type ForgeChangeEntity = 'event' | 'run' | 'proposal' | 'receipt' | 'question'
+
 export type ForgeChange = {
   seq: number
   itemId: number
-  entity: 'event' | 'run' | 'proposal' | 'receipt'
+  entity: ForgeChangeEntity
   entityId: number
   change: string
   createdAt: number

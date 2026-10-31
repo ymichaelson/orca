@@ -256,6 +256,10 @@ export function createForgeInboxOwnerService(options: ForgeInboxOwnerServiceOpti
     status() {
       return forgeOwnerStatus(phase, running)
     },
+    /** Wakes the open-question hold after an answer landed through another path; a no-op while stopped. */
+    refreshOpenQuestionHold() {
+      running?.openQuestions?.refresh()
+    },
     idle(): boolean {
       return forgeOwnerIdle(running)
     },

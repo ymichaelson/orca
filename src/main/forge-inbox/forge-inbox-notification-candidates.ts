@@ -36,6 +36,7 @@ type ItemFacts = {
 const REASON_PRIORITY: Partial<Record<ForgeNotificationReason, number>> = {
   'proposal-pending': 3,
   'run-failed': 2,
+  'project-event': 2,
   'run-succeeded': 1
 }
 
@@ -243,6 +244,7 @@ export function createForgeCandidateReader(ctx: ForgeLedgerContext) {
         case 'proposal':
           return currentProposalCandidate(change)
         case 'receipt':
+        case 'question':
           return null
       }
     }

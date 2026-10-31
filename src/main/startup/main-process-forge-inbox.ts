@@ -30,6 +30,8 @@ export async function initializeMainProcessForgeInbox(): Promise<void> {
       requireStore: () => runtime.requireStore()
     }),
     networkReady: state.initialProxyApplicationReady,
+    // Why: an Inbox question waits for a person, and an idle sleep would hide the only way to answer.
+    openQuestionHold: state.agentAwakeService ?? null,
     attach: (service) => runtime.attachForgeInboxService(service),
     notify: (event) => runtime.dispatchMobileNotification(event)
   })
