@@ -239,7 +239,15 @@ describe('project event subject of real GitLab payloads', () => {
     if (drained.executed === 1) {
       await harness.complete()
     }
-    return drained
+    // Why: each project-level delivery opens its own item, numbered from the delivery it came from.
+    const projectIid = -admitted.deliveryId
+    return {
+      drained,
+      expected:
+        testCase.subject?.kind === 'project'
+          ? { ...testCase.subject, iid: projectIid }
+          : testCase.subject
+    }
   }
 
   it.each(CASES.filter((testCase) => testCase.subject !== null))(
@@ -249,7 +257,8 @@ describe('project event subject of real GitLab payloads', () => {
       if (subject === null) {
         throw new Error('expected a subject')
       }
-      expect(await askUser(testCase)).toMatchObject({ executed: 1, failed: 0 })
+      const { drained, expected } = await askUser(testCase)
+      expect(drained).toMatchObject({ executed: 1, failed: 0 })
 
       expect(
         ctx.db
@@ -261,10 +270,10 @@ describe('project event subject of real GitLab payloads', () => {
       ).toEqual([
         {
           kind: subject.kind,
-          iid: subject.iid,
+          iid: expected?.iid,
           question: PREPARED_QUESTION,
           subject_kind: subject.kind,
-          subject_iid: subject.iid,
+          subject_iid: expected?.iid,
           subject_title: subject.title ?? (subject.kind === 'project' ? 'group/demo' : '')
         }
       ])
@@ -274,7 +283,7 @@ describe('project event subject of real GitLab payloads', () => {
   it.each(CASES.filter((testCase) => testCase.subject === null))(
     'refuses $name with its own typed code and creates no item',
     async (testCase) => {
-      expect(await askUser(testCase)).toMatchObject({ executed: 0, failed: 1 })
+      expect((await askUser(testCase)).drained).toMatchObject({ executed: 0, failed: 1 })
 
       expect(
         ctx.db.prepare('SELECT action_state, last_error_code FROM project_event_decisions').all()
@@ -301,8 +310,8 @@ describe('project event subject of real GitLab payloads', () => {
       subject: null
     }
 
-    expect(await askUser(mergeRequestNote)).toMatchObject({ executed: 1, failed: 0 })
-    expect(await askUser(pipeline)).toMatchObject({ executed: 1, failed: 0 })
+    expect((await askUser(mergeRequestNote)).drained).toMatchObject({ executed: 1, failed: 0 })
+    expect((await askUser(pipeline)).drained).toMatchObject({ executed: 1, failed: 0 })
 
     expect(ctx.db.prepare('SELECT kind, iid FROM items ORDER BY id').all()).toEqual([
       { kind: 'merge_request', iid: sharedNumber },

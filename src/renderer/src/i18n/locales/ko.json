@@ -20854,9 +20854,7 @@
           "statusRecommendMerge": "병합 가능",
           "statusRecommendChanges": "차단됨, 수정 필요",
           "statusRecommendClose": "종료 권장",
-          "statusRecommendNone": "검토 완료, 조치 없음",
-          "statusReviewed": "검토 완료",
-          "statusReplied": "답변 완료"
+          "statusRecommendNone": "검토 완료, 조치 없음"
         },
         "credential": {
           "title": "자격 증명",

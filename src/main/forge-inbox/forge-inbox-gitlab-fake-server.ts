@@ -160,7 +160,13 @@ export type FakeGitlab = ReturnType<typeof createFakeGitlab>
 const user = (username: string) => ({ id: 1, name: username, username })
 
 export function mergeRequestHookBody(
-  overrides: { actor?: string; sha?: string; reviewers?: string[]; assignees?: string[] } = {}
+  overrides: {
+    actor?: string
+    sha?: string
+    reviewers?: string[]
+    assignees?: string[]
+    action?: string
+  } = {}
 ) {
   return {
     object_kind: 'merge_request',
@@ -168,7 +174,7 @@ export function mergeRequestHookBody(
     project: { id: Number(PROJECT_ID) },
     object_attributes: {
       iid: 7,
-      action: 'update',
+      action: overrides.action ?? 'update',
       state: 'opened',
       last_commit: { id: overrides.sha ?? SHA_A },
       updated_at: '2026-10-01 12:00:00 UTC'

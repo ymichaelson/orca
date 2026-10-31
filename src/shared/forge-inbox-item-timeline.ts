@@ -22,6 +22,8 @@ export type ForgeItemTimelineEntry =
       kind: 'event'
       eventKind: string
       summary: ForgeEventSummary
+      /** The hook delivery this event records; a client names it apart from other events on the item. */
+      deliveryId?: number
     })
   | (TimelineEntryBase & {
       kind: 'decision'

@@ -20854,9 +20854,7 @@
           "statusRecommendMerge": "可合并",
           "statusRecommendChanges": "阻塞，需要修改",
           "statusRecommendClose": "建议关闭",
-          "statusRecommendNone": "已审查，无需操作",
-          "statusReviewed": "已审查",
-          "statusReplied": "已回复"
+          "statusRecommendNone": "已审查，无需操作"
         },
         "credential": {
           "title": "凭据",

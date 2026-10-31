@@ -13,7 +13,7 @@ export type ProjectEventSubject = {
   kind: ForgeItemKind
   iid: number
   /** What fired the event, kept apart from the item it is about. */
-  trigger: { kind: string; id: number | null }
+  trigger: { kind: string; id: number | null; iid?: number }
   /** Set only for a project item, which has no head of its own: what tells one event from the next. */
   fingerprint?: string
 }
@@ -28,8 +28,18 @@ export type ProjectEventSubjectResult =
   | { ok: true; subject: ProjectEventSubject }
   | { ok: false; code: ProjectEventSubjectRefusal }
 
-/** The one item every project-level event of a binding is recorded on. */
+/** Project-level items are numbered from here, one per delivery, so two triggers never merge. */
 export const PROJECT_ITEM_IID = 0
+
+/** The store id of the item a project-level delivery opens: its own row, signed, never 0 or negative. */
+export function projectItemIdOf(deliveryId: number): number {
+  return PROJECT_ITEM_IID - deliveryId
+}
+
+/** The delivery a project-level item was opened for, or null for any other item. */
+export function projectItemDeliveryId(iid: number): number | null {
+  return iid < PROJECT_ITEM_IID ? -iid : null
+}
 
 const HOOK_EVENT_BY_OBJECT_KIND: Record<string, string> = {
   note: 'Note Hook',
@@ -52,9 +62,10 @@ const refuse = (code: ProjectEventSubjectRefusal): ProjectEventSubjectResult => 
  */
 export function projectEventSubject(
   body: unknown,
-  bindingProjectId: number
+  bindingProjectId: number,
+  deliveryId: number
 ): ProjectEventSubject | null {
-  const result = resolveProjectEventSubject(body, bindingProjectId)
+  const result = resolveProjectEventSubject(body, bindingProjectId, deliveryId)
   return result.ok ? result.subject : null
 }
 
@@ -62,6 +73,8 @@ export function projectEventSubject(
 export function resolveProjectEventSubject(
   body: unknown,
   bindingProjectId: number,
+  /** The store row the delivery was admitted as; it names the item a project-level event opens. */
+  deliveryId: number,
   unknownDeliveryKey?: string
 ): ProjectEventSubjectResult {
   if (!(body instanceof Uint8Array)) {
@@ -95,10 +108,10 @@ export function resolveProjectEventSubject(
       : { ok: true, subject: { kind: facts.kind, iid, trigger: { kind: triggerKind, id: null } } }
   }
   if (PROJECT_PUSH_OBJECT_KINDS.some((kind) => kind === triggerKind)) {
-    return projectPushSubject(body, bindingProjectId)
+    return projectPushSubject(body, bindingProjectId, deliveryId)
   }
   if (triggerKind === 'release' || triggerKind === 'deployment') {
-    return projectRootEventSubject(body, triggerKind)
+    return projectRootEventSubject(body, triggerKind, deliveryId)
   }
   const eventKind = HOOK_EVENT_BY_OBJECT_KIND[triggerKind]
   if (eventKind === undefined) {
@@ -106,7 +119,8 @@ export function resolveProjectEventSubject(
       ? refuse('event-subject-unsupported')
       : projectSubject(
           triggerKind,
-          projectEventFingerprint(['unknown', bindingProjectId, unknownDeliveryKey])
+          projectEventFingerprint(['unknown', bindingProjectId, unknownDeliveryKey]),
+          deliveryId
         )
   }
   const parsed = parseGitlabHook(eventKind, Buffer.from(body))
@@ -171,16 +185,22 @@ function itemSubject(
     : { ok: true, subject: { kind, iid, trigger } }
 }
 
-function projectSubject(kind: string, fingerprint: string): ProjectEventSubjectResult {
+function projectSubject(
+  kind: string,
+  fingerprint: string,
+  deliveryId: number
+): ProjectEventSubjectResult {
+  const iid = projectItemIdOf(deliveryId)
   return {
     ok: true,
-    subject: { kind: 'project', iid: PROJECT_ITEM_IID, trigger: { kind, id: null }, fingerprint }
+    subject: { kind: 'project', iid, trigger: { kind, id: null, iid }, fingerprint }
   }
 }
 
 function projectRootEventSubject(
   body: Uint8Array,
-  kind: 'release' | 'deployment'
+  kind: 'release' | 'deployment',
+  deliveryId: number
 ): ProjectEventSubjectResult {
   let parsed: unknown
   try {
@@ -209,7 +229,8 @@ function projectRootEventSubject(
         parsed.tag,
         parsed.name ?? null,
         parsed.description ?? null
-      ])
+      ]),
+      deliveryId
     )
   }
   if (
@@ -227,11 +248,16 @@ function projectRootEventSubject(
       parsed.status,
       parsed.environment,
       parsed.ref ?? null
-    ])
+    ]),
+    deliveryId
   )
 }
 
-function projectPushSubject(body: Uint8Array, bindingProjectId: number): ProjectEventSubjectResult {
+function projectPushSubject(
+  body: Uint8Array,
+  bindingProjectId: number,
+  deliveryId: number
+): ProjectEventSubjectResult {
   const push = parseProjectPush(body)
   if (push === null) {
     return refuse('invalid-input')
@@ -246,8 +272,8 @@ function projectPushSubject(body: Uint8Array, bindingProjectId: number): Project
     ok: true,
     subject: {
       kind: 'project',
-      iid: PROJECT_ITEM_IID,
-      trigger: { kind: push.event, id: null },
+      iid: projectItemIdOf(deliveryId),
+      trigger: { kind: push.event, id: null, iid: projectItemIdOf(deliveryId) },
       fingerprint: push.fingerprint
     }
   }

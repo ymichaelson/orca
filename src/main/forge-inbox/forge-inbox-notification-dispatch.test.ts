@@ -33,8 +33,13 @@ describe('forge inbox notifications through the host startup port', () => {
     await seed.stop()
     const ledger = ForgeInboxLedger.open(fx.dbPath, { secretStore: fx.store })
     const pending = [
-      { kind: 'merge_request', iid: 7, category: 'review-request' },
-      { kind: 'issue', iid: 3, category: 'issue-assignment' }
+      {
+        kind: 'merge_request',
+        iid: 7,
+        category: 'merge-request-opened',
+        action: 'open'
+      },
+      { kind: 'issue', iid: 3, category: 'issue-closed', action: 'close' }
     ] as const
     for (const [index, entry] of pending.entries()) {
       ledger.ingestEvent({
@@ -45,7 +50,11 @@ describe('forge inbox notifications through the host startup port', () => {
         iid: entry.iid,
         dedupeKey: `seed-${index}`,
         eventKind: 'gitlab.seed',
-        payload: { category: entry.category, passive: false },
+        payload: {
+          category: entry.category,
+          passive: false,
+          facts: { kind: entry.kind, action: entry.action }
+        },
         versionToken: `ctx-${index}`,
         sourceOrder: index + 1,
         title: 'Add thing'
@@ -74,8 +83,8 @@ describe('forge inbox notifications through the host startup port', () => {
     await vi.waitFor(() => expect(forgeEvents()).toHaveLength(2))
     const forge = forgeEvents()
     expect(forge.map((event) => event.forgeInbox?.reason).toSorted()).toEqual([
-      'issue-assignment',
-      'review-request'
+      'issue-closed',
+      'merge-request-opened'
     ])
     for (const event of forge) {
       expect(event.forgeInbox?.ownerId).toBe(service.ownerHostId())

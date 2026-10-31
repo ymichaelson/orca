@@ -21546,9 +21546,7 @@
           "statusRecommendMerge": "Prêt à fusionner",
           "statusRecommendChanges": "Bloqué, modifications requises",
           "statusRecommendClose": "À fermer",
-          "statusRecommendNone": "Révisé, aucune action",
-          "statusReviewed": "Révisé",
-          "statusReplied": "Répondu"
+          "statusRecommendNone": "Révisé, aucune action"
         },
         "credential": {
           "title": "Identifiants",

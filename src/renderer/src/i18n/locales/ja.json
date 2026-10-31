@@ -20854,9 +20854,7 @@
           "statusRecommendMerge": "マージ可能",
           "statusRecommendChanges": "ブロック中、修正が必要",
           "statusRecommendClose": "クローズを推奨",
-          "statusRecommendNone": "確認済み、対応不要",
-          "statusReviewed": "確認済み",
-          "statusReplied": "返信済み"
+          "statusRecommendNone": "確認済み、対応不要"
         },
         "credential": {
           "title": "認証情報",

@@ -324,7 +324,19 @@ describe('project event execution capacity', () => {
     expect(fixture.ledger.getRun(runId)?.state).toBe('unverifiable')
   })
 
-  it('coalesces queued pushes to the newest known head while retaining every event', async () => {
+  function notificationItemIds(): number[] {
+    return claimForgeNotifications(ctx()).notifications.map((notification) => notification.itemId)
+  }
+
+  function itemIdOf(deliveryId: number): number {
+    return Number(
+      ctx()
+        .db.prepare('SELECT item_id FROM project_event_decisions WHERE delivery_id = ?')
+        .get(deliveryId)?.item_id
+    )
+  }
+
+  it('keeps every queued push on its own item and runs each once capacity frees', async () => {
     recordPush(SHA_A)
     await drain()
     const older = recordPush(SHA_B)
@@ -335,48 +347,52 @@ describe('project event execution capacity', () => {
     expect(transitionForgeRun(ctx(), 1, { to: 'succeeded' }).ok).toBe(true)
     await drain()
     expect(prompts).toHaveLength(2)
-    expect(prompts[1]?.text).toContain(newestSha)
+    const texts = prompts.map((prompt) => prompt.text)
+    expect(texts[1]).toContain(SHA_B)
+    expect(texts[1]).not.toContain(newestSha)
     expect(decision(older)?.action_state).toBe('done')
     expect(decision(newest)?.action_state).toBe('queued')
     expect(transitionForgeRun(ctx(), 2, { to: 'succeeded' }).ok).toBe(true)
     await drain()
-    expect(decision(newest)).toMatchObject({
-      action_state: 'blocked',
-      last_error_code: 'already-dispatched'
-    })
-    expect(prompts).toHaveLength(2)
+    expect(decision(newest)?.action_state).toBe('done')
+    expect(prompts).toHaveLength(3)
+    expect(prompts[2]?.text).toContain(newestSha)
     expect(ctx().db.prepare('SELECT COUNT(*) AS n FROM events').get()?.n).toBe(3)
-    expect(ctx().db.prepare('SELECT COUNT(*) AS n FROM runs').get()?.n).toBe(2)
+    expect(ctx().db.prepare('SELECT COUNT(*) AS n FROM runs').get()?.n).toBe(3)
   })
 
   it.each(['notify', 'record_only', 'wait'] as const)(
-    'dispatches queued work at the newest head after a later %s decision',
+    'keeps a later %s push queued behind the running one and runs it on its own',
     async (action) => {
       recordPush(SHA_A)
       await drain()
       const waiting = recordPush(SHA_B)
       const newestSha = 'c'.repeat(40)
-      recordPush(newestSha, 'repo-1', action)
+      const newest = recordPush(newestSha, 'repo-1', action)
+      const newestItemId = itemIdOf(newest)
       await drain()
       if (action === 'notify') {
-        expect(claimForgeNotifications(ctx()).notifications).toMatchObject([
-          { reason: 'project-event', trigger: expect.stringMatching(/^v2:[a-f0-9]{64}$/) }
-        ])
+        expect(notificationItemIds().at(-1)).toBe(newestItemId)
       }
       expect(prompts).toHaveLength(1)
       expect(transitionForgeRun(ctx(), 1, { to: 'succeeded' }).ok).toBe(true)
       await drain()
       expect(prompts).toHaveLength(2)
-      expect(prompts[1]?.text).toContain(newestSha)
+      expect(prompts[1]?.text).toContain(SHA_B)
       expect(prompts[1]?.text).toContain('refs/heads/main')
-      expect(prompts[1]?.text).not.toContain(SHA_B)
+      expect(prompts[1]?.text).not.toContain(newestSha)
       expect(decision(waiting)?.action_state).toBe('done')
+      expect(decision(newest)?.action_state).toBe(action === 'wait' ? 'awaiting-event' : 'done')
+      expect(transitionForgeRun(ctx(), 2, { to: 'succeeded' }).ok).toBe(true)
+      await drain()
+      // Only a dispatch pays for a run; a notification or a record ends without one.
+      expect(prompts).toHaveLength(2)
       expect(ctx().db.prepare('SELECT COUNT(*) AS n FROM events').get()?.n).toBe(3)
       expect(ctx().db.prepare('SELECT COUNT(*) AS n FROM runs').get()?.n).toBe(2)
     }
   )
 
-  it('uses the latest event identity when two pushes have the same head', async () => {
+  it('treats the same head pushed twice as two triggers, each with its own item', async () => {
     recordPush(SHA_A)
     await drain()
     const waiting = recordPush(SHA_B, 'repo-1', 'dispatch_agent', {
@@ -384,32 +400,30 @@ describe('project event execution capacity', () => {
       commits: [{ id: SHA_B, message: 'stale commit' }],
       total_commits_count: 1
     })
-    recordPush(SHA_B, 'repo-1', 'notify', {
+    const notified = recordPush(SHA_B, 'repo-1', 'notify', {
       before: 'e'.repeat(40),
       commits: [{ id: SHA_B, message: 'new commit' }],
       total_commits_count: 1
     })
+    const notifiedItemId = itemIdOf(notified)
     await drain()
-    expect(claimForgeNotifications(ctx()).notifications).toMatchObject([
-      { reason: 'project-event', trigger: expect.stringMatching(/^v2:[a-f0-9]{64}$/) }
-    ])
+    expect(notificationItemIds().at(-1)).toBe(notifiedItemId)
     expect(transitionForgeRun(ctx(), 1, { to: 'succeeded' }).ok).toBe(true)
     await drain()
     expect(prompts).toHaveLength(2)
+    // Each item keeps the push it was opened for; a later repeat never rewrites an older one.
     expect(prompts[1]?.text).toContain(SHA_B)
-    expect(prompts[1]?.text).toContain('refs/heads/main')
-    expect(prompts[1]?.text).not.toContain('d'.repeat(40))
-    expect(prompts[1]?.text).not.toContain('stale commit')
+    expect(prompts[1]?.text).toContain('d'.repeat(40))
+    expect(prompts[1]?.text).toContain('stale commit')
     expect(decision(waiting)?.action_state).toBe('done')
+    expect(decision(notified)?.action_state).toBe('done')
     expect(transitionForgeRun(ctx(), 2, { to: 'succeeded' }).ok).toBe(true)
-    const duplicate = recordPush(SHA_B)
+    const repeat = recordPush(SHA_B)
     await drain()
-    expect(decision(duplicate)).toMatchObject({
-      action_state: 'blocked',
-      last_error_code: 'already-dispatched'
-    })
-    expect(prompts).toHaveLength(2)
+    expect(decision(repeat)?.action_state).toBe('done')
+    expect(prompts).toHaveLength(3)
     expect(ctx().db.prepare('SELECT COUNT(*) AS n FROM events').get()?.n).toBe(4)
+    expect(ctx().db.prepare('SELECT COUNT(*) AS n FROM items').get()?.n).toBe(4)
   })
 
   it('bounds the host to two projects, counting canonical host and numeric project identity', async () => {

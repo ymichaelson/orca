@@ -40,7 +40,7 @@ describe('forge inbox owner notification producer', () => {
   afterEach(() => fx.dispose())
 
   const mergeRequest = (sha?: string) =>
-    mergeRequestHookBody({ reviewers: ['me'], ...(sha ? { sha } : {}) })
+    mergeRequestHookBody({ reviewers: ['me'], action: 'approved', ...(sha ? { sha } : {}) })
 
   function apiMovesTo(sha: string): void {
     fx.gitlab.state.mergeRequest.sha = sha
@@ -82,7 +82,7 @@ describe('forge inbox owner notification producer', () => {
     await vi.waitFor(() => expect(published).toHaveLength(1))
     expect(published[0]).toMatchObject({
       ownerId: service.ownerHostId(),
-      reason: 'participating-update'
+      reason: 'merge-request-approved'
     })
 
     await service.stop()

@@ -53,7 +53,7 @@ const MR_BODY = Buffer.from(
       source_branch: 'feat',
       target_branch: 'main'
     },
-    object_attributes: { action: 'update', last_commit: { id: 'sha-1' } }
+    object_attributes: { action: 'open', last_commit: { id: 'sha-1' } }
   })
 )
 const MR_NEXT_BODY = Buffer.from(
@@ -67,7 +67,7 @@ const MR_NEXT_BODY = Buffer.from(
       source_branch: 'feat',
       target_branch: 'main'
     },
-    object_attributes: { action: 'update', last_commit: { id: 'sha-2' } }
+    object_attributes: { action: 'approved', last_commit: { id: 'sha-2' } }
   })
 )
 const PIPELINE_RUNNING_BODY = Buffer.from(
@@ -275,7 +275,7 @@ describe('project event action drain', () => {
       ownerId: ctx.hostId,
       instanceId: 'gitlab:gitlab.test',
       itemId: 1,
-      reason: 'participating-update'
+      reason: 'merge-request-opened'
     })
     expect(deliveryRow()).toMatchObject({ state: 'done', decision_state: 'decided' })
   })
@@ -284,7 +284,7 @@ describe('project event action drain', () => {
     record('notify', MR_BODY, 'first')
     await drainProjectEventActions(ctx, drainDeps())
     expect(claimForgeNotifications(ctx).notifications).toMatchObject([
-      { eventId: 1, reason: 'participating-update' }
+      { eventId: 1, reason: 'merge-request-opened' }
     ])
 
     record('notify', MR_NEXT_BODY, 'second')
@@ -292,7 +292,7 @@ describe('project event action drain', () => {
 
     // The second event is observed after the first notification, so it is its own notification.
     expect(claimForgeNotifications(ctx).notifications).toMatchObject([
-      { eventId: 2, reason: 'participating-update' }
+      { eventId: 2, reason: 'merge-request-approved' }
     ])
     // A webhook-reported revision never advances the head, and keeps its provisional marker so a run
     // is never queued for it.
@@ -640,7 +640,7 @@ describe('project event action drain', () => {
 
     const [reread] = pendingDeliveries()
     expect(reread).toMatchObject({ event_kind: 'pipeline' })
-    expect(projectEventSubject(reread?.body, 3)).toMatchObject({ kind: 'pipeline', iid: 11 })
+    expect(projectEventSubject(reread?.body, 3, 1)).toMatchObject({ kind: 'pipeline', iid: 11 })
     expect(bodyObject(reread?.body).object_attributes).toMatchObject({ id: 11, status: 'success' })
   })
 

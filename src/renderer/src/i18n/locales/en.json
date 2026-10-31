@@ -21737,9 +21737,7 @@
           "statusRecommendMerge": "Ready to merge",
           "statusRecommendChanges": "Blocked, changes needed",
           "statusRecommendClose": "Should be closed",
-          "statusRecommendNone": "Reviewed, no action",
-          "statusReviewed": "Reviewed",
-          "statusReplied": "Replied"
+          "statusRecommendNone": "Reviewed, no action"
         },
         "credential": {
           "title": "Credentials",

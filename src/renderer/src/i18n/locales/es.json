@@ -21320,9 +21320,7 @@
           "statusRecommendMerge": "Listo para fusionar",
           "statusRecommendChanges": "Bloqueado, requiere cambios",
           "statusRecommendClose": "Debería cerrarse",
-          "statusRecommendNone": "Revisado, sin acción",
-          "statusReviewed": "Revisado",
-          "statusReplied": "Respondido"
+          "statusRecommendNone": "Revisado, sin acción"
         },
         "credential": {
           "title": "Credenciales",
