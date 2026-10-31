@@ -18973,6 +18973,16 @@
           "replaced": "Replaced",
           "answerGiven": "You replied.",
           "empty": "No activity yet."
+        },
+        "ForgeInboxRunActivity": {
+          "stepRunning": "running",
+          "stepFailed": "failed",
+          "title": "Activity",
+          "loading": "reading the steps…",
+          "working": "working now",
+          "latest": "latest steps",
+          "editLabel": "Edit",
+          "agentLabel": "Agent"
         }
       }
     },

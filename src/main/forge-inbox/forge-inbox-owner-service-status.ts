@@ -1,8 +1,31 @@
 import { getProjectEventActionSchedule } from './forge-inbox-project-event-action'
 import { getProjectEventDecisionSchedule } from './forge-inbox-project-event-decision'
+import { rowNumber, rowText } from './forge-inbox-rows'
+import type { ForgeLedgerContext } from './forge-inbox-context'
 import type { ForgeOwnerRunning } from './forge-inbox-owner-running'
+import type { ForgeInboxActiveRunView } from '../../shared/forge-inbox-types'
+
+const ACTIVE_RUN_LIMIT = 10
 
 export type ForgeOwnerServicePhase = 'new' | 'running' | 'stopped'
+
+/** Only a run the host is executing right now: a queued or awaiting-approval run is not running. */
+function activeForgeRuns(ctx: ForgeLedgerContext): ForgeInboxActiveRunView[] {
+  return ctx.db
+    .prepare(
+      `SELECT r.id, r.item_id, r.updated_at, i.title
+         FROM runs r JOIN items i ON i.id = r.item_id
+        WHERE i.host_id = ? AND r.state = 'running'
+        ORDER BY r.id LIMIT ${ACTIVE_RUN_LIMIT}`
+    )
+    .all(ctx.hostId)
+    .map((row) => ({
+      runId: rowNumber(row, 'id'),
+      itemId: rowNumber(row, 'item_id'),
+      itemTitle: rowText(row, 'title'),
+      since: rowNumber(row, 'updated_at')
+    }))
+}
 
 export function forgeOwnerStatus(phase: ForgeOwnerServicePhase, state: ForgeOwnerRunning | null) {
   const ctx = state?.ledger.ledgerContext()
@@ -29,7 +52,8 @@ export function forgeOwnerStatus(phase: ForgeOwnerServicePhase, state: ForgeOwne
         state?.decisions?.status().draining === true ||
         state?.actions.status().draining === true ||
         state?.confirmations?.status().draining === true
-    }
+    },
+    activeRuns: ctx ? activeForgeRuns(ctx) : []
   }
 }
 

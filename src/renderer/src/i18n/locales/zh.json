@@ -18666,6 +18666,16 @@
           "replaced": "已取代",
           "answerGiven": "你已回复。",
           "empty": "暂无活动。"
+        },
+        "ForgeInboxRunActivity": {
+          "stepRunning": "执行中",
+          "stepFailed": "失败",
+          "title": "执行动态",
+          "loading": "正在读取步骤…",
+          "working": "正在执行",
+          "latest": "最近步骤",
+          "editLabel": "编辑",
+          "agentLabel": "助手"
         }
       }
     },

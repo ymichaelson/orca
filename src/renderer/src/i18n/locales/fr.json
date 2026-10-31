@@ -18770,6 +18770,16 @@
           "replaced": "Remplacé",
           "answerGiven": "Vous avez répondu.",
           "empty": "Aucune activité pour le moment."
+        },
+        "ForgeInboxRunActivity": {
+          "stepRunning": "en cours",
+          "stepFailed": "échec",
+          "title": "Activité",
+          "loading": "lecture des étapes…",
+          "working": "en cours",
+          "latest": "dernières étapes",
+          "editLabel": "Modification",
+          "agentLabel": "Agent"
         }
       }
     },

@@ -18666,6 +18666,16 @@
           "replaced": "置き換え済み",
           "answerGiven": "あなたが回答しました。",
           "empty": "まだアクティビティはありません。"
+        },
+        "ForgeInboxRunActivity": {
+          "stepRunning": "実行中",
+          "stepFailed": "失敗",
+          "title": "アクティビティ",
+          "loading": "ステップを読み込み中…",
+          "working": "実行中",
+          "latest": "最新のステップ",
+          "editLabel": "編集",
+          "agentLabel": "Agent"
         }
       }
     },

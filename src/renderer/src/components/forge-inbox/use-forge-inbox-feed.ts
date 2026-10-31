@@ -68,7 +68,8 @@ export function useForgeInboxFeed(target: RuntimeClientTarget = LOCAL_TARGET): F
     targetHostId
   )
 
-  useEffect(() => {
+  // Why separate from reload: a periodic status re-read must not reset the list and the detail.
+  const refreshStatus = useCallback(() => {
     const request = ++statusRequest.current
     setLoadingStatus(true)
     setStatusError(null)
@@ -91,7 +92,9 @@ export function useForgeInboxFeed(target: RuntimeClientTarget = LOCAL_TARGET): F
         setStatusError(forgeGenericErrorLabel())
         setLoadingStatus(false)
       })
-  }, [requestTarget, targetHostId, reloadToken])
+  }, [requestTarget, targetHostId])
+
+  useEffect(() => refreshStatus(), [refreshStatus, reloadToken])
 
   const {
     projects,
@@ -288,6 +291,7 @@ export function useForgeInboxFeed(target: RuntimeClientTarget = LOCAL_TARGET): F
     detailError,
     loadingDetail,
     reload,
+    refreshStatus,
     loadMore,
     setUnreadOnly,
     setArchiveView,

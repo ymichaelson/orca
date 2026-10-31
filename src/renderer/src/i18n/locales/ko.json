@@ -18666,6 +18666,16 @@
           "replaced": "대체됨",
           "answerGiven": "답변했습니다.",
           "empty": "아직 활동이 없습니다."
+        },
+        "ForgeInboxRunActivity": {
+          "stepRunning": "실행 중",
+          "stepFailed": "실패",
+          "title": "활동",
+          "loading": "단계를 읽는 중…",
+          "working": "실행 중",
+          "latest": "최근 단계",
+          "editLabel": "편집",
+          "agentLabel": "에이전트"
         }
       }
     },

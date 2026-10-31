@@ -119,6 +119,15 @@ export type ForgeRun = {
   updatedAt: number
 }
 
+/** One run the host is executing right now, named by its item so a reader can open it. */
+export type ForgeInboxActiveRunView = {
+  runId: number
+  itemId: number
+  itemTitle: string
+  /** When the run last changed state; a running run entered `running` then. */
+  since: number
+}
+
 export type ForgeProposal = {
   id: number
   runId: number
