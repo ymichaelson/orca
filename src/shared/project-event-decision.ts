@@ -91,11 +91,15 @@ export type ProjectEventDecisionProbeResult =
   | { ok: false; code: ProjectEventDecisionFailureCode }
 
 export const PROJECT_EVENT_DECISION_CRITERIA: Record<ProjectEventDecisionAction, string> = {
-  record_only: '重复事件或无新增信息，只需记录，无需进一步处理。',
-  notify: '只需根据已经确认的事实发送状态通知，不需要深入分析或生成复杂文本。',
-  wait: '正在等待明确的后续事件，例如最新提交流水线结束、作者更新或用户回复。',
+  record_only:
+    'The event is a duplicate or carries no new information: record it and take no further action.',
+  notify:
+    'A status notification built from already-confirmed facts is sufficient; no deeper analysis or generated prose is required.',
+  wait: 'Waiting for a specific follow-up event, such as the pipeline for the latest commit finishing, the author pushing an update, or a user reply.',
   fetch_context:
-    '仅当 context.contextFetchAvailable 为 true 时可选：需要先获取少量缺失的 GitLab 事实才能决定下一步，不猜测未知事实。轮次已用尽时必须改用其他动作。',
-  dispatch_agent: '需要阅读变更、深入理解讨论、撰写回复或按项目规则执行任务。',
-  ask_user: '已知事实足以确定需要用户作出业务取舍或明确决定。'
+    'Selectable only while context.contextFetchAvailable is true: a small, specific set of missing GitLab facts must be read before the next step can be decided. Do not guess unknown facts. Once the context rounds are exhausted, choose a different action.',
+  dispatch_agent:
+    'Reading changes, understanding the discussion in depth, writing a reply, or carrying out work under the project rules is required.',
+  ask_user:
+    'The known facts establish that the user must make a business trade-off or an explicit decision.'
 }
