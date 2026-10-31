@@ -624,6 +624,7 @@ describe('lazily required packages reach Resources/node_modules', () => {
         [
           'const requireFromMain = createRequire(import.meta.url)',
           "requireFromMain('node:fs')",
+          "requireFromMain('node:sqlite')",
           "requireFromMain('zod')"
         ].join('\n')
       )

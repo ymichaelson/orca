@@ -99,6 +99,9 @@ function isPackagedExternalSpecifier(specifier) {
     !specifier.startsWith('.') &&
     !specifier.startsWith('/') &&
     specifier !== 'electron' &&
+    // Why: `node:` is Node's reserved builtin scheme, but builtinModules omits experimental
+    // ones such as node:sqlite, so that prefix alone proves it is not a package.
+    !specifier.startsWith('node:') &&
     !NODE_BUILTINS.has(specifier)
   )
 }
