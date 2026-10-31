@@ -141,8 +141,19 @@ describe('Inbox list narrowed by handling state', () => {
     ).toBeNull()
   })
 
-  it('labels a row with the recommendation its newest run made', () => {
+  it('labels a row with the recommendation its newest run made and whether it replied', () => {
     const seeded = seedDispatchRun(ctx, {
+      binding: { bindingId: randomUUID(), gitlabHost: 'gitlab.test', gitlabProjectId: 3 },
+      report: {
+        status: 'claims',
+        mode: 'remote-actions',
+        claims: [{ kind: 'comment', target: { kind: 'merge_request', iid: 77 } }],
+        recommendation: { action: 'merge', reason: 'Docs only.' }
+      },
+      storedIid: 77,
+      itemState: 'opened'
+    })
+    const quiet = seedDispatchRun(ctx, {
       binding: { bindingId: randomUUID(), gitlabHost: 'gitlab.test', gitlabProjectId: 3 },
       report: {
         status: 'claims',
@@ -150,14 +161,16 @@ describe('Inbox list narrowed by handling state', () => {
         claims: [],
         recommendation: { action: 'merge', reason: 'Docs only.' }
       },
-      storedIid: 77,
+      storedIid: 78,
       itemState: 'opened'
     })
 
     const rows = fixture.ledger.listItems({ clientId: 'reader-1' }).rows
     expect(rows.find((row) => row.id === seeded.itemId)).toMatchObject({
       latestRunState: 'succeeded',
-      recommendationAction: 'merge'
+      recommendationAction: 'merge',
+      replied: true
     })
+    expect(rows.find((row) => row.id === quiet.itemId)).not.toHaveProperty('replied')
   })
 })

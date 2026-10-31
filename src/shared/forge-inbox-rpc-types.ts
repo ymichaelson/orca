@@ -89,6 +89,8 @@ export type ForgeInboxListItem = ForgeItem & {
   latestRunState?: ForgeRunState
   /** What the latest run advised; absent from older hosts and runs without a recommendation. */
   recommendationAction?: ForgeDispatchRecommendationAction
+  /** The latest run reported posting a comment; absent when it did not. */
+  replied?: boolean
 }
 
 export type ForgeInboxItemsPage = ForgePage<ForgeInboxListItem> & { ownerHostId: string }

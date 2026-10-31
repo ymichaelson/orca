@@ -119,7 +119,8 @@ export function ForgeInboxList({
               const statusTag = forgeItemStatusTag(
                 item.handling,
                 item.latestRunState ?? null,
-                item.recommendationAction ?? null
+                item.recommendationAction ?? null,
+                item.replied === true
               )
               return (
                 <li key={item.id}>

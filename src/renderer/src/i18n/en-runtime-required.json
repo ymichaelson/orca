@@ -580,7 +580,8 @@
           "webhook": "Webhook token"
         },
         "display": {
-          "errorAlreadyDispatched": "This change was already handled, so the agent did not run again."
+          "errorAlreadyDispatched": "This change was already handled, so the agent did not run again.",
+          "statusRecommendChanges": "Blocked, changes needed"
         },
         "forge-inbox-approval-messages": {
           "aborted": "The change stopped before it finished. Check the files before trying again.",

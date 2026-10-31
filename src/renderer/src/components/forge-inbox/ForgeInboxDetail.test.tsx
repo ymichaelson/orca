@@ -176,6 +176,39 @@ describe('ForgeInboxDetail mixed-version display', () => {
     expect(container.textContent).toContain('Confirm merge')
   })
 
+  it('marks a run that replied instead of calling it a bare success', () => {
+    const detail = oldHostDetail()
+    render({
+      ...detail,
+      runs: [
+        {
+          ...RUN,
+          state: 'succeeded',
+          errorCode: null,
+          dispatchConfirmation: {
+            state: 'confirmed',
+            claims: [
+              {
+                kind: 'comment',
+                target: 'issue',
+                iid: 7,
+                outcome: 'confirmed',
+                attribution: 'marker-author'
+              }
+            ],
+            checkedAt: 3
+          }
+        }
+      ],
+      handling: { state: 'done', errorCode: null },
+      timeline: []
+    })
+
+    const header = container.querySelector('header')
+    expect(header?.textContent).toContain('Replied')
+    expect(header?.textContent).not.toContain('Agent run succeeded')
+  })
+
   it('names a project item by its kind alone, with no number or placeholder state', () => {
     const detail = oldHostDetail()
     render({
