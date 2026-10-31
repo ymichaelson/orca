@@ -17,6 +17,7 @@ import {
   forgeTerminalExitLines
 } from './forge-inbox-dispatch-facts-display'
 import { ForgeInboxError, type ForgeInboxRepairActions } from './ForgeInboxError'
+import { ForgeInboxRunActivity } from './ForgeInboxRunActivity'
 
 /** Execution detail stays with the run, so the timeline only points at it by id. */
 export function ForgeInboxRunCard({
@@ -34,6 +35,12 @@ export function ForgeInboxRunCard({
     run.errorCode === 'terminal-handoff' &&
     run.terminalExit === undefined
   const originalSessionId = run.reason === 'project-event-dispatch' ? run.sessionId : null
+  // Why: a finished run already shows its result; only a run still under way has activity to follow.
+  const activitySessionId =
+    run.sessionId !== null &&
+    (run.state === 'running' || run.state === 'awaiting-approval' || run.state === 'unverifiable')
+      ? run.sessionId
+      : null
   const facts = [
     ...(run.dispatchSnapshot ? forgeDispatchSnapshotLines(run.dispatchSnapshot) : []),
     ...(run.terminalExit ? forgeTerminalExitLines(run.terminalExit) : [])
@@ -82,6 +89,9 @@ export function ForgeInboxRunCard({
             'Open original session'
           )}
         </Button>
+      ) : null}
+      {activitySessionId !== null ? (
+        <ForgeInboxRunActivity sessionId={activitySessionId} target={ownerTarget} />
       ) : null}
       {facts.length > 0 ? (
         <ul className="mt-2 list-none text-xs leading-5 text-muted-foreground">

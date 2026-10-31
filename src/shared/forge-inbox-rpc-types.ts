@@ -35,34 +35,12 @@ import type {
   ForgePushFailureReason,
   ForgePushProposalRefusal
 } from './forge-push'
-export type ForgeInboxPhase = 'new' | 'running' | 'stopped'
-
-export type ForgeInboxListenerView = {
-  enabled: boolean
-  listening: boolean
-  port: number | null
-  error: string | null
-}
-
-export type ForgeInboxWorkView = {
-  pending: number
-  needsAuth: number
-  nextAttemptAtMs: number | null
-  draining: boolean
-}
-
-/** A host with no attached runtime capability answers only the unattached variant. */
-export type ForgeInboxStatus =
-  | { ownerHostId: null; available: false; phase: 'unattached' }
-  | {
-      ownerHostId: string
-      available: boolean
-      phase: ForgeInboxPhase
-      running: boolean
-      dormant: boolean
-      listener: ForgeInboxListenerView
-      work: ForgeInboxWorkView
-    }
+export type {
+  ForgeInboxListenerView,
+  ForgeInboxPhase,
+  ForgeInboxStatus,
+  ForgeInboxWorkView
+} from './forge-inbox-status-view'
 
 /** The project paths this host holds items for, so a client can offer the filter itself. */
 export type ForgeInboxProjectsView = { ownerHostId: string; projects: string[] }

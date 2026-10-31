@@ -12,6 +12,8 @@ import {
   type OwnerFixture
 } from './forge-inbox-owner-service-test-kit'
 import { forgeOwnerIdle, forgeOwnerStatus } from './forge-inbox-owner-service-status'
+import { seedRun } from './forge-inbox-project-event-run-cancel-test-kit'
+import { transitionForgeRun } from './forge-inbox-runs'
 import { drainProjectEventActions } from './forge-inbox-project-event-action-drain'
 import {
   claimProjectEventDecision,
@@ -113,6 +115,22 @@ describe('forge owner service idle state', () => {
       await drainProjectEventActions(ctx, { limits: FORGE_WEBHOOK_DEFAULT_QUEUE_LIMITS })
     ).toEqual({ executed: 1, failed: 0, capped: false })
     expect(forgeOwnerIdle(state)).toBe(true)
+  })
+
+  it('names the run the host is executing, and drops it once that run settles', () => {
+    if (!state) {
+      throw new Error('expected a running owner')
+    }
+    const runId = seedRun(state.ledger, { iid: 71, title: 'Fix the thing' })
+
+    const active = forgeOwnerStatus('running', state).activeRuns
+    expect(active).toHaveLength(1)
+    expect(active[0]).toMatchObject({ runId, itemTitle: 'Fix the thing' })
+    expect(active[0]?.since).toEqual(expect.any(Number))
+
+    transitionForgeRun(state.ledger.ledgerContext(), runId, { to: 'succeeded' })
+
+    expect(forgeOwnerStatus('running', state).activeRuns).toEqual([])
   })
 })
 

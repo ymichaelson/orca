@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from 'react'
+import { useCallback, useEffect, useRef, useState } from 'react'
 import { Settings as SettingsIcon } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { useAppStore } from '@/store'
@@ -48,6 +48,7 @@ export default function ForgeInboxPage(): React.JSX.Element {
     detailError,
     loadingDetail,
     reload,
+    refreshStatus,
     loadMore,
     setUnreadOnly,
     setArchiveView,
@@ -73,6 +74,27 @@ export default function ForgeInboxPage(): React.JSX.Element {
     }
     clearPendingInboxItem()
   }, [pendingInboxItem, status, ownerTarget, selectItem, clearPendingInboxItem])
+
+  // Why: a run starting or finishing changes both the list's handling marks and the open item's runs.
+  const activeRunKey =
+    status !== null && status.phase !== 'unattached'
+      ? (status.activeRuns ?? []).map((run) => run.runId).join(',')
+      : null
+  const lastActiveRunKey = useRef<string | null>(null)
+  useEffect(() => {
+    if (activeRunKey === null) {
+      return
+    }
+    if (lastActiveRunKey.current === null) {
+      lastActiveRunKey.current = activeRunKey
+      return
+    }
+    if (lastActiveRunKey.current === activeRunKey) {
+      return
+    }
+    lastActiveRunKey.current = activeRunKey
+    reload()
+  }, [activeRunKey, reload])
 
   const selectInboxItem = useCallback(
     (itemId: number | null) => {
@@ -182,6 +204,9 @@ export default function ForgeInboxPage(): React.JSX.Element {
           loading={loadingStatus}
           onRetry={reload}
           onOpenReceiverSettings={receiverSettings}
+          // Why: the settings pane covers this strip, so a hidden page must stop asking the host.
+          onRefreshStatus={settingsOpen ? undefined : refreshStatus}
+          onSelectActiveRun={selectInboxItem}
         />
 
         <div className="flex min-h-0 flex-1">

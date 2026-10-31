@@ -31,6 +31,8 @@ export type ForgeInboxFeed = {
   detailError: string | null
   loadingDetail: boolean
   reload: () => void
+  /** Re-reads the host status alone, for a live view of the runs it is executing. */
+  refreshStatus: () => void
   loadMore: () => void
   setUnreadOnly: (unread: boolean) => void
   setArchiveView: (view: ForgeInboxArchiveView) => void

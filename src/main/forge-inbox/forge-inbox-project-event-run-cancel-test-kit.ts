@@ -97,6 +97,7 @@ export type SeedRun = {
   iid: number
   gitlabPath?: string
   instanceId?: string
+  title?: string
   reason?: string
   state?: 'queued' | 'running' | 'unverifiable' | 'succeeded'
   sessionId?: string | null
@@ -116,7 +117,8 @@ export function seedRun(ledger: ForgeInboxLedger, options: SeedRun): number {
     eventKind: 'Merge Request Hook',
     versionToken: `v-${randomUUID()}`,
     sourceOrder: 1,
-    payload: {}
+    payload: {},
+    ...(options.title === undefined ? {} : { title: options.title })
   })
   if (ingested.duplicate) {
     throw new Error('fixture expected a first delivery')
