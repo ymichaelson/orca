@@ -53,6 +53,8 @@ export type ForgeEventIngest = ForgeItemKey & {
   sourceOrder: number
   title?: string
   itemState?: string
+  /** Each delivery is its own item, so two identical triggers never merge; the id names them apart. */
+  itemIdSuffix?: number
   /** Passive events record history only; a run is queued solely when this is set. */
   queueRun?: { reason: string }
 }
@@ -63,6 +65,8 @@ export type ForgeIngestResult =
       duplicate: false
       eventId: number
       itemId: number
+      /** The item this event opened; null when it joined one that already existed. */
+      createdItemId: number | null
       revision: number
       /** False when the head did not move (reordered or repeated version). */
       newRevision: boolean
@@ -166,8 +170,22 @@ export type ForgeChange = {
 /** The only parts of a stored event payload a client may see. */
 export type ForgePipelineFacts = { id: number; status?: string; sha?: string; ref?: string }
 
+/** The hook's own account of what happened; unverified, so each field is short plain text. */
+export type ForgeEventFacts = {
+  kind?: string
+  action?: string
+  status?: string
+  state?: string
+  mergeStatus?: string
+  /** The branch or tag a push moved, so two pushes are told apart. */
+  ref?: string
+  hasConflicts?: string
+}
+
 export type ForgeEventSummary = {
   category?: string
+  /** Reported by the hook body; `action` is what tells two updates apart. */
+  facts?: ForgeEventFacts
   passive?: boolean
   completeness?: { complete: boolean; notes?: boolean; diffs?: boolean; ci?: boolean }
   /** observed comes from the API; reported is the unverified hook claim. */
@@ -177,6 +195,8 @@ export type ForgeEventSummary = {
 export type ForgeEvent = {
   id: number
   itemId: number
+  /** The hook delivery this event records, when a hook produced it. */
+  deliveryId?: number
   /** Head revision the event was attached to, which can differ from the version it reported. */
   revision: number
   eventKind: string

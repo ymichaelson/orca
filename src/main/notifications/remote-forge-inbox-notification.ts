@@ -124,6 +124,10 @@ export function remoteForgeInboxNotification(
     ...(notificationSourceId ? { notificationSourceId } : {}),
     notificationId: JSON.stringify([environment.id, notificationId]),
     attentionKey: JSON.stringify([environment.id, event.attentionKey ?? identity]),
-    forgeInbox: { subject, executionHostId, ...forgeNotificationCopy(subject.reason) }
+    forgeInbox: {
+      subject,
+      executionHostId,
+      ...forgeNotificationCopy(subject.reason, subject.action ?? null)
+    }
   }
 }

@@ -18728,6 +18728,27 @@
           "cancel": "取消",
           "pending": "合并中…",
           "confirm": "合并"
+        },
+        "eventLabel": {
+          "on": "{{trigger}} · {{kind}}",
+          "mrOpened": "合并请求已创建",
+          "mrApproved": "合并请求已批准",
+          "mrMerged": "合并请求已合并",
+          "mrClosed": "合并请求已关闭",
+          "mrUpdated": "合并请求已更新",
+          "mergeRequestEvent": "合并请求事件",
+          "note": "新评论",
+          "issueOpened": "议题已创建",
+          "issueClosed": "议题已关闭",
+          "issueUpdated": "议题已更新",
+          "issueEvent": "议题事件",
+          "pipeline": "流水线{{status}}",
+          "push": "新提交",
+          "pushOn": "新提交到 {{ref}}",
+          "tagPush": "标签已推送",
+          "tagPushOn": "标签推送到 {{ref}}",
+          "release": "发布 {{action}}",
+          "deployment": "部署 {{status}}"
         }
       }
     },

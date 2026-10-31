@@ -31,23 +31,28 @@ SELECT * FROM (
   SELECT 'event' AS kind, e.id AS row_id, e.received_at AS at, e.event_kind AS label,
     NULL AS detail, NULL AS error_code, e.payload_json AS payload, NULL AS question_id,
     NULL AS subject_kind, NULL AS subject_iid, NULL AS subject_title, NULL AS stored_question,
-    NULL AS superseded, NULL AS answer_text, NULL AS source
+    NULL AS superseded, NULL AS answer_text, NULL AS source,
+    (SELECT w.id FROM deliveries dl
+       JOIN webhook_deliveries w ON w.host_id = dl.host_id AND w.dedupe_key = dl.dedupe_key
+         AND w.instance_id = dl.instance_id
+       JOIN items i ON i.id = e.item_id
+     WHERE dl.event_id = e.id AND dl.instance_id = i.instance_id LIMIT 1) AS delivery_id
   FROM events e WHERE e.item_id = ?
   UNION ALL
   SELECT 'decision', d.id, d.decided_at, d.action, d.action_state, d.last_error_code, NULL,
-    NULL, NULL, NULL, NULL, NULL, d.superseded, NULL, NULL
+    NULL, NULL, NULL, NULL, NULL, d.superseded, NULL, NULL, NULL
   FROM project_event_decisions d
   WHERE d.item_id = ? AND d.host_id = ?
   UNION ALL
-  SELECT 'run', r.id, r.updated_at, r.state, r.reason, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL
+  SELECT 'run', r.id, r.updated_at, r.state, r.reason, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL
   FROM runs r WHERE r.item_id = ?
   UNION ALL
   SELECT 'question', q.id, q.asked_at, q.status, NULL, NULL, NULL, q.id,
-    q.subject_kind, q.subject_iid, q.subject_title, q.question, NULL, NULL, q.source
+    q.subject_kind, q.subject_iid, q.subject_title, q.question, NULL, NULL, q.source, NULL
   FROM project_event_questions q WHERE q.item_id = ? AND q.host_id = ?
   UNION ALL
   SELECT 'answer', q.id, q.answered_at, 'answered', NULL, NULL, NULL, q.id,
-    NULL, NULL, NULL, NULL, NULL, q.answer, NULL
+    NULL, NULL, NULL, NULL, NULL, q.answer, NULL, NULL
   FROM project_event_questions q
   WHERE q.item_id = ? AND q.host_id = ? AND q.answered_at IS NOT NULL
 )
@@ -103,7 +108,8 @@ function entryOf(row: SqliteRow): ForgeItemTimelineEntry | null {
         id: `event:${rowId}`,
         at,
         eventKind: text(row, 'label') ?? '',
-        summary: summarizeForgeEventPayload(text(row, 'payload') ?? '')
+        summary: summarizeForgeEventPayload(text(row, 'payload') ?? ''),
+        ...(typeof row.delivery_id === 'number' ? { deliveryId: row.delivery_id } : {})
       }
     case 'decision': {
       const action = decisionAction(text(row, 'label'))

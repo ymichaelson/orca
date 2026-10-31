@@ -18728,6 +18728,27 @@
           "cancel": "キャンセル",
           "pending": "マージ中…",
           "confirm": "マージ"
+        },
+        "eventLabel": {
+          "on": "{{kind}}の{{trigger}}",
+          "mrOpened": "マージリクエストをオープン",
+          "mrApproved": "マージリクエストを承認",
+          "mrMerged": "マージリクエストをマージ",
+          "mrClosed": "マージリクエストをクローズ",
+          "mrUpdated": "マージリクエストを更新",
+          "mergeRequestEvent": "マージリクエストのイベント",
+          "note": "新しいコメント",
+          "issueOpened": "イシューをオープン",
+          "issueClosed": "イシューをクローズ",
+          "issueUpdated": "イシューを更新",
+          "issueEvent": "イシューのイベント",
+          "pipeline": "パイプライン{{status}}",
+          "push": "新しいコミット",
+          "pushOn": "{{ref}}への新しいコミット",
+          "tagPush": "タグをプッシュ",
+          "tagPushOn": "{{ref}}にタグをプッシュ",
+          "release": "リリース{{action}}",
+          "deployment": "デプロイ{{status}}"
         }
       }
     },

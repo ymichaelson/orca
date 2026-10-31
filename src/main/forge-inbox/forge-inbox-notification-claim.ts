@@ -20,6 +20,9 @@ export type ForgeNotificationClaim = {
   hasMore: boolean
 }
 
+/** A verdict or a proposal already says the agent's work needs a person, so it speaks for that work. */
+const ABSORBING_PRIORITY = forgeNotificationPriority('run-failed')
+
 /**
  * Advances the internal cursor in the same transaction that selects the batch, so a notification is
  * attempted at most once: a crash after the commit loses it, and nothing re-offers it.
@@ -36,21 +39,33 @@ export function claimForgeNotifications(
       return { notifications: [], scannedThroughSeq: cursor, hasMore: false }
     }
     const reader = createForgeCandidateReader(ctx)
-    const perItem = new Map<number, ForgeNotification>()
+    // Every trigger is announced on its own: nothing is folded into another item's message. Only an
+    // attention that promises the same alert may absorb a lower-ranked one raised later on that item.
+    const notifications: ForgeNotification[] = []
+    const absorbable = new Map<number, ForgeNotification>()
     for (const change of page.changes) {
       const candidate = reader.candidateFor(change)
-      const kept = candidate ? perItem.get(candidate.itemId) : undefined
-      if (
-        candidate &&
-        (!kept ||
-          forgeNotificationPriority(candidate.reason) >= forgeNotificationPriority(kept.reason))
-      ) {
-        perItem.set(candidate.itemId, candidate)
+      if (!candidate) {
+        continue
+      }
+      const held = absorbable.get(candidate.itemId)
+      const rank = forgeNotificationPriority(candidate.reason)
+      if (held !== undefined && rank <= forgeNotificationPriority(held.reason)) {
+        continue
+      }
+      if (held !== undefined) {
+        notifications.splice(notifications.indexOf(held), 1)
+      }
+      notifications.push(candidate)
+      if (rank >= ABSORBING_PRIORITY) {
+        absorbable.set(candidate.itemId, candidate)
+      } else {
+        absorbable.delete(candidate.itemId)
       }
     }
     setForgeClientCursor(ctx, { clientId, lastSeq: page.nextSeq })
     return {
-      notifications: [...perItem.values()].sort((a, b) => a.seq - b.seq),
+      notifications: notifications.sort((a, b) => a.seq - b.seq),
       scannedThroughSeq: page.nextSeq,
       hasMore: page.hasMore
     }

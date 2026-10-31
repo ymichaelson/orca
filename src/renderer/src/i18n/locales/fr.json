@@ -18832,6 +18832,27 @@
           "cancel": "Annuler",
           "pending": "Fusion en cours…",
           "confirm": "Fusionner"
+        },
+        "eventLabel": {
+          "on": "{{trigger}} sur {{kind}}",
+          "mrOpened": "Demande de fusion ouverte",
+          "mrApproved": "Demande de fusion approuvée",
+          "mrMerged": "Demande de fusion fusionnée",
+          "mrClosed": "Demande de fusion fermée",
+          "mrUpdated": "Demande de fusion mise à jour",
+          "mergeRequestEvent": "Événement de demande de fusion",
+          "note": "Nouveau commentaire",
+          "issueOpened": "Ticket ouvert",
+          "issueClosed": "Ticket fermé",
+          "issueUpdated": "Ticket mis à jour",
+          "issueEvent": "Événement de ticket",
+          "pipeline": "Pipeline {{status}}",
+          "push": "Nouveaux commits",
+          "pushOn": "Nouveaux commits sur {{ref}}",
+          "tagPush": "Étiquette envoyée",
+          "tagPushOn": "Étiquette envoyée vers {{ref}}",
+          "release": "Version {{action}}",
+          "deployment": "Déploiement {{status}}"
         }
       }
     },

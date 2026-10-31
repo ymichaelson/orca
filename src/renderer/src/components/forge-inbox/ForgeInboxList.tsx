@@ -9,14 +9,20 @@ import type { ForgeInboxListItem } from '../../../../shared/forge-inbox-rpc-type
 import { forgeItemIdentityParts, formatForgeDateTime } from './forge-inbox-display'
 import { forgeItemStatusTag } from './forge-inbox-item-status'
 import { ForgeInboxListToolbar } from './ForgeInboxListToolbar'
+import type { ForgeItemEventLabels } from './use-forge-item-event-labels'
 
-function itemMeta(item: ForgeInboxListItem): string {
-  const parts = [...forgeItemIdentityParts(item), formatForgeDateTime(item.updatedAt)]
+function itemMeta(item: ForgeInboxListItem, eventLabel: string | null): string {
+  const parts = [
+    ...(eventLabel === null ? [] : [eventLabel]),
+    ...forgeItemIdentityParts(item),
+    formatForgeDateTime(item.updatedAt)
+  ]
   return parts.filter((part) => part.length > 0).join(' · ')
 }
 
 export function ForgeInboxList({
   items,
+  eventLabels = null,
   selectedItemId,
   unreadOnly,
   archiveView,
@@ -40,6 +46,8 @@ export function ForgeInboxList({
   onRetry
 }: {
   items: ForgeInboxListItem[]
+  /** What triggered each item, named from its own detail; absent until it is read. */
+  eventLabels?: ForgeItemEventLabels | null
   selectedItemId: number | null
   unreadOnly: boolean
   archiveView: ForgeInboxArchiveView
@@ -116,6 +124,7 @@ export function ForgeInboxList({
           <ul>
             {items.map((item) => {
               const selected = item.id === selectedItemId
+              const eventLabel = eventLabels?.for(item) ?? null
               const statusTag = forgeItemStatusTag(
                 item.handling,
                 item.latestRunState ?? null,
@@ -151,6 +160,9 @@ export function ForgeInboxList({
                         {item.title || forgeItemIdentityParts(item).slice(0, 2).join(' ')}
                       </span>
                     </span>
+                    {eventLabel === null ? null : (
+                      <span className="truncate text-2xs text-muted-foreground">{eventLabel}</span>
+                    )}
                     {statusTag === null && compact ? null : (
                       <span className="flex min-w-0 flex-wrap items-center gap-2">
                         {statusTag === null ? null : (
@@ -158,7 +170,7 @@ export function ForgeInboxList({
                         )}
                         {compact ? null : (
                           <span className="truncate text-2xs text-muted-foreground">
-                            {itemMeta(item)}
+                            {itemMeta(item, eventLabel)}
                           </span>
                         )}
                       </span>

@@ -37,7 +37,13 @@ describe('forge inbox notification processor', () => {
       iid,
       dedupeKey: `webhook:msg-${order}`,
       eventKind: 'gitlab.merge_request',
-      payload: options.passive ? { passive: true } : { category: 'review-request', passive: false },
+      payload: options.passive
+        ? { passive: true }
+        : {
+            category: 'merge-request-opened',
+            passive: false,
+            facts: { kind: 'merge_request', action: 'open' }
+          },
       versionToken: `ctx-${iid}`,
       sourceOrder: order,
       ...(options.queueRun ? { queueRun: { reason: 'review-request' } } : {})

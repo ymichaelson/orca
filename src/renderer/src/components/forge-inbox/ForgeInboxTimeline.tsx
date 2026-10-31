@@ -1,5 +1,6 @@
 import { Badge } from '@/components/ui/badge'
 import { translate } from '@/i18n/i18n'
+import { forgeEventTriggerLabel } from './forge-inbox-event-label'
 import type { ForgeEventSummary } from '../../../../shared/forge-inbox-types'
 import type { ForgeItemTimelineEntry } from '../../../../shared/forge-inbox-item-timeline'
 import { projectEventAnswerText } from '../../../../shared/forge-inbox-project-event-question'
@@ -91,7 +92,9 @@ function EntryDetail({
     case 'event':
       return (
         <div className="flex flex-wrap items-baseline gap-2">
-          <span className="font-mono text-2xs text-foreground/80">{entry.eventKind}</span>
+          <span className="text-2xs text-foreground/80">
+            {forgeEventTriggerLabel(entry.summary.facts, entry.eventKind)}
+          </span>
           <span className="min-w-0 flex-1 truncate text-muted-foreground">
             {eventDescription(entry.summary)}
           </span>

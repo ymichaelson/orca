@@ -492,7 +492,7 @@ describe('project event action dispatch', () => {
     expect(fake.calls[0]?.prompt).toContain('"kind":"merge_request"')
   })
 
-  it('uses the current head when an older push is dispatched', async () => {
+  it('dispatches an older push against the push its own event reports', async () => {
     record('dispatch_agent', pushBody('b'.repeat(40)), 'Push Hook')
     record('dispatch_agent', pushBody('c'.repeat(40)), 'Push Hook')
     const older = claim()
@@ -508,8 +508,8 @@ describe('project event action dispatch', () => {
       kind: 'done',
       runId: 1
     })
-    expect(fake.calls[0]?.prompt).toContain('c'.repeat(40))
-    expect(fake.calls[0]?.prompt).not.toContain('b'.repeat(40))
+    expect(fake.calls[0]?.prompt).toContain('b'.repeat(40))
+    expect(fake.calls[0]?.prompt).not.toContain('c'.repeat(40))
     expect(runs()).toHaveLength(1)
   })
 

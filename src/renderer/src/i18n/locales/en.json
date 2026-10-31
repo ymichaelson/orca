@@ -19034,6 +19034,27 @@
           "cancel": "Cancel",
           "pending": "Merging…",
           "confirm": "Merge"
+        },
+        "eventLabel": {
+          "on": "{{trigger}} on {{kind}}",
+          "mrOpened": "Merge request opened",
+          "mrApproved": "Merge request approved",
+          "mrMerged": "Merge request merged",
+          "mrClosed": "Merge request closed",
+          "mrUpdated": "Merge request updated",
+          "mergeRequestEvent": "Merge request event",
+          "note": "New comment",
+          "issueOpened": "Issue opened",
+          "issueClosed": "Issue closed",
+          "issueUpdated": "Issue updated",
+          "issueEvent": "Issue event",
+          "pipeline": "Pipeline {{status}}",
+          "push": "New commits",
+          "pushOn": "New commits to {{ref}}",
+          "tagPush": "Tag pushed",
+          "tagPushOn": "Tag pushed to {{ref}}",
+          "release": "Release {{action}}",
+          "deployment": "Deployment {{status}}"
         }
       }
     },

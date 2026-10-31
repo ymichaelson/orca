@@ -145,7 +145,7 @@ export async function observeProjectEventBindingHead(
   if (gitlabPath !== deliveryProjectId) {
     return fail('binding-mismatch')
   }
-  const subject = projectEventSubject(delivery.body, projectId)
+  const subject = projectEventSubject(delivery.body, projectId, claim.deliveryId)
   if (subject === null) {
     return fail('item-identity-missing')
   }

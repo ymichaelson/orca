@@ -21,6 +21,19 @@ const SCOPE = { instanceId: INSTANCE_ID }
 const PROJECT = { projectId: PROJECT_ID, repoId: 'repo-1', enabled: true }
 const NOTIFICATION_CURSOR_ROW = 'SELECT client_id FROM client_cursors ORDER BY client_id'
 
+function pipelineStatus(pipeline: unknown): string | undefined {
+  if (typeof pipeline !== 'object' || pipeline === null || !('observed' in pipeline)) {
+    return undefined
+  }
+  const observed = pipeline.observed
+  return typeof observed === 'object' &&
+    observed !== null &&
+    'status' in observed &&
+    typeof observed.status === 'string'
+    ? observed.status
+    : undefined
+}
+
 describe('forge inbox notification claim', () => {
   let harness: WebhookHarness
   let ledger: ForgeInboxLedger
@@ -39,24 +52,44 @@ describe('forge inbox notification claim', () => {
     ledger = harness.open()
   }
 
+  /**
+   * A binding event names what fired. Without facts only a merge request at a new head carries its
+   * category, which is how the retired category-driven claim is still exercised below.
+   */
   function ingest(
     iid: number,
     options: {
       token?: string
       category?: string
+      action?: string
       passive?: boolean
       pipeline?: unknown
       queueRun?: boolean
       runReason?: string
-      kind?: 'merge_request' | 'issue'
+      kind?: 'merge_request' | 'issue' | 'pipeline'
     } = {}
   ) {
     order += 1
+    const kind = options.kind ?? 'merge_request'
+    const facts =
+      options.action === undefined && options.pipeline === undefined
+        ? {}
+        : {
+            facts: {
+              kind,
+              ...(options.action === undefined ? {} : { action: options.action }),
+              ...(options.pipeline === undefined
+                ? {}
+                : {
+                    status: pipelineStatus(options.pipeline)
+                  })
+            }
+          }
     const result = ledger.ingestEvent({
       hostId: ledger.hostId,
       instanceId: INSTANCE_ID,
       projectId: PROJECT_ID,
-      kind: options.kind ?? 'merge_request',
+      kind,
       iid,
       dedupeKey: `webhook:msg-${order}`,
       eventKind: 'gitlab.merge_request',
@@ -66,7 +99,8 @@ describe('forge inbox notification claim', () => {
           : { category: options.category ?? 'review-request' }),
         passive: options.passive ?? false,
         completeness: { complete: true },
-        ...(options.pipeline ? { pipeline: options.pipeline } : {})
+        ...(options.pipeline ? { pipeline: options.pipeline } : {}),
+        ...(options.passive ? {} : facts)
       },
       versionToken: options.token ?? `sha-${iid}-1`,
       sourceOrder: order,
@@ -97,8 +131,8 @@ describe('forge inbox notification claim', () => {
     }
   }
 
-  it('claims a relevant active event once, and neither a second claim nor a reopen repeats it', () => {
-    const { itemId, eventId } = ingest(7)
+  it('claims a trigger once, and neither a second claim nor a reopen repeats it', () => {
+    const { itemId, eventId } = ingest(7, { action: 'open' })
 
     const first = ledger.notifications.claim()
     expect(first.notifications).toEqual([
@@ -106,7 +140,8 @@ describe('forge inbox notification claim', () => {
         ownerId: ledger.hostId,
         instanceId: INSTANCE_ID,
         itemId,
-        reason: 'review-request',
+        reason: 'merge-request-opened',
+        action: 'merge-request-opened',
         eventId
       })
     ])
@@ -116,7 +151,7 @@ describe('forge inbox notification claim', () => {
   })
 
   it('loses the notification when the process dies after the claim commits, and never retries it', () => {
-    ingest(7)
+    ingest(7, { action: 'open' })
     expect(ledger.notifications.claim().notifications).toHaveLength(1)
     // The claim returned to a caller that died before publishing; nothing re-offers it.
     reopen()
@@ -129,7 +164,7 @@ describe('forge inbox notification claim', () => {
     expect(rows(NOTIFICATION_CURSOR_ROW)).toEqual([])
   })
 
-  it('advances past passive events and recovered CI without alerting, then alerts on failed CI', () => {
+  it('advances past passive events without alerting, then alerts on a failed pipeline', () => {
     ingest(7, {
       passive: true,
       pipeline: { observed: { id: 9, status: 'success', sha: 'sha-7-1' } }
@@ -139,54 +174,46 @@ describe('forge inbox notification claim', () => {
     expect(passive.scannedThroughSeq).toBe(ledger.readChangeHead(SCOPE))
 
     const failed = ingest(8, {
+      kind: 'pipeline',
       category: 'pipeline-failure',
       pipeline: { observed: { id: 10, status: 'failed', sha: 'sha-8-1' } }
     })
     expect(ledger.notifications.claim().notifications).toEqual([
-      expect.objectContaining({ reason: 'pipeline-failure', eventId: failed.eventId })
+      expect.objectContaining({
+        reason: 'pipeline-failure',
+        action: 'pipeline',
+        eventId: failed.eventId
+      })
     ])
   })
 
-  it('ignores an event marked passive even when it carries a category', () => {
-    ingest(7, { passive: true, category: 'review-request' })
+  it('ignores an event marked passive even when it names its trigger', () => {
+    ingest(7, { passive: true, action: 'open' })
     expect(ledger.notifications.claim().notifications).toEqual([])
   })
 
-  it('does not revive an old failure that a newer passive recovery already replaced', () => {
-    ingest(7, {
-      token: 'ctx-1',
-      category: 'pipeline-failure',
-      pipeline: { observed: { id: 9, status: 'failed' } }
-    })
-    ingest(7, {
-      token: 'ctx-2',
+  it('never notifies for an event whose trigger it cannot name', () => {
+    ingest(7, { category: 'review-request' })
+    ingest(8, {
+      kind: 'pipeline',
       passive: true,
-      pipeline: { observed: { id: 10, status: 'success' } }
+      pipeline: { observed: { id: 9, status: 'success' } }
     })
 
     expect(ledger.notifications.claim().notifications).toEqual([])
   })
 
-  it('alerts only for the latest active context, even when an older one is on an earlier page', () => {
-    ingest(7, { token: 'ctx-1' })
-    const latest = ingest(7, { token: 'ctx-2' })
+  it('announces an older trigger on an earlier page rather than folding it into a newer one', () => {
+    const first = ingest(7, { token: 'ctx-1', action: 'open' })
+    const latest = ingest(7, { token: 'ctx-2', action: 'approved' })
 
-    const first = ledger.notifications.claim({ limit: 1 })
-    const second = ledger.notifications.claim({ limit: 1 })
+    const one = ledger.notifications.claim({ limit: 1 })
+    const two = ledger.notifications.claim({ limit: 1 })
 
-    expect([...first.notifications, ...second.notifications]).toEqual([
-      expect.objectContaining({ eventId: latest.eventId })
+    expect([...one.notifications, ...two.notifications]).toEqual([
+      expect.objectContaining({ eventId: first.eventId, reason: 'merge-request-opened' }),
+      expect.objectContaining({ eventId: latest.eventId, reason: 'merge-request-approved' })
     ])
-  })
-
-  it('reports a claimed event notice as no longer current once a newer context replaced it', () => {
-    ingest(7, { token: 'ctx-1' })
-    const [claimed] = ledger.notifications.claim().notifications
-    expect(ledger.notifications.isCurrent(claimed)).toBe(true)
-
-    ingest(7, { token: 'ctx-2', passive: true })
-
-    expect(ledger.notifications.isCurrent(claimed)).toBe(false)
   })
 
   it('treats queued, running and superseded runs, reads, and cursor writes as churn', () => {
@@ -199,17 +226,22 @@ describe('forge inbox notification claim', () => {
     expect(ledger.notifications.claim().notifications).toEqual([])
   })
 
-  it('does not alert twice for the same item, category and context under a new message id', () => {
-    ingest(7, { token: 'sha-7-1' })
-    expect(ledger.notifications.claim().notifications).toHaveLength(1)
+  it('alerts for the same trigger delivered again, because each delivery is its own event', () => {
+    const first = ingest(7, { token: 'sha-7-1', action: 'open' })
+    expect(ledger.notifications.claim().notifications).toEqual([
+      expect.objectContaining({ eventId: first.eventId, reason: 'merge-request-opened' })
+    ])
     reopen()
 
-    ingest(7, { token: 'sha-7-1' })
-    expect(ledger.notifications.claim().notifications).toEqual([])
+    const again = ingest(7, { token: 'sha-7-1', action: 'open' })
+    expect(ledger.notifications.claim().notifications).toEqual([
+      expect.objectContaining({ eventId: again.eventId, reason: 'merge-request-opened' })
+    ])
+    expect(again.eventId).not.toBe(first.eventId)
   })
 
   it('finds the earlier duplicate even when more than a page of newer history sits between', () => {
-    ingest(7, { token: 'sha-7-1' })
+    ingest(7, { token: 'sha-7-1', action: 'open' })
     expect(ledger.notifications.claim().notifications).toHaveLength(1)
     for (let i = 0; i < 130; i += 1) {
       ingest(7, { passive: true, token: 'sha-7-1' })
@@ -219,8 +251,11 @@ describe('forge inbox notification claim', () => {
       drained = ledger.notifications.claim({ limit: 100 })
     }
 
-    ingest(7, { token: 'sha-7-1' })
-    expect(ledger.notifications.claim().notifications).toEqual([])
+    // Why: paging must not lose a trigger that arrived behind a page of quiet history.
+    const again = ingest(7, { token: 'sha-7-1', action: 'open' })
+    expect(ledger.notifications.claim().notifications).toEqual([
+      expect.objectContaining({ eventId: again.eventId, reason: 'merge-request-opened' })
+    ])
   })
 
   it('requires a dispatch verdict even without confirmation metadata, but still announces ordinary success', () => {
@@ -399,18 +434,21 @@ describe('forge inbox notification claim', () => {
     expect(success && isForgeNotificationCurrent(ledger.ledgerContext(), success)).toBe(true)
   })
 
-  it('alerts again for a new context on the same commit, across claims and a reopen, or a different category', () => {
-    ingest(7, { token: 'sha-7-1' })
+  it('alerts again for a new trigger on the same commit, across claims and a reopen', () => {
+    ingest(7, { token: 'sha-7-1', action: 'open' })
     ledger.notifications.claim()
     reopen()
 
-    const newer = ingest(7, { token: 'sha-7-1+note-1' })
+    const labeled = ingest(7, { token: 'sha-7-2', action: 'approved' })
     expect(ledger.notifications.claim().notifications).toEqual([
-      expect.objectContaining({ eventId: newer.eventId, reason: 'review-request' })
+      expect.objectContaining({ eventId: labeled.eventId, reason: 'merge-request-approved' })
     ])
-    const other = ingest(7, { token: 'sha-7-1+note-1', category: 'participating-update' })
+    // Why: an update has no trigger of its own, so it stays in the inbox without a message.
+    ingest(7, { token: 'sha-7-2', action: 'update' })
+    expect(ledger.notifications.claim().notifications).toEqual([])
+    const merged = ingest(7, { token: 'sha-7-3', action: 'merge' })
     expect(ledger.notifications.claim().notifications).toEqual([
-      expect.objectContaining({ eventId: other.eventId, reason: 'participating-update' })
+      expect.objectContaining({ eventId: merged.eventId, reason: 'merge-request-merged' })
     ])
   })
 
@@ -486,8 +524,8 @@ describe('forge inbox notification claim', () => {
     expect(ledger.notifications.claim().notifications).toEqual([])
   })
 
-  it('collapses one item to its pending proposal rather than the earlier event and run noise', () => {
-    const { itemId } = ingest(7, { queueRun: true })
+  it('announces a pending proposal and the event that caused it as two messages', () => {
+    const { itemId, eventId } = ingest(7, { queueRun: true, action: 'open' })
     const run = runningRun(itemId)
     const created = ledger.createProposal({
       runId: run.id,
@@ -499,11 +537,12 @@ describe('forge inbox notification claim', () => {
     }
 
     expect(ledger.notifications.claim().notifications).toEqual([
+      expect.objectContaining({ itemId, eventId, reason: 'merge-request-opened' }),
       expect.objectContaining({ itemId, reason: 'proposal-pending' })
     ])
   })
 
-  it('keeps a pending proposal over a newer event on the same item and context', () => {
+  it('lets a pending proposal speak for the update that triggered it', () => {
     const { itemId } = ingest(7, { queueRun: true })
     const run = runningRun(itemId)
     const created = ledger.createProposal({
@@ -514,27 +553,28 @@ describe('forge inbox notification claim', () => {
     if (!created.ok) {
       throw new Error('proposal fixture rejected')
     }
-    ingest(7, { category: 'participating-update' })
+    ingest(7, { action: 'update' })
 
     expect(ledger.notifications.claim().notifications).toEqual([
       expect.objectContaining({ itemId, reason: 'proposal-pending' })
     ])
   })
 
-  it('collapses repeated meaningful events on one item to the latest in the batch', () => {
-    ingest(7, { token: 'sha-7-1' })
-    const latest = ingest(7, { token: 'sha-7-2' })
-    ingest(8, { token: 'sha-8-1' })
+  it('announces every trigger on one item in the batch, not only the latest', () => {
+    const opened = ingest(7, { token: 'sha-7-1', action: 'open' })
+    const latest = ingest(7, { token: 'sha-7-2', action: 'approved' })
+    const other = ingest(8, { token: 'sha-8-1', action: 'open' })
 
     const claim = ledger.notifications.claim()
-    expect(claim.notifications.map((n) => [n.itemId, n.eventId])).toEqual([
-      [latest.itemId, latest.eventId],
-      [expect.any(Number), expect.any(Number)]
+    expect(claim.notifications.map((n) => [n.itemId, n.eventId, n.reason])).toEqual([
+      [opened.itemId, opened.eventId, 'merge-request-opened'],
+      [latest.itemId, latest.eventId, 'merge-request-approved'],
+      [other.itemId, other.eventId, 'merge-request-opened']
     ])
   })
 
   it('claims disjoint bounded pages that cover the feed exactly once', () => {
-    const itemIds = Array.from({ length: 7 }, (_, i) => ingest(100 + i).itemId)
+    const itemIds = Array.from({ length: 7 }, (_, i) => ingest(100 + i, { action: 'open' }).itemId)
 
     const seen: number[] = []
     const pages: boolean[] = []
@@ -553,7 +593,7 @@ describe('forge inbox notification claim', () => {
   })
 
   it('does not alert for a project disabled or removed since the event', () => {
-    ingest(7)
+    ingest(7, { action: 'open' })
     const revision = ledger.getConfig().configRevision
     ledger.updateConfig(
       revision,
@@ -569,7 +609,7 @@ describe('forge inbox notification claim', () => {
       rpcCallerOperationKey({ kind: 'desktop' }),
       rpcCallerOperationKey({ kind: 'paired-device', deviceId: 'device-1' })
     ]
-    ingest(7)
+    ingest(7, { action: 'open' })
     for (const clientId of readers) {
       ledger.setClientCursor({ ...SCOPE, clientId, lastSeq: 1_000_000 })
       ledger.setClientCursor({ clientId, lastSeq: 1_000_000 })
@@ -581,7 +621,7 @@ describe('forge inbox notification claim', () => {
   })
 
   it('rolls the cursor back with a failed commit, offers nothing, and delivers once after recovery', () => {
-    ingest(7)
+    ingest(7, { action: 'open' })
     const fault = new Database(harness.dbPath)
     fault.exec(
       "CREATE TRIGGER notification_fault BEFORE INSERT ON client_cursors BEGIN SELECT RAISE(ABORT, 'fault'); END"
@@ -603,7 +643,7 @@ describe('forge inbox notification claim', () => {
     const corrupt = new Database(harness.dbPath)
     corrupt.exec("UPDATE events SET payload_json = '{not json'")
     corrupt.close()
-    ingest(8)
+    ingest(8, { action: 'open' })
 
     expect(ledger.notifications.claim().notifications).toHaveLength(1)
     expect(ledger.notifications.claim()).toMatchObject({ notifications: [], hasMore: false })

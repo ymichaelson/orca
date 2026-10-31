@@ -41,7 +41,7 @@ const MR_BODY = Buffer.from(
       source_branch: 'feat',
       target_branch: 'main'
     },
-    object_attributes: { action: 'update', last_commit: { id: 'sha-1' } }
+    object_attributes: { action: 'approved', last_commit: { id: 'sha-1' } }
   })
 )
 const MR_BODY_SHA_2 = Buffer.from(
@@ -49,7 +49,7 @@ const MR_BODY_SHA_2 = Buffer.from(
     object_kind: 'merge_request',
     project: { id: GITLAB_PROJECT_ID },
     merge_request: { iid: 7, title: 'Add thing', state: 'opened' },
-    object_attributes: { action: 'update', last_commit: { id: 'sha-2' } }
+    object_attributes: { action: 'merge', last_commit: { id: 'sha-2' } }
   })
 )
 const NO_IID_BODY = Buffer.from(
@@ -742,7 +742,7 @@ describe('project event binding head observation', () => {
     expect(claimForgeNotifications(ctx).notifications).toEqual([
       expect.objectContaining({
         itemId: linked.itemId,
-        reason: 'participating-update',
+        reason: 'merge-request-approved',
         eventId: 1
       })
     ])
@@ -766,7 +766,7 @@ describe('project event binding head observation', () => {
     expect(claimForgeNotifications(ctx).notifications).toEqual([
       expect.objectContaining({
         itemId: linked.itemId,
-        reason: 'participating-update',
+        reason: 'merge-request-approved',
         eventId: 1
       })
     ])
@@ -789,7 +789,7 @@ describe('project event binding head observation', () => {
     expect(claimForgeNotifications(ctx).notifications).toEqual([
       expect.objectContaining({
         itemId: firstLink.itemId,
-        reason: 'participating-update',
+        reason: 'merge-request-approved',
         eventId: 1
       })
     ])
@@ -804,7 +804,7 @@ describe('project event binding head observation', () => {
     expect(claimForgeNotifications(ctx).notifications).toEqual([
       expect.objectContaining({
         itemId: secondLink.itemId,
-        reason: 'participating-update',
+        reason: 'merge-request-merged',
         eventId: 3
       })
     ])

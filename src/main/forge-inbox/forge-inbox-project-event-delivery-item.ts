@@ -8,7 +8,8 @@ import {
   projectEventSubject,
   resolveProjectEventSubject,
   type ProjectEventSubject,
-  type ProjectEventSubjectRefusal
+  type ProjectEventSubjectRefusal,
+  PROJECT_ITEM_IID
 } from './forge-inbox-project-event-subject'
 import { BINDING_INSTANCE_PREFIX } from './forge-inbox-project-binding'
 import { isRecord, rowNumber, rowText } from './forge-inbox-rows'
@@ -96,6 +97,7 @@ export function ingestProjectEventDeliveryItem(
   const resolved = resolveProjectEventSubject(
     delivery.body,
     binding.gitlab_project_id,
+    input.deliveryId,
     input.allowUnknown ? rowText(delivery, 'dedupe_key') : undefined
   )
   if (!resolved.ok) {
@@ -112,6 +114,12 @@ export function ingestProjectEventDeliveryItem(
   const notificationCategory = input.notify ? projectEventNotificationCategory(actionFacts) : null
   // Why: a pipeline linked to its merge request reports the pipeline's status, not the request's.
   const reportsSubject = subject.trigger.kind !== 'pipeline' || subject.kind === 'pipeline'
+  // The notification producer reads only the category; the reported facts are what names the trigger.
+  const eventPayload = {
+    ...facts,
+    ...(notificationCategory === null ? {} : { category: notificationCategory }),
+    facts: reportedFacts(actionFacts)
+  }
   const result = ingestForgeEventInTransaction(ctx, {
     hostId: ctx.hostId,
     // The configured GitLab origin is the instance identity for this flow.
@@ -119,21 +127,77 @@ export function ingestProjectEventDeliveryItem(
     projectId,
     kind: subject.kind,
     iid: subject.iid,
+    ...(subject.kind === 'project' ? { itemIdSuffix: subject.iid } : {}),
     dedupeKey,
     eventKind: rowText(delivery, 'event_kind'),
     ...revisionOf(subject, input.deliveryId, facts, dedupeKey),
-    // The notification producer reads only the category; the rest of the payload is unchanged.
-    payload: notificationCategory === null ? facts : { ...facts, category: notificationCategory },
-    ...(subject.kind === 'project'
-      ? { title: rowText(binding, 'gitlab_path') }
-      : {
-          ...(reportsSubject && typeof facts.title === 'string' ? { title: facts.title } : {}),
-          ...(reportsSubject && typeof facts.state === 'string' ? { itemState: facts.state } : {})
-        })
+    payload: eventPayload,
+    title: eventTitle(subject.kind, facts, rowText(binding, 'gitlab_path')),
+    ...(reportsSubject && typeof facts.state === 'string' ? { itemState: facts.state } : {})
   })
   const itemId = result.duplicate ? linkedItemId(ctx, result.eventId) : result.itemId
+  // A distinct event always opens its own item; one that merged into an existing item predates this.
+  if (result.duplicate === false && result.createdItemId !== null) {
+    closeEmptyProjectItem(ctx, instanceId, projectId)
+  }
   return { ok: true, itemId, subject, facts: actionFacts, notificationCategory }
 }
+
+/**
+ * What happened, in words a reader can tell apart from the last time: the action for merge requests,
+ * issues, notes and releases; the status for pipelines, deployments and tag pushes; the head ref for
+ * a push. Only short reported fields are kept, never titles or note bodies.
+ */
+function reportedFacts(facts: Record<string, unknown>): Record<string, string> {
+  const read = (key: string): string | undefined => {
+    const value = facts[key]
+    return typeof value === 'string' && value.length > 0 && value.length <= MAX_FACT_CHARS
+      ? value
+      : undefined
+  }
+  const kind = read('kind')
+  const action = read('action')
+  const status = read('status')
+  const state = read('state')
+  const mergeStatus = read('mergeStatus')
+  const ref = read('ref')
+  return {
+    ...(kind === undefined ? {} : { kind }),
+    ...(action === undefined ? {} : { action }),
+    ...(status === undefined ? {} : { status }),
+    ...(state === undefined ? {} : { state }),
+    ...(mergeStatus === undefined ? {} : { mergeStatus }),
+    ...(ref === undefined ? {} : { ref }),
+    ...(typeof facts.hasConflicts === 'boolean' ? { hasConflicts: String(facts.hasConflicts) } : {})
+  }
+}
+
+function eventTitle(
+  kind: ForgeItemKind,
+  facts: Record<string, unknown>,
+  gitlabPath: string
+): string {
+  if (kind === 'project') {
+    return gitlabPath
+  }
+  return typeof facts.title === 'string' ? facts.title : ''
+}
+
+/** An item exists only for the events recorded on it, so an item with none keeps nothing. */
+function closeEmptyProjectItem(
+  ctx: ForgeLedgerContext,
+  instanceId: string,
+  projectId: string
+): void {
+  ctx.db
+    .prepare(
+      `DELETE FROM items WHERE host_id = ? AND instance_id = ? AND project_id = ? AND kind = 'project'
+       AND iid = ? AND NOT EXISTS (SELECT 1 FROM events e WHERE e.item_id = items.id)`
+    )
+    .run(ctx.hostId, instanceId, projectId, PROJECT_ITEM_IID)
+}
+
+const MAX_FACT_CHARS = 64
 
 function revisionOf(
   subject: ProjectEventSubject,
@@ -208,7 +272,7 @@ export function linkExistingProjectEventItem(
   if (!delivery || !binding || typeof binding.gitlab_project_id !== 'number') {
     return
   }
-  const subject = projectEventSubject(delivery.body, binding.gitlab_project_id)
+  const subject = projectEventSubject(delivery.body, binding.gitlab_project_id, input.deliveryId)
   if (!subject) {
     return
   }
@@ -222,9 +286,24 @@ export function linkExistingProjectEventItem(
       subject.kind,
       subject.iid
     )
-  if (item) {
-    ctx.db
-      .prepare('UPDATE project_event_decisions SET item_id = ? WHERE id = ? AND item_id IS NULL')
-      .run(rowNumber(item, 'id'), input.decisionId)
+  if (item === undefined) {
+    return
   }
+  const itemId = rowNumber(item, 'id')
+  // Why: a project item holds one trigger, so the decision must own the item's own event, not another's.
+  const owns =
+    subject.kind !== 'project' ||
+    ctx.db
+      .prepare(
+        `SELECT 1 FROM events WHERE item_id = ? AND version_token = (
+       SELECT r.version_token FROM items i JOIN item_revisions r ON r.item_id = i.id
+        AND r.revision = i.current_revision WHERE i.id = ?) LIMIT 1`
+      )
+      .get(itemId, itemId) !== undefined
+  if (!owns) {
+    return
+  }
+  ctx.db
+    .prepare('UPDATE project_event_decisions SET item_id = ? WHERE id = ? AND item_id IS NULL')
+    .run(itemId, input.decisionId)
 }

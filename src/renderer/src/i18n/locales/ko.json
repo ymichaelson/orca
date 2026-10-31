@@ -18728,6 +18728,27 @@
           "cancel": "취소",
           "pending": "병합 중…",
           "confirm": "병합"
+        },
+        "eventLabel": {
+          "on": "{{kind}} · {{trigger}}",
+          "mrOpened": "머지 요청 열림",
+          "mrApproved": "머지 요청 승인됨",
+          "mrMerged": "머지 요청 병합됨",
+          "mrClosed": "머지 요청 닫힘",
+          "mrUpdated": "머지 요청 업데이트됨",
+          "mergeRequestEvent": "머지 요청 이벤트",
+          "note": "새 댓글",
+          "issueOpened": "이슈 열림",
+          "issueClosed": "이슈 닫힘",
+          "issueUpdated": "이슈 업데이트됨",
+          "issueEvent": "이슈 이벤트",
+          "pipeline": "파이프라인 {{status}}",
+          "push": "새 커밋",
+          "pushOn": "{{ref}}에 새 커밋",
+          "tagPush": "태그 푸시됨",
+          "tagPushOn": "{{ref}}에 태그 푸시됨",
+          "release": "릴리스 {{action}}",
+          "deployment": "배포 {{status}}"
         }
       }
     },

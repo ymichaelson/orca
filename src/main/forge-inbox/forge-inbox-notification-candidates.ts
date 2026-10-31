@@ -1,8 +1,11 @@
-import {
-  FORGE_NOTIFICATION_REASONS,
-  type ForgeInboxNotificationSubject,
-  type ForgeNotificationReason
+import type {
+  ForgeInboxNotificationSubject,
+  ForgeNotificationReason
 } from '../../shared/forge-inbox-notification-subject'
+import {
+  forgeNotificationReasonOf,
+  forgeNotificationTrigger
+} from '../../shared/forge-inbox-notification-trigger'
 import type { ForgeChange } from '../../shared/forge-inbox-types'
 import { readForgeConfigState } from './forge-inbox-config'
 import type { ForgeLedgerContext } from './forge-inbox-context'
@@ -32,7 +35,7 @@ type ItemFacts = {
   currentRevision: number
 }
 
-/** Higher wins when one item has several candidates in a claim; ties go to the later change. */
+/** Higher wins when an attention speaks for a lower-ranked alert on the same item and batch. */
 const REASON_PRIORITY: Partial<Record<ForgeNotificationReason, number>> = {
   'proposal-pending': 3,
   'run-failed': 2,
@@ -91,7 +94,10 @@ export function createForgeCandidateReader(ctx: ForgeLedgerContext) {
   function subjectFor(
     change: ForgeChange,
     reason: ForgeNotificationReason,
-    entity: Pick<ForgeInboxNotificationSubject, 'eventId' | 'runId' | 'proposalId' | 'trigger'>
+    entity: Pick<
+      ForgeInboxNotificationSubject,
+      'eventId' | 'runId' | 'proposalId' | 'trigger' | 'action'
+    >
   ): ForgeNotification | null {
     const facts = itemFacts(change.itemId)
     const projectKey = facts ? `${facts.instanceId}\u0000${facts.projectId}` : ''
@@ -116,50 +122,41 @@ export function createForgeCandidateReader(ctx: ForgeLedgerContext) {
       return null
     }
     const summary = summarizeForgeEventPayload(rowText(row, 'payload_json'))
-    const category = FORGE_NOTIFICATION_REASONS.find((reason) => reason === summary.category)
-    if (!category || summary.passive) {
+    if (summary.passive) {
       return null
     }
-    // A reported revision never moves the head: a later reported or categorized event is newer, and
-    // a category-less observation is a read, not a change. `IS` stays false when `source` is absent.
-    const later = ctx.db
+    // A binding event names its trigger; a message that cannot say what happened is not sent.
+    const action = forgeNotificationTrigger(summary.facts)
+    if (action === null) {
+      return null
+    }
+    const category = forgeNotificationReasonOf(action)
+    // A repeat of the same trigger is the same event; a different one is its own item.
+    const repeated = ctx.db
       .prepare(
         `SELECT 1 AS found FROM events
-         WHERE item_id = ? AND (source_order > ? OR (source_order = ? AND id > ?))
-           AND CASE WHEN json_valid(payload_json)
-             THEN NOT (version_token = ? AND json_extract(payload_json, '$.category') = ?)
-               AND NOT (json_extract(payload_json, '$.source') IS 'observed'
-                 AND json_extract(payload_json, '$.category') IS NULL)
-             ELSE 1 END
+         WHERE item_id = ? AND id < ? AND version_token = ?
+           AND (SELECT change FROM changes WHERE entity = 'event' AND entity_id = events.id
+             ORDER BY seq DESC LIMIT 1) = 'event'
+           AND CASE WHEN json_valid(payload_json) THEN
+             COALESCE(json_extract(payload_json, '$.category'), '') =
+               COALESCE(json_extract(?, '$.category'), '')
+             AND COALESCE(json_extract(payload_json, '$.passive'), 0) = 0 END
          LIMIT 1`
       )
       .get(
         rowNumber(row, 'item_id'),
-        rowNumber(row, 'source_order'),
-        rowNumber(row, 'source_order'),
         change.entityId,
         rowText(row, 'version_token'),
-        category
+        rowText(row, 'payload_json')
       )
-    if (later) {
-      return null
-    }
-    const earlier = ctx.db
-      .prepare(
-        `SELECT 1 AS found FROM events
-         WHERE item_id = ? AND id < ? AND version_token = ?
-           AND CASE WHEN json_valid(payload_json) THEN
-             json_extract(payload_json, '$.category') = ?
-             AND COALESCE(json_extract(payload_json, '$.passive'), 0) = 0 END
-         LIMIT 1`
-      )
-      .get(rowNumber(row, 'item_id'), change.entityId, rowText(row, 'version_token'), category)
-    if (earlier) {
+    if (repeated) {
       return null
     }
     const version = rowText(row, 'version_token')
     return subjectFor(change, category, {
       eventId: change.entityId,
+      action,
       ...(category === 'project-event' && version.startsWith(PROJECT_EVENT_REVISION_PREFIX)
         ? { trigger: version.slice(PROJECT_EVENT_REVISION_PREFIX.length) }
         : {})

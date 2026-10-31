@@ -9,9 +9,37 @@ export const FORGE_NOTIFICATION_REASONS = [
   'project-event',
   'run-succeeded',
   'run-failed',
-  'proposal-pending'
+  'proposal-pending',
+  'merge-request-opened',
+  'merge-request-approved',
+  'merge-request-merged',
+  'merge-request-closed',
+  'note-added',
+  'issue-opened',
+  'issue-closed',
+  'push',
+  'tag-push',
+  'release',
+  'deployment'
 ] as const
 export type ForgeNotificationReason = (typeof FORGE_NOTIFICATION_REASONS)[number]
+
+/** What actually fired, said plainly: one message per trigger needs a name for each trigger. */
+export const FORGE_NOTIFICATION_TRIGGERS = [
+  'merge-request-opened',
+  'merge-request-approved',
+  'merge-request-merged',
+  'merge-request-closed',
+  'note',
+  'issue-opened',
+  'issue-closed',
+  'pipeline',
+  'push',
+  'tag-push',
+  'release',
+  'deployment'
+] as const
+export type ForgeNotificationTrigger = (typeof FORGE_NOTIFICATION_TRIGGERS)[number]
 
 /**
  * What a Forge notification is about. `ownerId` is the durable Inbox owner UUID, not an
@@ -27,6 +55,8 @@ export type ForgeInboxNotificationSubject = {
   proposalId?: number
   /** Bounded fingerprint of a project-level event, so two different pushes never read as one. */
   trigger?: string
+  /** The trigger in plain words, so a client can say what happened without reading the event. */
+  action?: ForgeNotificationTrigger
 }
 
 /** What a client opens on click: the subject plus the host that client itself reaches the owner through. */
@@ -73,6 +103,13 @@ export function isForgeInboxNotificationClickTarget(
     'trigger' in subject &&
     subject.trigger !== undefined &&
     typeof subject.trigger !== 'string'
+  ) {
+    return false
+  }
+  if (
+    'action' in subject &&
+    subject.action !== undefined &&
+    !FORGE_NOTIFICATION_TRIGGERS.some((trigger) => trigger === subject.action)
   ) {
     return false
   }

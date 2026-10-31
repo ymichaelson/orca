@@ -75,7 +75,11 @@ export function projectEventDispatchHead(
   if (!row) {
     return null
   }
-  const subject = projectEventSubject(row.body, rowNumber(row, 'gitlab_project_id'))
+  const subject = projectEventSubject(
+    row.body,
+    rowNumber(row, 'gitlab_project_id'),
+    claim.deliveryId
+  )
   const kind = rowText(row, 'kind')
   const versionToken = rowText(row, 'version_token')
   const current = kind !== 'project' || row.delivery_event_id === row.head_event_id
@@ -98,7 +102,7 @@ export function projectEventDispatchHead(
     trigger: current
       ? (subject?.trigger ?? null)
       : persistedEvent && typeof persistedEvent.kind === 'string'
-        ? { kind: persistedEvent.kind, id: null }
+        ? { kind: persistedEvent.kind, id: null, iid: rowNumber(row, 'iid') }
         : null,
     push:
       current && kind === 'project' && row.body instanceof Uint8Array
@@ -175,7 +179,9 @@ export function reserveProjectEventDispatch(
       ctx,
       head.itemId,
       PROJECT_EVENT_DISPATCH_RUN_REASON,
-      scope
+      scope,
+      // Why: the decision linked this delivery's own new event, so it is a trigger the ledger must not drop.
+      head.kind === 'project' && head.trigger?.kind === 'push'
     )
     if (queued.kind !== 'queued') {
       return {

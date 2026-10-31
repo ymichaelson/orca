@@ -128,7 +128,7 @@ export function claimProjectEventDecision(
     // Why: a project-level event is the event itself — there is no GitLab object to re-read, so
     // offering a fetch would only send the decision down an action that cannot succeed.
     const subject = binding
-      ? projectEventSubject(row.body, rowNumber(binding, 'gitlab_project_id'))
+      ? projectEventSubject(row.body, rowNumber(binding, 'gitlab_project_id'), deliveryId)
       : null
     const input: ProjectEventDecisionInput = {
       rules: policy.rules,

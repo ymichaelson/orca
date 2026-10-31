@@ -1,5 +1,8 @@
-import type { ForgeEventSummary, ForgePipelineFacts } from '../../shared/forge-inbox-types'
-import { GITLAB_RELEVANCE_CATEGORIES } from './forge-inbox-gitlab-relevance'
+import type {
+  ForgeEventFacts,
+  ForgeEventSummary,
+  ForgePipelineFacts
+} from '../../shared/forge-inbox-types'
 
 const MAX_FACT_TEXT = 512
 
@@ -7,6 +10,38 @@ function record(value: unknown): Record<string, unknown> | null {
   return typeof value === 'object' && value !== null && !Array.isArray(value)
     ? Object.fromEntries(Object.entries(value))
     : null
+}
+
+const MAX_REPORTED_FACT_TEXT = 64
+
+/** The action, state and mergeability a hook body reported, kept as short plain text only. */
+function eventFactsOf(value: unknown): ForgeEventFacts | undefined {
+  const fields = record(value)
+  if (!fields) {
+    return undefined
+  }
+  const pick = (key: string): string | undefined => {
+    const found = fields[key]
+    return typeof found === 'string' && found.length <= MAX_REPORTED_FACT_TEXT ? found : undefined
+  }
+  const kind = pick('kind')
+  const action = pick('action')
+  const status = pick('status')
+  const state = pick('state')
+  const mergeStatus = pick('mergeStatus')
+  const ref = pick('ref')
+  const facts: ForgeEventFacts = {
+    ...(kind === undefined ? {} : { kind }),
+    ...(action === undefined ? {} : { action }),
+    ...(status === undefined ? {} : { status }),
+    ...(state === undefined ? {} : { state }),
+    ...(mergeStatus === undefined ? {} : { mergeStatus }),
+    ...(ref === undefined ? {} : { ref }),
+    ...(fields.hasConflicts === 'true' || fields.hasConflicts === 'false'
+      ? { hasConflicts: fields.hasConflicts }
+      : {})
+  }
+  return Object.keys(facts).length === 0 ? undefined : facts
 }
 
 function completenessOf(value: unknown): ForgeEventSummary['completeness'] {
@@ -61,13 +96,13 @@ export function summarizeForgeEventPayload(payloadJson: string): ForgeEventSumma
   if (!payload) {
     return {}
   }
-  const category = [...GITLAB_RELEVANCE_CATEGORIES, 'project-event'].find(
-    (known) => known === payload.category
-  )
+  const category = typeof payload.category === 'string' ? payload.category : undefined
+  const facts = payload.facts === undefined ? undefined : eventFactsOf(payload.facts)
   const completeness = completenessOf(payload.completeness)
   const pipeline = pipelineOf(payload.pipeline)
   return {
     ...(category ? { category } : {}),
+    ...(facts ? { facts } : {}),
     ...(payload.passive === true ? { passive: true } : {}),
     ...(completeness ? { completeness } : {}),
     ...(pipeline ? { pipeline } : {})

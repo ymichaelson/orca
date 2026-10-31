@@ -52,7 +52,7 @@ export function ingestForgeEventInTransaction(
     return { duplicate: true, eventId: seenId }
   }
   const now = ctx.now()
-  const { itemId, revision, newRevision, advanced } = upsertItemRevision(ctx, input)
+  const { itemId, createdItemId, revision, newRevision, advanced } = upsertItemRevision(ctx, input)
   const event = db
     .prepare(
       `INSERT INTO events (item_id, revision, event_kind, version_token, source_order,
@@ -88,13 +88,19 @@ export function ingestForgeEventInTransaction(
     itemId
   )
   const runId = input.queueRun ? queueForgeItemRun(ctx, itemId, input.queueRun.reason) : null
-  return { duplicate: false, eventId, itemId, revision, newRevision, seq, runId }
+  return { duplicate: false, eventId, itemId, createdItemId, revision, newRevision, seq, runId }
 }
 
 function upsertItemRevision(
   ctx: ForgeLedgerContext,
   input: ForgeEventIngest
-): { itemId: number; revision: number; newRevision: boolean; advanced: boolean } {
+): {
+  itemId: number
+  createdItemId: number | null
+  revision: number
+  newRevision: boolean
+  advanced: boolean
+} {
   const { db } = ctx
   const now = ctx.now()
   const existing = db
@@ -102,7 +108,13 @@ function upsertItemRevision(
       `SELECT id, current_revision, head_order FROM items
        WHERE host_id = ? AND instance_id = ? AND project_id = ? AND kind = ? AND iid = ?`
     )
-    .get(input.hostId, input.instanceId, input.projectId, input.kind, input.iid)
+    .get(
+      input.hostId,
+      input.instanceId,
+      input.projectId,
+      input.kind,
+      input.itemIdSuffix ?? input.iid
+    )
   if (!existing) {
     const created = db
       .prepare(
@@ -115,7 +127,7 @@ function upsertItemRevision(
         input.instanceId,
         input.projectId,
         input.kind,
-        input.iid,
+        input.itemIdSuffix ?? input.iid,
         input.title ?? '',
         input.itemState ?? 'unknown',
         input.sourceOrder,
@@ -124,25 +136,25 @@ function upsertItemRevision(
       )
     const itemId = rowNumber({ v: created.lastInsertRowid }, 'v')
     insertRevision(ctx, itemId, 1, input.versionToken, input.sourceOrder)
-    return { itemId, revision: 1, newRevision: true, advanced: true }
+    return { itemId, createdItemId: itemId, revision: 1, newRevision: true, advanced: true }
   }
   const itemId = rowNumber(existing, 'id')
   const head = rowNumber(existing, 'current_revision')
   if (input.sourceOrder <= rowNumber(existing, 'head_order')) {
     // Not newer than the watermark: the event is kept, the head stays put.
-    return { itemId, revision: head, newRevision: false, advanced: false }
+    return { itemId, createdItemId: null, revision: head, newRevision: false, advanced: false }
   }
   db.prepare('UPDATE items SET head_order = ? WHERE id = ?').run(input.sourceOrder, itemId)
   const current = db
     .prepare('SELECT version_token FROM item_revisions WHERE item_id = ? AND revision = ?')
     .get(itemId, head)
   if (current?.version_token === input.versionToken) {
-    return { itemId, revision: head, newRevision: false, advanced: true }
+    return { itemId, createdItemId: null, revision: head, newRevision: false, advanced: true }
   }
   const revision = head + 1
   insertRevision(ctx, itemId, revision, input.versionToken, input.sourceOrder)
   db.prepare('UPDATE items SET current_revision = ? WHERE id = ?').run(revision, itemId)
-  return { itemId, revision, newRevision: true, advanced: true }
+  return { itemId, createdItemId: null, revision, newRevision: true, advanced: true }
 }
 
 function insertRevision(
@@ -219,7 +231,9 @@ export function queueForgeItemRunOutcome(
     // The one minimum task a declined preparation owes: a deliberate second turn on the same head.
     | { purpose: 'question-task'; deliveryId: number }
     | { purpose: 'answered'; questionId: number }
-    | null = null
+    | null = null,
+  /** One trigger per item: the decision's own new event is a distinct run, not a repeat of the last. */
+  distinctEvent = false
 ): QueueForgeItemRunOutcome {
   const { db } = ctx
   const now = ctx.now()
@@ -244,9 +258,11 @@ export function queueForgeItemRunOutcome(
   // A head already dispatched under these rules is a claim, not a fresh bill: a repeat delivery,
   // or a return to a head analysed earlier, must not start or pay for a second analysis. Only
   // superseded runs are exempt — those never ran, so queuing for them is the first payment.
-  const claimed = db
-    .prepare(
-      `SELECT 1 FROM runs r
+  const claimed = distinctEvent
+    ? null
+    : db
+        .prepare(
+          `SELECT 1 FROM runs r
          JOIN items i ON i.id = r.item_id
          JOIN item_revisions head ON head.item_id = i.id AND head.revision = i.current_revision
         WHERE r.item_id = ? AND r.context_digest = head.version_token
@@ -263,14 +279,14 @@ export function queueForgeItemRunOutcome(
               SELECT 1 FROM project_event_decisions d WHERE d.run_id = r.id AND d.action = 'ask_user')
           END
         LIMIT 1`
-    )
-    .get(
-      itemId,
-      policyGeneration,
-      scope?.purpose ?? 'ordinary',
-      scope?.purpose === 'question' ? scope.deliveryId : null,
-      scope?.purpose === 'answered' ? scope.questionId : null
-    )
+        )
+        .get(
+          itemId,
+          policyGeneration,
+          scope?.purpose ?? 'ordinary',
+          scope?.purpose === 'question' ? scope.deliveryId : null,
+          scope?.purpose === 'answered' ? scope.questionId : null
+        )
   if (claimed) {
     return { kind: 'claimed' }
   }

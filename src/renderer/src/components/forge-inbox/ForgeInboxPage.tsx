@@ -12,6 +12,7 @@ import { ForgeInboxOwnerSelector } from './ForgeInboxOwnerSelector'
 import { ForgeInboxSettingsPanel } from './ForgeInboxSettingsPanel'
 import { ForgeInboxStatusStrip } from './ForgeInboxStatusStrip'
 import { useForgeInboxFeed } from './use-forge-inbox-feed'
+import { useForgeItemEventLabels } from './use-forge-item-event-labels'
 
 export default function ForgeInboxPage(): React.JSX.Element {
   const closePage = useAppStore((state) => state.closeInboxPage)
@@ -25,6 +26,7 @@ export default function ForgeInboxPage(): React.JSX.Element {
   const routeError = useAppStore((state) => state.forgeInboxRouteError)
   const clearRouteError = useAppStore((state) => state.clearForgeInboxRouteError)
   const [settingsOpen, setSettingsOpen] = useState(false)
+
   const compact = useAppStore((state) => state.forgeInboxCompact)
   const {
     status,
@@ -58,6 +60,7 @@ export default function ForgeInboxPage(): React.JSX.Element {
     setItemArchived,
     selectItem
   } = useForgeInboxFeed(ownerTarget)
+  const eventLabels = useForgeItemEventLabels(status?.ownerHostId ?? null, items, ownerTarget)
   // The repo catalog is this computer's, so only a repo on this computer gets a project-settings shortcut.
   const linkedRepos = detail?.repoId
     ? repos.filter((repo) => repo.id === detail.repoId && isRepoOnCatalogHost(repo))
@@ -212,6 +215,7 @@ export default function ForgeInboxPage(): React.JSX.Element {
         <div className="flex min-h-0 flex-1">
           <ForgeInboxList
             items={items}
+            eventLabels={eventLabels}
             selectedItemId={selectedItemId}
             unreadOnly={unreadOnly}
             archiveView={archiveView}

@@ -583,6 +583,26 @@
           "errorAlreadyDispatched": "This change was already handled, so the agent did not run again.",
           "statusRecommendChanges": "Blocked, changes needed"
         },
+        "eventLabel": {
+          "deployment": "Deployment {{status}}",
+          "issueClosed": "Issue closed",
+          "issueEvent": "Issue event",
+          "issueOpened": "Issue opened",
+          "issueUpdated": "Issue updated",
+          "mergeRequestEvent": "Merge request event",
+          "mrApproved": "Merge request approved",
+          "mrClosed": "Merge request closed",
+          "mrMerged": "Merge request merged",
+          "mrOpened": "Merge request opened",
+          "mrUpdated": "Merge request updated",
+          "note": "New comment",
+          "pipeline": "Pipeline {{status}}",
+          "push": "New commits",
+          "pushOn": "New commits to {{ref}}",
+          "release": "Release {{action}}",
+          "tagPush": "Tag pushed",
+          "tagPushOn": "Tag pushed to {{ref}}"
+        },
         "forge-inbox-approval-messages": {
           "aborted": "The change stopped before it finished. Check the files before trying again.",
           "alreadyApplied": "This file change was already applied.",
