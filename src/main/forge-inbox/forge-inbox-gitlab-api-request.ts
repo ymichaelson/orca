@@ -27,6 +27,10 @@ export type GitlabApiErrorCode =
   | 'missing-checkout'
   | 'stale-config'
   | 'no-credential'
+  /** 409: the write's precondition moved, so nothing was written. */
+  | 'conflict'
+  /** 405/422: GitLab refused the write itself, so nothing was written. */
+  | 'rejected'
 
 export type GitlabApiFailure = { ok: false; code: GitlabApiErrorCode; retryAfterMs?: number }
 export type GitlabApiResult<T> = { ok: true; data: T; complete: boolean } | GitlabApiFailure
@@ -46,6 +50,7 @@ export type GitlabApiTextRequester = {
 /** Writes carry their own credential; the read requester never gains this capability. */
 export type GitlabApiWriteRequester = {
   post(path: string, body: unknown): Promise<GitlabJsonResponse | GitlabApiFailure>
+  put(path: string, body: unknown): Promise<GitlabJsonResponse | GitlabApiFailure>
 }
 
 export type GitlabJsonResponse = { ok: true; json: unknown; headers: Headers }
@@ -73,7 +78,10 @@ export type GitlabApiInstanceScope = {
 const STATUS_CODES: Record<number, GitlabApiErrorCode> = {
   401: 'unauthorized',
   403: 'forbidden',
-  404: 'not-found'
+  404: 'not-found',
+  405: 'rejected',
+  409: 'conflict',
+  422: 'rejected'
 }
 
 function retryAfterMs(response: Response): number | undefined {
@@ -135,7 +143,7 @@ function apiUrl(
 }
 
 type GitlabRequestSpec = {
-  method: 'GET' | 'POST'
+  method: 'GET' | 'POST' | 'PUT'
   path: string
   query: Record<string, string>
   body?: string
@@ -304,19 +312,25 @@ export function createGitlabApiWriteRequester(
   deps: GitlabApiDeps,
   scope: GitlabApiScope
 ): GitlabApiWriteRequester {
-  return {
-    post(path, body) {
-      const payload = JSON.stringify(body ?? null)
-      if (Buffer.byteLength(payload, 'utf8') > GITLAB_API_WRITE_MAX_BYTES) {
-        return Promise.resolve({ ok: false, code: 'request-too-large' })
-      }
-      return sendJson(deps, scope, {
-        method: 'POST',
-        path,
-        query: {},
-        body: payload,
-        recheckStaleAfterResponse: false
-      })
+  function write(
+    method: 'POST' | 'PUT',
+    path: string,
+    body: unknown
+  ): Promise<GitlabJsonResponse | GitlabApiFailure> {
+    const payload = JSON.stringify(body ?? null)
+    if (Buffer.byteLength(payload, 'utf8') > GITLAB_API_WRITE_MAX_BYTES) {
+      return Promise.resolve({ ok: false, code: 'request-too-large' })
     }
+    return sendJson(deps, scope, {
+      method,
+      path,
+      query: {},
+      body: payload,
+      recheckStaleAfterResponse: false
+    })
+  }
+  return {
+    post: (path, body) => write('POST', path, body),
+    put: (path, body) => write('PUT', path, body)
   }
 }

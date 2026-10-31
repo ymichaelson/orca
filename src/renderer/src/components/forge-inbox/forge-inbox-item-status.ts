@@ -2,6 +2,7 @@ import type { ComponentProps } from 'react'
 import type { Badge } from '@/components/ui/badge'
 import type { ForgeItemKind, ForgeRunState } from '../../../../shared/forge-inbox-types'
 import type { ForgeItemHandlingView } from '../../../../shared/forge-inbox-item-handling'
+import type { ForgeDispatchRecommendationAction } from '../../../../shared/forge-inbox-dispatch-confirmation'
 import { translate } from '@/i18n/i18n'
 
 /** GitLab's own state, in words that say what it means for the change rather than repeating `opened`. */
@@ -38,13 +39,53 @@ export type ForgeItemStatusTag = {
   variant: ComponentProps<typeof Badge>['variant']
 }
 
+/** What the agent advises a person to do next, in the words the person acts on. */
+export function forgeRecommendationLabel(action: ForgeDispatchRecommendationAction): string {
+  switch (action) {
+    case 'merge':
+      return translate('auto.components.forge-inbox.display.statusRecommendMerge', 'Ready to merge')
+    case 'request-changes':
+      return translate(
+        'auto.components.forge-inbox.display.statusRecommendChanges',
+        'Changes requested'
+      )
+    case 'close':
+      return translate(
+        'auto.components.forge-inbox.display.statusRecommendClose',
+        'Should be closed'
+      )
+    case 'none':
+      return translate(
+        'auto.components.forge-inbox.display.statusRecommendNone',
+        'Reviewed, no action'
+      )
+  }
+}
+
+export function forgeRecommendationTag(
+  action: ForgeDispatchRecommendationAction
+): ForgeItemStatusTag {
+  return {
+    label: forgeRecommendationLabel(action),
+    variant:
+      action === 'merge'
+        ? 'default'
+        : action === 'close'
+          ? 'destructive'
+          : action === 'none'
+            ? 'secondary'
+            : 'outline'
+  }
+}
+
 /**
  * What the agent did, named by the side that acted: an unfinished merge is the merge request's
  * state, never this item's failure. `handling` is absent from older hosts without a run state.
  */
 export function forgeItemStatusTag(
   handling: ForgeItemHandlingView | undefined,
-  latestRunState: ForgeRunState | null
+  latestRunState: ForgeRunState | null,
+  recommendationAction: ForgeDispatchRecommendationAction | null = null
 ): ForgeItemStatusTag | null {
   if (handling?.state === 'needs-user') {
     return {
@@ -100,13 +141,16 @@ export function forgeItemStatusTag(
         variant: 'outline'
       }
     case 'succeeded':
-      return {
-        label: translate(
-          'auto.components.forge-inbox.display.statusAgentSucceeded',
-          'Agent run succeeded'
-        ),
-        variant: 'secondary'
-      }
+      // The recommendation says what to do next, which is more useful than "it ran".
+      return recommendationAction === null
+        ? {
+            label: translate(
+              'auto.components.forge-inbox.display.statusAgentSucceeded',
+              'Agent run succeeded'
+            ),
+            variant: 'secondary'
+          }
+        : forgeRecommendationTag(recommendationAction)
     case null:
     case undefined:
       break

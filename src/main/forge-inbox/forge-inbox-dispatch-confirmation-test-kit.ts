@@ -20,6 +20,8 @@ export function seedDispatchRun(
     report: DispatchReportCapture | null
     itemKind?: 'merge_request' | 'issue' | 'project' | 'pipeline'
     itemIid?: number
+    /** GitLab's state for the stored item, such as `opened`. */
+    itemState?: string
     /** Distinguishes the stored item from the one the confirmation names, so rows never collide. */
     storedIid: number
     expectedSha?: string | null
@@ -37,7 +39,8 @@ export function seedDispatchRun(
     eventKind: 'Merge Request Hook',
     versionToken: `v-${randomUUID()}`,
     sourceOrder: 1,
-    payload: {}
+    payload: {},
+    ...(options.itemState === undefined ? {} : { itemState: options.itemState })
   })
   if (ingested.duplicate) {
     throw new Error('fixture expected a first delivery')

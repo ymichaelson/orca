@@ -46,6 +46,12 @@ function failureCodeFor(status: number): GitlabApiErrorCode {
   if (status === 429) {
     return 'rate-limited'
   }
+  if (status === 409) {
+    return 'conflict'
+  }
+  if (status === 405 || status === 422) {
+    return 'rejected'
+  }
   return status >= 500 ? 'network' : 'bad-response'
 }
 

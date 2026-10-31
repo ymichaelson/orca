@@ -8,6 +8,11 @@ import { bindingCommentScopeForTarget } from './forge-inbox-comment-target-bindi
 import { ForgeCredentialUnavailableError } from './forge-inbox-credentials'
 import { createGitlabBindingCommentPorts } from './forge-inbox-gitlab-binding-comment'
 import { createGitlabCommentPublisher } from './forge-inbox-gitlab-comment-publish'
+import {
+  createGitlabBindingMergePort,
+  createGitlabMergePort,
+  type ForgeMergePort
+} from './forge-inbox-gitlab-merge'
 import type { ForgeInboxLedger } from './forge-inbox-ledger'
 import { BINDING_INSTANCE_PREFIX } from './forge-inbox-project-binding'
 
@@ -18,6 +23,12 @@ export type ForgeCommentBroker = {
   ): Promise<ForgeCommentPublishResult>
   /** Reads the merge request head the approval is bound to, with the read credential only. */
   readHead: ForgeCommentHeadReader
+  /** Merges exactly the head a person confirmed; the write credential never leaves the host. */
+  merge: ForgeMergePort['merge']
+}
+
+type MergeCapablePorts = ReturnType<typeof createGitlabCommentPublisher> & {
+  merge: ForgeMergePort['merge']
 }
 
 /**
@@ -33,20 +44,24 @@ export function createForgeCommentBroker(deps: {
 }): ForgeCommentBroker {
   const { ledger, http, glabExec } = deps
   // Built per call: a rotated credential or edited instance applies to the next approval, not the next restart.
-  function instancePorts() {
+  function instanceDeps() {
     const { configRevision, config } = ledger.getConfig()
-    return createGitlabCommentPublisher({
+    return {
       http,
-      readWriteToken: (instanceId) => readSecret(ledger, instanceId, 'api-write'),
-      readReadToken: (instanceId) => readSecret(ledger, instanceId, 'api-read'),
+      readWriteToken: (instanceId: string) => readSecret(ledger, instanceId, 'api-write'),
+      readReadToken: (instanceId: string) => readSecret(ledger, instanceId, 'api-read'),
       readConfigRevision: () => ledger.getConfig().configRevision,
       expectedConfigRevision: configRevision,
-      resolveInstanceBaseUrl: (instanceId) =>
+      resolveInstanceBaseUrl: (instanceId: string) =>
         config.instances.find((candidate) => candidate.id === instanceId)?.baseUrl ?? null
-    })
+    }
+  }
+  function instancePorts(): MergeCapablePorts {
+    const deps = instanceDeps()
+    return { ...createGitlabCommentPublisher(deps), merge: createGitlabMergePort(deps).merge }
   }
   // Why: a binding item has no instance credential; its binding owns the destination and glab the token.
-  function ports(target: ForgeCommentTarget): ReturnType<typeof instancePorts> {
+  function ports(target: ForgeCommentTarget): MergeCapablePorts {
     const scope = bindingCommentScopeForTarget(ledger.ledgerContext(), target)
     if (scope === null) {
       // Why: a binding target without a unique binding must refuse, never borrow an instance credential.
@@ -54,9 +69,11 @@ export function createForgeCommentBroker(deps: {
         ? REFUSING_PORTS
         : instancePorts()
     }
-    return createGitlabBindingCommentPorts(
-      glabExec === undefined ? scope : { ...scope, exec: glabExec }
-    )
+    const bound = glabExec === undefined ? scope : { ...scope, exec: glabExec }
+    return {
+      ...createGitlabBindingCommentPorts(bound),
+      merge: createGitlabBindingMergePort(bound).merge
+    }
   }
   return {
     publish(input, signal) {
@@ -72,14 +89,18 @@ export function createForgeCommentBroker(deps: {
     },
     readHead(target, signal) {
       return ports(target).readHead(target, signal)
+    },
+    merge(target, expectedHeadSha, signal) {
+      return ports(target).merge(target, expectedHeadSha, signal)
     }
   }
 }
 
-const REFUSING_PORTS: ReturnType<typeof createGitlabCommentPublisher> = {
+const REFUSING_PORTS: MergeCapablePorts = {
   post: async () => ({ ok: false, code: 'no-credential', mayHaveLanded: false }),
   readHead: async () => ({ ok: false, code: 'no-credential' }),
-  findNotes: async () => ({ ok: false, code: 'no-credential' })
+  findNotes: async () => ({ ok: false, code: 'no-credential' }),
+  merge: async () => ({ ok: false, code: 'no-credential', mayHaveLanded: false })
 }
 
 /** An unreadable envelope is simply an absent credential here; anything else is a real fault. */

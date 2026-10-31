@@ -1,8 +1,12 @@
 import { existsSync } from 'node:fs'
 import { forgeErrorLabel } from './forge-inbox-error-label'
 import type { ForgeInboxConfigView } from '../../shared/forge-inbox-config'
-import type { ForgeCommentApprovalOutcome } from '../../shared/forge-inbox-rpc-types'
+import type {
+  ForgeCommentApprovalOutcome,
+  ForgeItemMergeOutcome
+} from '../../shared/forge-inbox-rpc-types'
 import { approveAndPublishForgeComment } from './forge-inbox-comment-approval'
+import { mergeForgeItem } from './forge-inbox-item-merge'
 import type { ForgeInboxLedger } from './forge-inbox-ledger'
 import type { ForgeInboxOwnerServiceOptions } from './forge-inbox-owner-service-options'
 import { createForgeOwnerActions } from './forge-inbox-owner-actions'
@@ -293,6 +297,15 @@ export function createForgeInboxOwnerService(options: ForgeInboxOwnerServiceOpti
         input,
         signal
       )
+    },
+    /** A person confirmed the run's recommendation, so the host merges exactly the reviewed head. */
+    async mergeItem(
+      input: Parameters<typeof mergeForgeItem>[1],
+      signal: AbortSignal,
+      expectedOwner?: string
+    ): Promise<ForgeItemMergeOutcome> {
+      const state = fenced(running ?? (await ready()), expectedOwner)
+      return mergeForgeItem({ ledger: state.ledger, merge: state.comments.merge }, input, signal)
     },
     async settled(): Promise<void> {
       const state = running

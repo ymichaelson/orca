@@ -4,9 +4,14 @@ import type { ProjectEventQuestionView } from '../../../../shared/forge-inbox-pr
 import type { ForgeItemDetailView } from '../../../../shared/forge-inbox-rpc-types'
 import type { RuntimeClientTarget } from '../../../../shared/runtime-client-target'
 import { forgeItemIdentityParts, formatForgeDateTime } from './forge-inbox-display'
-import { forgeItemStateLabel, forgeItemStatusTag } from './forge-inbox-item-status'
+import {
+  forgeItemStateLabel,
+  forgeItemStatusTag,
+  forgeRecommendationLabel
+} from './forge-inbox-item-status'
 import { ForgeInboxError, type ForgeInboxRepairActions } from './ForgeInboxError'
 import { ForgeInboxArchiveButton } from './ForgeInboxArchiveButton'
+import { ForgeInboxMergeButton } from './ForgeInboxMergeButton'
 import { ForgeInboxQuestionPanel } from './ForgeInboxQuestionPanel'
 import { ForgeInboxTimeline } from './ForgeInboxTimeline'
 
@@ -60,8 +65,19 @@ export function ForgeInboxDetail({
 
   const { item, runs, proposals, revisions, handling, timeline } = detail
   // The latest run is the newest: run ids only grow within an item.
-  const statusTag = forgeItemStatusTag(handling, runs[0]?.state ?? null)
+  const latestRun = runs[0]
+  const recommendation = latestRun?.dispatchConfirmation?.recommendation ?? null
+  const statusTag = forgeItemStatusTag(
+    handling,
+    latestRun?.state ?? null,
+    recommendation?.action ?? null
+  )
   const stateLabel = forgeItemStateLabel(item.kind, item.state)
+  const canMerge =
+    recommendation?.action === 'merge' &&
+    latestRun?.state === 'succeeded' &&
+    item.kind === 'merge_request' &&
+    item.state === 'opened'
   return (
     <div className="scrollbar-sleek flex min-h-0 flex-1 flex-col overflow-y-auto px-4 py-4">
       <header className="flex flex-col gap-1">
@@ -89,6 +105,29 @@ export function ForgeInboxDetail({
                 source={handling.errorSource}
                 repairActions={repairActions}
               />
+            ) : null}
+          </div>
+        )}
+        {recommendation === null ? null : (
+          <div className="mt-1 rounded-md border border-border/60 bg-muted/40 px-3 py-2">
+            <p className="text-xs font-medium text-foreground">
+              {forgeRecommendationLabel(recommendation.action)}
+            </p>
+            {recommendation.reason === null ? null : (
+              <p className="mt-0.5 text-xs text-muted-foreground">{recommendation.reason}</p>
+            )}
+            {canMerge ? (
+              <div className="mt-2">
+                <ForgeInboxMergeButton
+                  ownerHostId={ownerHostId}
+                  ownerTarget={ownerTarget}
+                  itemId={item.id}
+                  instanceId={item.instanceId}
+                  iid={item.iid}
+                  reason={recommendation.reason}
+                  onMerged={onChanged}
+                />
+              </div>
             ) : null}
           </div>
         )}

@@ -21733,12 +21733,12 @@
           "statusWaiting": "Waiting for changes",
           "statusDone": "Handled",
           "statusRecorded": "Recorded",
-          "statusReviewed": "Reviewed",
-          "statusReplied": "Replied",
           "statusRecommendMerge": "Ready to merge",
-          "statusRecommendChanges": "Blocked, changes needed",
+          "statusRecommendChanges": "Changes requested",
           "statusRecommendClose": "Should be closed",
-          "statusRecommendNone": "Reviewed, no action"
+          "statusRecommendNone": "Reviewed, no action",
+          "statusReviewed": "Reviewed",
+          "statusReplied": "Replied"
         },
         "credential": {
           "title": "Credentials",

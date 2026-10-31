@@ -21316,12 +21316,12 @@
           "statusWaiting": "Esperando cambios",
           "statusDone": "Procesado",
           "statusRecorded": "Registrado",
-          "statusReviewed": "Revisado",
-          "statusReplied": "Respondido",
           "statusRecommendMerge": "Listo para fusionar",
-          "statusRecommendChanges": "Bloqueado, requiere cambios",
+          "statusRecommendChanges": "Cambios solicitados",
           "statusRecommendClose": "Debería cerrarse",
-          "statusRecommendNone": "Revisado, sin acción"
+          "statusRecommendNone": "Revisado, sin acción",
+          "statusReviewed": "Revisado",
+          "statusReplied": "Respondido"
         },
         "credential": {
           "title": "Credenciales",

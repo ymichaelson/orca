@@ -2,6 +2,7 @@ import type { RuntimeClientTarget } from '../../../shared/runtime-client-target'
 import type {
   ForgeInboxEventsPage,
   ForgeInboxItemDetail,
+  ForgeInboxItemMergeOutcome,
   ForgeInboxItemsPage,
   ForgeInboxProjectsView,
   ForgeInboxRunsPage,
@@ -138,4 +139,18 @@ export function unarchiveForgeInboxItem(
   target: RuntimeClientTarget = HOST_RUNTIME
 ): Promise<{ ownerHostId: string; applied: boolean }> {
   return archiveCall('forgeInbox.unarchiveItem', ownerHostId, itemId, instanceId, target)
+}
+
+/** Merges the exact head the latest run recommended; the host refuses anything else. */
+export function mergeForgeInboxItem(
+  ownerHostId: string,
+  itemId: number,
+  instanceId?: string,
+  target: RuntimeClientTarget = HOST_RUNTIME
+): Promise<ForgeInboxItemMergeOutcome> {
+  return callRuntimeRpc<ForgeInboxItemMergeOutcome>(target, 'forgeInbox.mergeItem', {
+    ownerHostId,
+    itemId,
+    ...(instanceId === undefined ? {} : { instanceId })
+  })
 }

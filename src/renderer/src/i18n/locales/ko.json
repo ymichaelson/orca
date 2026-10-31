@@ -20850,12 +20850,12 @@
           "statusWaiting": "변경 대기",
           "statusDone": "처리됨",
           "statusRecorded": "기록됨",
-          "statusReviewed": "검토 완료",
-          "statusReplied": "답변 완료",
           "statusRecommendMerge": "병합 가능",
-          "statusRecommendChanges": "차단됨, 수정 필요",
+          "statusRecommendChanges": "수정 요청됨",
           "statusRecommendClose": "종료 권장",
-          "statusRecommendNone": "검토 완료, 조치 없음"
+          "statusRecommendNone": "검토 완료, 조치 없음",
+          "statusReviewed": "검토 완료",
+          "statusReplied": "답변 완료"
         },
         "credential": {
           "title": "자격 증명",

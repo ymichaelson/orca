@@ -1,13 +1,23 @@
+import { clampUtf8TextPrefix } from '../../shared/utf8-byte-limits'
+
 export const DISPATCH_REPORT_FENCE_TAG = 'orca-effect-report'
 export const DISPATCH_REPORT_MAX_CLAIMS = 8
+export const DISPATCH_RECOMMENDATION_MAX_REASON_BYTES = 512
 
 const MAX_BLOCK_BYTES = 4096
 const HEX_SHA = /^[0-9a-f]{40}$/
 const MODES = ['read-only', 'remote-actions', 'unknown'] as const
 const CLAIM_KINDS = ['comment', 'approve', 'merge', 'unfinished'] as const
 const TARGET_KINDS = ['merge_request', 'issue'] as const
+const RECOMMENDATION_ACTIONS = ['merge', 'request-changes', 'close', 'none'] as const
 
 export type DispatchClaimKind = (typeof CLAIM_KINDS)[number]
+export type DispatchRecommendationAction = (typeof RECOMMENDATION_ACTIONS)[number]
+
+export type DispatchRecommendation = {
+  action: DispatchRecommendationAction
+  reason: string | null
+}
 
 export type DispatchClaim = {
   kind: DispatchClaimKind
@@ -18,7 +28,13 @@ export type DispatchClaim = {
 
 /** `ambiguous` is a report that was attempted but cannot be read as exactly one valid contract. */
 export type DispatchReportCapture =
-  | { status: 'claims'; mode: (typeof MODES)[number]; claims: DispatchClaim[] }
+  | {
+      status: 'claims'
+      mode: (typeof MODES)[number]
+      claims: DispatchClaim[]
+      /** Absent from reports written before recommendations existed. */
+      recommendation?: DispatchRecommendation | null
+    }
   | { status: 'report-missing' }
   | { status: 'ambiguous' }
 
@@ -74,6 +90,27 @@ function parseClaim(value: unknown): DispatchClaim | null {
   return claim
 }
 
+/** Absent is not invalid: a report written before recommendations existed still parses. */
+function parseRecommendation(
+  value: unknown
+): { ok: true; recommendation: DispatchRecommendation | null } | { ok: false } {
+  if (value === undefined) {
+    return { ok: true, recommendation: null }
+  }
+  if (!isRecord(value) || !hasOnlyKeys(value, ['action', 'reason'])) {
+    return { ok: false }
+  }
+  const action = oneOf(RECOMMENDATION_ACTIONS, value.action)
+  if (!action || (value.reason !== undefined && typeof value.reason !== 'string')) {
+    return { ok: false }
+  }
+  const reason =
+    typeof value.reason === 'string'
+      ? clampUtf8TextPrefix(value.reason.trim(), DISPATCH_RECOMMENDATION_MAX_REASON_BYTES).trim()
+      : ''
+  return { ok: true, recommendation: { action, reason: reason === '' ? null : reason } }
+}
+
 function parseBody(body: string): DispatchReportCapture {
   if (Buffer.byteLength(body, 'utf8') > MAX_BLOCK_BYTES) {
     return AMBIGUOUS
@@ -84,7 +121,7 @@ function parseBody(body: string): DispatchReportCapture {
   } catch {
     return AMBIGUOUS
   }
-  if (!isRecord(parsed) || !hasOnlyKeys(parsed, ['v', 'mode', 'claims'])) {
+  if (!isRecord(parsed) || !hasOnlyKeys(parsed, ['v', 'mode', 'claims', 'recommendation'])) {
     return AMBIGUOUS
   }
   const mode = oneOf(MODES, parsed.mode)
@@ -106,7 +143,18 @@ function parseBody(body: string): DispatchReportCapture {
   if (mode === 'read-only' && claims.some((claim) => claim.kind !== 'unfinished')) {
     return AMBIGUOUS
   }
-  return { status: 'claims', mode, claims }
+  const recommendation = parseRecommendation(parsed.recommendation)
+  if (!recommendation.ok) {
+    return AMBIGUOUS
+  }
+  return {
+    status: 'claims',
+    mode,
+    claims,
+    ...(recommendation.recommendation === null
+      ? {}
+      : { recommendation: recommendation.recommendation })
+  }
 }
 
 /**
@@ -154,5 +202,12 @@ export function readStoredDispatchReport(json: string | null): DispatchReportCap
   if (stored.status !== 'claims') {
     return AMBIGUOUS
   }
-  return parseBody(JSON.stringify({ v: 1, mode: stored.mode, claims: stored.claims }))
+  return parseBody(
+    JSON.stringify({
+      v: 1,
+      mode: stored.mode,
+      claims: stored.claims,
+      ...(stored.recommendation === undefined ? {} : { recommendation: stored.recommendation })
+    })
+  )
 }

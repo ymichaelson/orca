@@ -30,6 +30,35 @@ function evidence(value: unknown): string {
 
 describe('dispatch confirmation view', () => {
   describe('allowlisted projection', () => {
+    it('shows the recommendation a person can confirm, with its bounded reason', () => {
+      expect(
+        dispatchConfirmationView({
+          state: 'confirmed',
+          reportJson: JSON.stringify({
+            ...REPORT,
+            recommendation: { action: 'merge', reason: 'Docs only.' }
+          }),
+          evidenceJson: evidence({
+            checkedAt: 9,
+            claims: [{ outcome: 'confirmed' }, { outcome: 'confirmed' }]
+          })
+        })
+      ).toMatchObject({ recommendation: { action: 'merge', reason: 'Docs only.' } })
+    })
+
+    it('omits the recommendation once the agent never received the prompt', () => {
+      expect(
+        dispatchConfirmationView({
+          state: 'no-claim',
+          reportJson: JSON.stringify({
+            ...REPORT,
+            recommendation: { action: 'merge', reason: 'Docs only.' }
+          }),
+          evidenceJson: evidence({ claims: [] })
+        })
+      ).not.toHaveProperty('recommendation')
+    })
+
     it('pairs each reported claim with its checked outcome and keeps only fixed values', () => {
       expect(
         dispatchConfirmationView({

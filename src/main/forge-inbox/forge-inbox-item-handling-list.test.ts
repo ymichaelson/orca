@@ -1,6 +1,7 @@
 import { randomUUID } from 'node:crypto'
 import { afterEach, beforeEach, describe, expect, it } from 'vitest'
 import type { ForgeLedgerContext } from './forge-inbox-context'
+import { seedDispatchRun } from './forge-inbox-dispatch-confirmation-test-kit'
 import { ingestForgeEventInTransaction } from './forge-inbox-ingest'
 import {
   claimProjectEventAction,
@@ -138,5 +139,25 @@ describe('Inbox list narrowed by handling state', () => {
     expect(
       fixture.ledger.listItems({ clientId: 'reader-1', handling: 'failed' }).nextCursor
     ).toBeNull()
+  })
+
+  it('labels a row with the recommendation its newest run made', () => {
+    const seeded = seedDispatchRun(ctx, {
+      binding: { bindingId: randomUUID(), gitlabHost: 'gitlab.test', gitlabProjectId: 3 },
+      report: {
+        status: 'claims',
+        mode: 'read-only',
+        claims: [],
+        recommendation: { action: 'merge', reason: 'Docs only.' }
+      },
+      storedIid: 77,
+      itemState: 'opened'
+    })
+
+    const rows = fixture.ledger.listItems({ clientId: 'reader-1' }).rows
+    expect(rows.find((row) => row.id === seeded.itemId)).toMatchObject({
+      latestRunState: 'succeeded',
+      recommendationAction: 'merge'
+    })
   })
 })

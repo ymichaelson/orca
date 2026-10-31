@@ -21542,12 +21542,12 @@
           "statusWaiting": "En attente de changements",
           "statusDone": "Traité",
           "statusRecorded": "Enregistré",
-          "statusReviewed": "Révisé",
-          "statusReplied": "Répondu",
           "statusRecommendMerge": "Prêt à fusionner",
-          "statusRecommendChanges": "Bloqué, modifications requises",
+          "statusRecommendChanges": "Modifications demandées",
           "statusRecommendClose": "À fermer",
-          "statusRecommendNone": "Révisé, aucune action"
+          "statusRecommendNone": "Révisé, aucune action",
+          "statusReviewed": "Révisé",
+          "statusReplied": "Répondu"
         },
         "credential": {
           "title": "Identifiants",

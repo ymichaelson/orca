@@ -81,6 +81,12 @@ export function dispatchConfirmationView(row: {
     attribution: (paired ? checked[index]?.attribution : undefined) ?? null
   }))
   const code = oneOf(FORGE_DISPATCH_CONFIRMATION_CODES, evidence.code)
+  // The recommendation is what the agent thinks a person should do, not a claim about what it did.
+  const advised = report.status === 'claims' ? (report.recommendation ?? null) : null
+  const recommendation =
+    state !== 'no-claim' && advised !== null
+      ? { action: advised.action, reason: advised.reason }
+      : undefined
   return {
     state,
     claims,
@@ -88,7 +94,8 @@ export function dispatchConfirmationView(row: {
       typeof evidence.checkedAt === 'number' && Number.isFinite(evidence.checkedAt)
         ? evidence.checkedAt
         : null,
-    ...(code === undefined ? {} : { code })
+    ...(code === undefined ? {} : { code }),
+    ...(recommendation === undefined ? {} : { recommendation })
   }
 }
 
