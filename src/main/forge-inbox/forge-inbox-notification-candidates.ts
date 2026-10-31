@@ -131,7 +131,7 @@ export function createForgeCandidateReader(ctx: ForgeLedgerContext) {
       return null
     }
     const category = forgeNotificationReasonOf(action)
-    // A repeat of the same trigger is the same event; a different one is its own item.
+    // A repeat claim of one event stays quiet; a new delivery is a new event and its own item.
     const repeated = ctx.db
       .prepare(
         `SELECT 1 AS found FROM events
