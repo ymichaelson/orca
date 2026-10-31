@@ -553,6 +553,9 @@ module.exports = {
       await packageMacTerminalHost(join(resourcesDir, '..', '..'), context, {
         canExecuteTargetArch
       })
+      if (!isMacRelease) {
+        sealLocalMacApp(join(context.appOutDir, `${context.packager.appInfo.productFilename}.app`))
+      }
     }
   },
   win: {
@@ -945,6 +948,13 @@ async function signMacStandaloneHelper(helperPath, helperName, packager, entitle
   args.push(helperPath)
   execFileSync('codesign', args, { stdio: 'inherit' })
   execFileSync('codesign', ['--verify', '--strict', helperPath], { stdio: 'inherit' })
+}
+
+// Why: with no release identity the outer bundle keeps only the linker's signature, and macOS
+// reports a quarantined download of it as damaged instead of offering to open it.
+function sealLocalMacApp(appPath) {
+  execFileSync('codesign', ['--force', '--deep', '--sign', '-', appPath], { stdio: 'inherit' })
+  execFileSync('codesign', ['--verify', '--deep', '--strict', appPath], { stdio: 'inherit' })
 }
 
 function codesignArgs(identity, targetPath) {

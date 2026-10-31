@@ -88,6 +88,13 @@ jobs:
       - name: List installers
         run: ls -lh dist/*.dmg dist/*.zip
 
+      # Why: an unsealed bundle installs as "damaged" and cannot be opened, so fail here instead.
+      - name: Verify the packaged apps are sealed
+        run: |
+          for app in dist/mac*/Orca.app; do
+            codesign --verify --deep --strict --verbose=2 "$app"
+          done
+
       - uses: actions/upload-artifact@v7
         with:
           name: orca-macos-unsigned-${{ github.sha }}
