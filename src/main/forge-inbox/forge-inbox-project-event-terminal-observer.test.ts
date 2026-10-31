@@ -165,24 +165,31 @@ describe('observing and stopping a dispatched terminal', () => {
     expect(fake.closes).toEqual([])
   })
 
-  it('observes nothing and closes nothing when the PTY was replaced under the same handle', async () => {
+  it('settles a run whose recorded PTY was replaced under the same handle', async () => {
     const runId = seedTerminalRun(fx.ledger)
     fake.terminals.set('handle-1', { ...PTY_A, incarnationId: 'incarnation-b' })
 
     observe({ maxAttempts: 2 })
-    await new Promise((resolve) => setTimeout(resolve, 20))
+    await vi.waitFor(() =>
+      expect(terminalRow(fx.ledger, runId).terminal_exit_kind).toBe('operator_close')
+    )
 
     expect(fake.waits).toEqual([])
     expect(fake.closes).toEqual([])
-    expect(terminalRow(fx.ledger, runId).terminal_exit_kind).toBeNull()
   })
 
-  it('observes nothing when the terminal is gone, and never launches one', async () => {
-    seedTerminalRun(fx.ledger)
+  it('settles a run whose terminal is gone, without launching or closing one', async () => {
+    const runId = seedTerminalRun(fx.ledger)
     fake.terminals.clear()
 
     observe({ maxAttempts: 2 })
-    await new Promise((resolve) => setTimeout(resolve, 20))
+    await vi.waitFor(() =>
+      expect(terminalRow(fx.ledger, runId)).toMatchObject({
+        terminal_exit_kind: 'operator_close',
+        state: 'unverifiable',
+        confirmation: 'unconfirmable'
+      })
+    )
 
     expect(fake.waits).toEqual([])
     expect(fake.order.filter((step) => step !== 'list')).toEqual([])
@@ -353,24 +360,32 @@ describe('observing and stopping a dispatched terminal', () => {
         (): void => {
           fake.terminals.clear()
         },
-        undefined
+        undefined,
+        'operator_close'
       ],
       [
         'only a replacement PTY remains',
         (): void => {
           fake.terminals.set('handle-1', { ...PTY_A, incarnationId: 'incarnation-b' })
         },
-        undefined
+        undefined,
+        'operator_close'
       ],
       [
         'the listing keeps failing',
         (): void => {
           fake.control.listError = new Error('terminal_liveness_unavailable')
         },
-        undefined
+        undefined,
+        null
       ],
-      ['the identity was never fully recorded', (): void => undefined, { incarnationId: null }]
-    ])('says the stop is not confirmed when %s', async (_name, arrange, identity) => {
+      [
+        'the identity was never fully recorded',
+        (): void => undefined,
+        { incarnationId: null },
+        null
+      ]
+    ])('says the stop is not confirmed when %s', async (_name, arrange, identity, exitKind) => {
       const runId = seedTerminalRun(fx.ledger, identity ? { identity } : {})
       arrange()
       updatePolicy(fx.ledger, CANCEL_REPO_ID, { rules: 'New rules.' })
@@ -382,24 +397,25 @@ describe('observing and stopping a dispatched terminal', () => {
       )
       expect(fake.closes).toEqual([])
       expect(fake.waits).toEqual([])
-      expect(terminalRow(fx.ledger, runId).terminal_exit_kind).toBeNull()
+      expect(terminalRow(fx.ledger, runId).terminal_exit_kind).toBe(exitKind)
     })
 
-    it('says so when a stop is asked for after the observer already gave up on a stale wait', async () => {
+    it('settles the run instead of waiting for a stop after its wait goes stale', async () => {
       const runId = seedTerminalRun(fx.ledger)
-      observe({ maxAttempts: 2 })
+      observe({ maxAttempts: 3 })
       await vi.waitFor(() => expect(fake.waiterCount()).toBe(1))
       fake.terminals.clear()
       fake.invalidate('handle-1')
-      await vi.waitFor(() => expect(fake.order.filter((step) => step === 'list')).toHaveLength(2))
-      await new Promise((resolve) => setTimeout(resolve, 20))
-
-      updatePolicy(fx.ledger, CANCEL_REPO_ID, { rules: 'New rules.' })
 
       await vi.waitFor(() =>
-        expect(terminalRow(fx.ledger, runId).cancel_delivery).toBe('unreachable')
+        expect(terminalRow(fx.ledger, runId).terminal_exit_kind).toBe('operator_close')
       )
+
+      updatePolicy(fx.ledger, CANCEL_REPO_ID, { rules: 'New rules.' })
+      await new Promise((resolve) => setTimeout(resolve, 20))
+
       expect(fake.closes).toEqual([])
+      expect(terminalRow(fx.ledger, runId).cancel_delivery).toBeNull()
     })
 
     it('says so when the wait ends without an exit before the stop could be sent', async () => {
@@ -417,20 +433,20 @@ describe('observing and stopping a dispatched terminal', () => {
       expect(fake.closes).toEqual([])
     })
 
-    it('still observes a later exit once the same PTY is listed again', async () => {
+    it('observes a PTY that a later listing returns instead of settling it as gone', async () => {
       const runId = seedTerminalRun(fx.ledger)
       fake.terminals.clear()
-      updatePolicy(fx.ledger, CANCEL_REPO_ID, { rules: 'New rules.' })
-      observe({ maxAttempts: 1, giveUpCooldownMs: 1 })
-      await vi.waitFor(() =>
-        expect(terminalRow(fx.ledger, runId).cancel_delivery).toBe('unreachable')
-      )
+      const release = fake.holdNextList()
+      observe({ maxAttempts: 3 })
+      await vi.waitFor(() => expect(fake.order).toContain('list'))
 
       fake.terminals.set('handle-1', PTY_A)
-      updatePolicy(fx.ledger, CANCEL_REPO_ID, { rules: 'Newer rules.' })
-      await vi.waitFor(() => expect(fake.waiterCount()).toBe(1))
-      fake.exit('handle-1', 0, { kind: 'operator_close' })
+      release()
 
+      await vi.waitFor(() => expect(fake.waiterCount()).toBe(1))
+      expect(terminalRow(fx.ledger, runId).terminal_exit_kind).toBeNull()
+
+      fake.exit('handle-1', 0, { kind: 'operator_close' })
       await vi.waitFor(() =>
         expect(terminalRow(fx.ledger, runId).terminal_exit_kind).toBe('operator_close')
       )

@@ -161,6 +161,7 @@ export function createForgeProjectEventTerminalObserver(
   }
 
   async function watchRun(run: OpenTerminalRun, job: Job, here: () => boolean): Promise<void> {
+    let vanished = false
     for (let attempt = 1; attempt <= maxAttempts && here(); attempt++) {
       const found = await resolveRunTerminal(
         runtime,
@@ -171,6 +172,7 @@ export function createForgeProjectEventTerminalObserver(
       if (!here() || found.kind === 'unprovable') {
         return
       }
+      vanished = found.kind === 'absent'
       if (found.kind === 'found') {
         if (found.handle !== run.identity.handle) {
           refreshRunTerminalHandle(ledger.ledgerContext(), run.runId, found.handle)
@@ -207,6 +209,28 @@ export function createForgeProjectEventTerminalObserver(
         retryDelayMs * attempt
       )
     }
+    // Why: a closed terminal is never listed again, so waiting for its exit report would hold the
+    // project's dispatch slot forever and leave every later action queued with nothing to show.
+    if (here() && vanished) {
+      settleVanishedTerminal(run.runId)
+    }
+  }
+
+  /** The stop bookkeeping has to happen first: settling the run takes it off every open-run query. */
+  function settleVanishedTerminal(runId: number): void {
+    const open = listOpenTerminalRuns(ledger.ledgerContext()).find((run) => run.runId === runId)
+    if (!open) {
+      return
+    }
+    if (open.cancelOperationId !== null && open.cancelDelivery === null) {
+      const request = {
+        runId: open.runId,
+        itemId: open.itemId,
+        operationId: open.cancelOperationId
+      }
+      recordRunCancelDelivery(ledger.ledgerContext(), request, 'unreachable', null)
+    }
+    recordRunTerminalExit(ledger.ledgerContext(), open, { kind: 'operator_close', value: null })
   }
 
   function start(run: OpenTerminalRun): void {

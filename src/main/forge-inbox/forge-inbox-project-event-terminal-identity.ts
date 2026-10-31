@@ -28,7 +28,10 @@ function sameExecutionHost(
 
 export type ResolvedTerminal =
   | { kind: 'found'; handle: string }
+  /** The recorded PTY is not listed at all, so the process it named is gone. */
   | { kind: 'absent' }
+  /** The PTY is still listed but cannot be proven to be this one: never read as gone. */
+  | { kind: 'unproven' }
   | { kind: 'failed' }
   /** The launch never reported the whole identity, so no terminal could ever be proven to be this one. */
   | { kind: 'unprovable' }
@@ -57,14 +60,16 @@ export async function resolveRunTerminal(
   if (!listed.ok) {
     return { kind: 'failed' }
   }
-  const match = listed.value.terminals.find(
-    (terminal) =>
-      terminal.orphaned !== true &&
-      terminal.ptyId === ptyId &&
-      terminal.incarnationId === incarnationId &&
-      sameExecutionHost(terminal, ptyId, executionHostId)
+  const sameProcess = listed.value.terminals.filter(
+    (terminal) => terminal.ptyId === ptyId && terminal.incarnationId === incarnationId
   )
-  return match ? { kind: 'found', handle: match.handle } : { kind: 'absent' }
+  if (sameProcess.length === 0) {
+    return { kind: 'absent' }
+  }
+  const match = sameProcess.find(
+    (terminal) => terminal.orphaned !== true && sameExecutionHost(terminal, ptyId, executionHostId)
+  )
+  return match ? { kind: 'found', handle: match.handle } : { kind: 'unproven' }
 }
 
 /** Only an exited status is an exit; a code with no host-vouched cause is never read as a clean finish. */
