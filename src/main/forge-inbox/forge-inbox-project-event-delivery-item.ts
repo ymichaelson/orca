@@ -5,6 +5,7 @@ import { ingestForgeEventInTransaction } from './forge-inbox-ingest'
 import { projectEventActionFacts } from './forge-inbox-project-event-action-facts'
 import { projectEventNotificationCategory } from './forge-inbox-project-event-notification'
 import {
+  projectEventSubject,
   resolveProjectEventSubject,
   type ProjectEventSubject,
   type ProjectEventSubjectRefusal
@@ -188,4 +189,42 @@ export function recordProjectEventItem(
     return null
   }
   return linked.reason === 'not-found' ? null : linked.reason
+}
+
+/**
+ * Points a decision at the item its delivery already names, without creating one: a queued action
+ * must be visible on that item's timeline before it is ever claimed.
+ */
+export function linkExistingProjectEventItem(
+  ctx: ForgeLedgerContext,
+  input: { deliveryId: number; bindingId: string; decisionId: number }
+): void {
+  const delivery = ctx.db
+    .prepare('SELECT project_id, body FROM webhook_deliveries WHERE id = ? AND host_id = ?')
+    .get(input.deliveryId, ctx.hostId)
+  const binding = ctx.db
+    .prepare('SELECT gitlab_host, gitlab_project_id FROM project_bindings WHERE binding_id = ?')
+    .get(input.bindingId)
+  if (!delivery || !binding || typeof binding.gitlab_project_id !== 'number') {
+    return
+  }
+  const subject = projectEventSubject(delivery.body, binding.gitlab_project_id)
+  if (!subject) {
+    return
+  }
+  const item = ctx.db
+    .prepare(`SELECT id FROM items WHERE host_id = ? AND instance_id = ? AND project_id = ?
+      AND kind = ? AND iid = ?`)
+    .get(
+      ctx.hostId,
+      `${BINDING_INSTANCE_PREFIX}${rowText(binding, 'gitlab_host')}`,
+      rowText(delivery, 'project_id'),
+      subject.kind,
+      subject.iid
+    )
+  if (item) {
+    ctx.db
+      .prepare('UPDATE project_event_decisions SET item_id = ? WHERE id = ? AND item_id IS NULL')
+      .run(rowNumber(item, 'id'), input.decisionId)
+  }
 }

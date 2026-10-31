@@ -23,6 +23,7 @@ import {
   FORGE_WEBHOOK_DEFAULT_QUEUE_LIMITS,
   getForgeWebhookQueueStatus
 } from './forge-inbox-webhook-queue'
+import { rowText } from './forge-inbox-rows'
 
 const REPO_ID = 'repo-1'
 const RULES = '合并请求需要评审。'
@@ -156,6 +157,52 @@ describe('project event delivery decision', () => {
       contextRound: 0,
       contextFetchAvailable: false
     })
+  })
+
+  it('names the item its event is about, so a queued action is visible before it is claimed', () => {
+    const admitted = ctx.db
+      .prepare('SELECT project_id FROM webhook_deliveries WHERE id = ?')
+      .get(deliveryId)
+    if (!admitted) {
+      throw new Error('missing admitted delivery')
+    }
+    const projectId = rowText(admitted, 'project_id')
+    const inserted = ctx.db
+      .prepare(
+        `INSERT INTO items (host_id, instance_id, project_id, kind, iid, title, state,
+         current_revision, head_order, activity_seq, created_at, updated_at)
+         VALUES (?, 'gitlab:gitlab.test', ?, 'merge_request', 7, 'Add thing', 'opened', 1, 1, 1, ?, ?)`
+      )
+      .run(ctx.hostId, projectId, ctx.now(), ctx.now())
+
+    decideProjectEventDelivery(
+      ctx,
+      deliveryId,
+      decision('dispatch_agent'),
+      claimProjectEventDecision(ctx) ?? undefined
+    )
+
+    expect(
+      ctx.db
+        .prepare('SELECT item_id FROM project_event_decisions WHERE delivery_id = ?')
+        .get(deliveryId)
+    ).toEqual({ item_id: Number(inserted.lastInsertRowid) })
+  })
+
+  it('does not invent an item for a decision whose event names none yet', () => {
+    decideProjectEventDelivery(
+      ctx,
+      deliveryId,
+      decision('dispatch_agent'),
+      claimProjectEventDecision(ctx) ?? undefined
+    )
+
+    expect(
+      ctx.db
+        .prepare('SELECT item_id FROM project_event_decisions WHERE delivery_id = ?')
+        .get(deliveryId)
+    ).toEqual({ item_id: null })
+    expect(ctx.db.prepare('SELECT count(*) AS n FROM items').get()).toEqual({ n: 0 })
   })
 
   it('records a decision and finishes the delivery when nothing more is required', () => {

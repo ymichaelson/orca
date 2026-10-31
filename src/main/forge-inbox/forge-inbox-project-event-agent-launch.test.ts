@@ -20,6 +20,18 @@ import {
 import { linkProjectEventBinding } from './forge-inbox-project-event-link'
 import { ForgeInboxLedger } from './forge-inbox-ledger'
 
+/** A host that cannot create a structured session, so a dispatch has only the terminal surface. */
+const TERMINAL_FALLBACK_HOST = {
+  requireStore: () => ({
+    getSettings: () => ({ experimentalNativeChat: false }),
+    getRepo: () => ({ path: REPO_PATH, connectionId: null })
+  }),
+  getStructuredAgentSessionCreateSupport: async () => ({
+    supported: false,
+    reason: 'agent' as const
+  })
+}
+
 describe('project event agent launch', () => {
   let root: string
   let ledger: ForgeInboxLedger
@@ -223,7 +235,7 @@ describe('project event agent launch', () => {
     expect(probe.order).toEqual(['watch', 'deliver'])
   })
 
-  it('hands the prompt to a terminal when the user has no chat default', async () => {
+  it('prefers a structured session even when the user starts new tabs in a terminal', async () => {
     const runId = seedRun()
     const probe = emptyProbe()
     const launch = createForgeProjectEventAgentLaunch(
@@ -236,6 +248,23 @@ describe('project event agent launch', () => {
           })
         }
       })
+    )
+
+    expect(await launch({ itemId: 1, repoId: REPO_ID, runId, prompt: PROMPT })).toMatchObject({
+      ok: true,
+      mode: 'structured',
+      promptOutcome: 'journaled'
+    })
+    expect(probe.terminal).toEqual([])
+    expect(probe.delivered).toHaveLength(1)
+  })
+
+  it('still hands the prompt to a terminal when the host cannot create a structured session', async () => {
+    const runId = seedRun()
+    const probe = emptyProbe()
+    const launch = createForgeProjectEventAgentLaunch(
+      ledger,
+      ports(probe, { runtime: TERMINAL_FALLBACK_HOST })
     )
 
     const result = await launch({ itemId: 1, repoId: REPO_ID, runId, prompt: PROMPT })
@@ -467,14 +496,7 @@ describe('project event agent launch', () => {
     const probe = emptyProbe()
     const launch = createForgeProjectEventAgentLaunch(
       ledger,
-      ports(probe, {
-        runtime: {
-          requireStore: () => ({
-            getSettings: () => ({ experimentalNativeChat: false }),
-            getRepo: () => ({ path: REPO_PATH, connectionId: null })
-          })
-        }
-      })
+      ports(probe, { runtime: TERMINAL_FALLBACK_HOST })
     )
     expect(
       await launch({ itemId: 1, repoId: REPO_ID, runId, prompt: 'x'.repeat(64 * 1024) })
@@ -558,14 +580,7 @@ describe('project event agent launch', () => {
     const probe = emptyProbe()
     const launch = createForgeProjectEventAgentLaunch(
       ledger,
-      ports(probe, {
-        runtime: {
-          requireStore: () => ({
-            getSettings: () => ({ experimentalNativeChat: false }),
-            getRepo: () => ({ path: REPO_PATH, connectionId: null })
-          })
-        }
-      })
+      ports(probe, { runtime: TERMINAL_FALLBACK_HOST })
     )
 
     expect(await launch({ itemId: 1, repoId: REPO_ID, runId, prompt: '' })).toEqual({
