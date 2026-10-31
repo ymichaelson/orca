@@ -1,7 +1,8 @@
 import type { ForgeInboxArchiveView } from '../../../../shared/forge-inbox-display-preferences'
 import type { ForgeItemHandlingState } from '../../../../shared/forge-inbox-item-handling'
-import type { ForgeItem, ForgeItemKind } from '../../../../shared/forge-inbox-types'
+import type { ForgeItemKind } from '../../../../shared/forge-inbox-types'
 import type {
+  ForgeInboxListItem,
   ForgeInboxStatus,
   ForgeItemDetailView
 } from '../../../../shared/forge-inbox-rpc-types'
@@ -10,7 +11,7 @@ import type { ProjectEventQuestionView } from '../../../../shared/forge-inbox-pr
 export type ForgeInboxFeed = {
   status: ForgeInboxStatus | null
   statusError: string | null
-  items: ForgeItem[]
+  items: ForgeInboxListItem[]
   itemsError: string | null
   loadingStatus: boolean
   loadingItems: boolean

@@ -6,7 +6,8 @@ import type {
   ForgeProposal,
   ForgeProposalStatus,
   ForgeRevision,
-  ForgeRun
+  ForgeRun,
+  ForgeRunState
 } from './forge-inbox-types'
 import type {
   ForgeCredentialProtection,
@@ -72,7 +73,15 @@ export type ForgeItemDetailView = {
   repoId?: string | null
 }
 
-export type ForgeInboxItemsPage = ForgePage<ForgeItem> & { ownerHostId: string }
+/** A list row names what it needs, so a reader can choose the right item without opening it. */
+export type ForgeInboxListItem = ForgeItem & {
+  /** Absent from older hosts. */
+  handling?: ForgeItemHandlingView
+  /** Absent from older hosts and from items that never ran an agent. */
+  latestRunState?: ForgeRunState
+}
+
+export type ForgeInboxItemsPage = ForgePage<ForgeInboxListItem> & { ownerHostId: string }
 export type ForgeInboxRunsPage = ForgePage<ForgeRunView> & { ownerHostId: string }
 export type ForgeInboxEventsPage = ForgePage<ForgeEvent> & { ownerHostId: string }
 

@@ -29,4 +29,6 @@ export type ForgeInboxStatus =
       work: ForgeInboxWorkView
       /** Absent from older hosts, which have no active-run summary to read. */
       activeRuns?: ForgeInboxActiveRunView[]
+      /** Unread for the calling reader in the active view; absent from older hosts. */
+      unread?: number
     }

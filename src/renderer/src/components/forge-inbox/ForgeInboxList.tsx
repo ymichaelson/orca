@@ -1,13 +1,16 @@
+import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { cn } from '@/lib/utils'
 import { translate } from '@/i18n/i18n'
 import type { ForgeInboxArchiveView } from '../../../../shared/forge-inbox-display-preferences'
 import type { ForgeItemHandlingState } from '../../../../shared/forge-inbox-item-handling'
-import type { ForgeItem, ForgeItemKind } from '../../../../shared/forge-inbox-types'
+import type { ForgeItemKind } from '../../../../shared/forge-inbox-types'
+import type { ForgeInboxListItem } from '../../../../shared/forge-inbox-rpc-types'
 import { forgeItemIdentityParts, formatForgeDateTime } from './forge-inbox-display'
+import { forgeItemStatusTag } from './forge-inbox-item-status'
 import { ForgeInboxListToolbar } from './ForgeInboxListToolbar'
 
-function itemMeta(item: ForgeItem): string {
+function itemMeta(item: ForgeInboxListItem): string {
   const parts = [...forgeItemIdentityParts(item), formatForgeDateTime(item.updatedAt)]
   return parts.filter((part) => part.length > 0).join(' · ')
 }
@@ -36,7 +39,7 @@ export function ForgeInboxList({
   onLoadMore,
   onRetry
 }: {
-  items: ForgeItem[]
+  items: ForgeInboxListItem[]
   selectedItemId: number | null
   unreadOnly: boolean
   archiveView: ForgeInboxArchiveView
@@ -113,6 +116,7 @@ export function ForgeInboxList({
           <ul>
             {items.map((item) => {
               const selected = item.id === selectedItemId
+              const statusTag = forgeItemStatusTag(item.handling, item.latestRunState ?? null)
               return (
                 <li key={item.id}>
                   <button
@@ -142,9 +146,16 @@ export function ForgeInboxList({
                         {item.title || forgeItemIdentityParts(item).slice(0, 2).join(' ')}
                       </span>
                     </span>
-                    {compact ? null : (
-                      <span className="truncate text-2xs text-muted-foreground">
-                        {itemMeta(item)}
+                    {statusTag === null && compact ? null : (
+                      <span className="flex min-w-0 flex-wrap items-center gap-2">
+                        {statusTag === null ? null : (
+                          <Badge variant={statusTag.variant}>{statusTag.label}</Badge>
+                        )}
+                        {compact ? null : (
+                          <span className="truncate text-2xs text-muted-foreground">
+                            {itemMeta(item)}
+                          </span>
+                        )}
                       </span>
                     )}
                   </button>

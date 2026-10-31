@@ -2,6 +2,7 @@ import type { ForgePage, ForgeInstanceScope } from '../../shared/forge-inbox-typ
 import { readDispatchConfirmationViews } from './forge-inbox-dispatch-confirmation-view'
 import { readRunCancellationViews } from './forge-inbox-project-event-run-cancel-state'
 import { readRunDispatchFacts } from './forge-inbox-run-dispatch-view'
+import { countUnreadForgeItems } from './forge-inbox-queries'
 import type { ForgeInboxLedger } from './forge-inbox-ledger'
 import {
   projectForgeItemDetail,
@@ -24,6 +25,11 @@ export function createForgeOwnerReads(ledger: () => ForgeInboxLedger | null) {
     /** Empty while dormant: no ledger means no project holds anything yet. */
     listProjects(): string[] {
       return ledger()?.listItemProjects() ?? []
+    },
+    /** Zero while dormant: an inbox nobody opened has nothing unread for this reader yet. */
+    countUnread(scope: ForgeInstanceScope, clientId: string): number {
+      const live = ledger()
+      return live ? countUnreadForgeItems(live.ledgerContext(), { ...scope, clientId }) : 0
     },
     getItemDetail(
       scope: ForgeInstanceScope,

@@ -3,12 +3,8 @@ import { translate } from '@/i18n/i18n'
 import type { ProjectEventQuestionView } from '../../../../shared/forge-inbox-project-event-question'
 import type { ForgeItemDetailView } from '../../../../shared/forge-inbox-rpc-types'
 import type { RuntimeClientTarget } from '../../../../shared/runtime-client-target'
-import {
-  forgeItemHandlingLabel,
-  forgeItemHandlingVariant,
-  forgeItemIdentityParts,
-  formatForgeDateTime
-} from './forge-inbox-display'
+import { forgeItemIdentityParts, formatForgeDateTime } from './forge-inbox-display'
+import { forgeItemStateLabel, forgeItemStatusTag } from './forge-inbox-item-status'
 import { ForgeInboxError, type ForgeInboxRepairActions } from './ForgeInboxError'
 import { ForgeInboxArchiveButton } from './ForgeInboxArchiveButton'
 import { ForgeInboxQuestionPanel } from './ForgeInboxQuestionPanel'
@@ -63,6 +59,9 @@ export function ForgeInboxDetail({
   }
 
   const { item, runs, proposals, revisions, handling, timeline } = detail
+  // The latest run is the newest: run ids only grow within an item.
+  const statusTag = forgeItemStatusTag(handling, runs[0]?.state ?? null)
+  const stateLabel = forgeItemStateLabel(item.kind, item.state)
   return (
     <div className="scrollbar-sleek flex min-h-0 flex-1 flex-col overflow-y-auto px-4 py-4">
       <header className="flex flex-col gap-1">
@@ -78,12 +77,13 @@ export function ForgeInboxDetail({
             />
           ) : null}
         </div>
-        {handling !== undefined ? (
+        {statusTag === null && stateLabel === null && handling?.errorCode == null ? null : (
           <div className="flex flex-wrap items-center gap-2">
-            <Badge variant={forgeItemHandlingVariant(handling.state)}>
-              {forgeItemHandlingLabel(handling.state, handling.stopping === true)}
-            </Badge>
-            {handling.errorCode !== null ? (
+            {statusTag === null ? null : (
+              <Badge variant={statusTag.variant}>{statusTag.label}</Badge>
+            )}
+            {stateLabel === null ? null : <Badge variant="outline">{stateLabel}</Badge>}
+            {handling?.errorCode != null && handling.errorCode !== 'already-dispatched' ? (
               <ForgeInboxError
                 code={handling.errorCode}
                 source={handling.errorSource}
@@ -91,7 +91,7 @@ export function ForgeInboxDetail({
               />
             ) : null}
           </div>
-        ) : null}
+        )}
         <p className="text-xs text-muted-foreground">
           {[
             ...forgeItemIdentityParts(item),

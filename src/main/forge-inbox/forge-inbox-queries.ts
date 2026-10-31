@@ -7,8 +7,12 @@ import { readRunCancellationViews } from './forge-inbox-project-event-run-cancel
 import { readRunDispatchFacts, type ForgeRunDispatchFacts } from './forge-inbox-run-dispatch-view'
 import type { ForgeRunCancellationView } from '../../shared/forge-inbox-run-cancellation'
 import { itemFromRowWithMarks } from './forge-inbox-item-archive'
-import { readForgeItemHandling } from './forge-inbox-item-handling'
-import { listForgeItemsByHandling } from './forge-inbox-item-handling-list'
+import {
+  handlingJoinsSql,
+  handlingSelectSql,
+  readForgeItemHandling
+} from './forge-inbox-item-handling'
+import { forgeListItemFromRow, listForgeItemsByHandling } from './forge-inbox-item-handling-list'
 import {
   FORGE_PAGE_MAX,
   itemListParams,
@@ -27,6 +31,7 @@ import type {
   ForgeItemHandlingView
 } from '../../shared/forge-inbox-item-handling'
 import type { ForgeItemTimelineEntry } from '../../shared/forge-inbox-item-timeline'
+import type { ForgeInboxListItem } from '../../shared/forge-inbox-rpc-types'
 import { itemFromRow, proposalFromRow, rowNumber, runFromRow } from './forge-inbox-rows'
 import type {
   ForgeItem,
@@ -45,19 +50,31 @@ import type {
 export function listForgeItems(
   ctx: ForgeLedgerContext,
   query: ForgeItemListQuery & { handling?: ForgeItemHandlingState }
-): ForgePage<ForgeItem> {
+): ForgePage<ForgeInboxListItem> {
   if (query.handling !== undefined) {
     return listForgeItemsByHandling(ctx, { ...query, handling: query.handling })
   }
   const size = pageSize(query.limit)
+  const columns = { columns: handlingSelectSql(), joins: handlingJoinsSql() }
   const rows = ctx.db
-    .prepare(`${itemListSql()} ORDER BY i.id DESC LIMIT ?`)
+    .prepare(`${itemListSql(columns)} ORDER BY i.id DESC LIMIT ?`)
     .all(...itemListParams(ctx, query), size + 1)
-  const items = rows.slice(0, size).map((row) => itemFromRowWithMarks(row))
+  const items = rows.slice(0, size).map((row) => forgeListItemFromRow(row))
   return {
     rows: items,
     nextCursor: rows.length > size ? (items.at(-1)?.id ?? null) : null
   }
+}
+
+/** The same narrowing the list applies, so a badge never counts something the list hides. */
+export function countUnreadForgeItems(
+  ctx: ForgeLedgerContext,
+  query: Pick<ForgeItemListQuery, 'clientId' | 'instanceId' | 'projectId' | 'kind'>
+): number {
+  const row = ctx.db
+    .prepare(`SELECT count(*) AS n FROM (${itemListSql()})`)
+    .get(...itemListParams(ctx, { ...query, unreadOnly: true, archiveView: 'active' }))
+  return row === undefined ? 0 : rowNumber(row, 'n')
 }
 
 /** Every project this host holds an item for, so a client can offer the filter without guessing. */

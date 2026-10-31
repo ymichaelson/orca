@@ -23,12 +23,14 @@ function scopeOf(instanceId: string | undefined) {
 
 const UNATTACHED_STATUS = { ownerHostId: null, available: false, phase: 'unattached' as const }
 
-function statusPayload(service: ForgeInboxOwnerService) {
+function statusPayload(service: ForgeInboxOwnerService, readerId: string) {
   const status = service.status()
   return {
     ownerHostId: service.ownerHostId(),
     available: status.phase === 'running',
-    ...status
+    ...status,
+    // Why: a stopped host has no ledger to count, and its status must still answer.
+    ...(status.phase === 'running' ? { unread: service.countUnread({}, readerId) } : {})
   }
 }
 
@@ -41,7 +43,7 @@ const FORGE_INBOX_READ_METHODS = [
     handler: (_, context) => {
       const service = context.runtime.forgeInboxServiceIfAttached()
       return service
-        ? guardForgeInbox(UNAVAILABLE, () => statusPayload(service))
+        ? guardForgeInbox(UNAVAILABLE, () => statusPayload(service, forgeReaderId(context)))
         : UNATTACHED_STATUS
     }
   }),
@@ -198,7 +200,7 @@ const FORGE_INBOX_RECEIVER_METHODS = [
             if (service.status().phase === 'running') {
               await service.reconcileReceiverSettings()
             }
-            return statusPayload(service)
+            return statusPayload(service, forgeReaderId(context))
           })
         : UNATTACHED_STATUS
     }

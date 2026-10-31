@@ -59,7 +59,7 @@ describe('forge inbox rpc access', () => {
     const ownerHostId = String(status.ownerHostId)
     expect(harness.runtime.forgeInboxService().getConfig().configRevision).toBe(0)
     expect(ownerHostId.length).toBeGreaterThan(0)
-    expect(status).toMatchObject({ ownerHostId, dormant: true })
+    expect(status).toMatchObject({ ownerHostId, dormant: true, unread: 0 })
 
     expect(await harness.ok('forgeInbox.listItems', { ownerHostId })).toMatchObject({
       rows: [],

@@ -143,7 +143,8 @@ describe('ForgeInboxDetail mixed-version display', () => {
 
     expect(container.textContent).toContain('Actual legacy run result')
     expect(container.textContent).toContain('revision 3')
-    expect(container.querySelector('header [data-slot="badge"]')).toBeNull()
+    // The run itself names the outcome even when the host sends no handling view.
+    expect(container.querySelector('header')?.textContent).toContain('Agent run failed')
     expect(container.querySelector('header')?.textContent).not.toMatch(/Handled|Recorded/)
   })
 
@@ -167,7 +168,7 @@ describe('ForgeInboxDetail mixed-version display', () => {
 
     expect(container.textContent).toContain('No activity yet.')
     expect(container.textContent).not.toContain('Actual legacy run result')
-    expect(container.querySelector('header')?.textContent).toContain('Recorded')
+    expect(container.querySelector('header')?.textContent).toContain('Agent run failed')
   })
 
   it.each(['secret/path /tmp/x', 'future-backend-error'])(
