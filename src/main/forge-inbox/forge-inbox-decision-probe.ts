@@ -9,7 +9,7 @@ import type { MainHttpClient } from '../network/http-client'
 
 // One real bounded inference: the probe proves the saved settings, key and endpoint work.
 const PROBE_INPUT = {
-  rules: '这是一次连接测试。只选择 record_only，不要执行任何操作。',
+  rules: 'This is a connection test. Choose record_only and take no action.',
   event: { kind: 'connection-test' }
 } as const
 
