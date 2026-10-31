@@ -983,6 +983,7 @@ export const RPC_PARAMS_BY_METHOD = {
   'forgeInbox.listProjects': ForgeInboxListProjectsParams,
   'forgeInbox.listRuns': ForgeInboxListRunsParams,
   'forgeInbox.markRead': ForgeInboxItemParams,
+  'forgeInbox.mergeItem': ForgeInboxItemParams,
   'forgeInbox.retryProjectEvent': ForgeInboxRetryProjectEventParams,
   'forgeInbox.retryReceiver': ForgeInboxNoParams,
   'forgeInbox.rotateProjectEventSecret': ForgeInboxRotateProjectEventSecretParams,

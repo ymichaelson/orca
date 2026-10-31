@@ -47,9 +47,10 @@ function renderReportInstructions(marker: string): string {
 ${marker}
 End your final message with exactly ONE fenced block tagged ${DISPATCH_REPORT_FENCE_TAG} holding JSON of this shape and nothing else:
 \`\`\`${DISPATCH_REPORT_FENCE_TAG}
-{"v":1,"mode":"read-only"|"remote-actions"|"unknown","claims":[{"kind":"comment"|"approve"|"merge"|"unfinished","target":{"kind":"merge_request"|"issue","iid":N},"noteId":N,"expectedHeadSha":"<40-hex>"}]}
+{"v":1,"mode":"read-only"|"remote-actions"|"unknown","claims":[{"kind":"comment"|"approve"|"merge"|"unfinished","target":{"kind":"merge_request"|"issue","iid":N},"noteId":N,"expectedHeadSha":"<40-hex>"}],"recommendation":{"action":"merge"|"request-changes"|"close"|"none","reason":"<one short sentence>"}}
 \`\`\`
 List at most ${DISPATCH_REPORT_MAX_CLAIMS} claims, one for each GitLab comment, approval or merge you performed. Use noteId only for a comment. For approve and merge set expectedHeadSha to the revision sha given below. Use kind "unfinished" for something you started but did not complete, and mode "unknown" if you are unsure what you did. Put no URLs, hosts, commands or free text in the block.
+The recommendation is what you advise a person to do next: "merge" only when the change is ready to merge as it is, "request-changes" when the author must change something first, "close" when it should not be merged, and "none" when no decision is needed. The reason is one short sentence shown next to the action.
 `
 }
 

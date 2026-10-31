@@ -12,6 +12,7 @@ import type { ForgeInboxOwnerService } from '../../../forge-inbox/forge-inbox-ow
 import { defineMethod } from '../core'
 import { forgeOwnerFor, forgeReaderId, guardForgeInbox } from '../forge-inbox-owner-gate'
 import { FORGE_INBOX_CHANGE_STREAM_METHODS } from './forge-inbox-change-stream'
+import { FORGE_INBOX_ITEM_ACTION_METHODS } from './forge-inbox-item-actions'
 import { FORGE_INBOX_PROJECT_EVENT_POLICY_METHODS } from './forge-inbox-project-event-policy'
 import { FORGE_INBOX_PROJECT_EVENT_QUESTION_METHODS } from './forge-inbox-project-event-questions'
 
@@ -216,6 +217,7 @@ function pageOf(params: { limit?: number; cursor?: number }) {
 
 export const FORGE_INBOX_METHODS = [
   ...FORGE_INBOX_READ_METHODS,
+  ...FORGE_INBOX_ITEM_ACTION_METHODS,
   ...FORGE_INBOX_RECEIVER_METHODS,
   ...FORGE_INBOX_CHANGE_STREAM_METHODS,
   ...FORGE_INBOX_PROJECT_EVENT_POLICY_METHODS,

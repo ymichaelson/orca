@@ -18483,7 +18483,11 @@
           "statusProcessing": "处理中",
           "statusWaiting": "等待变更",
           "statusDone": "已处理",
-          "statusRecorded": "已记录"
+          "statusRecorded": "已记录",
+          "statusRecommendMerge": "可合并",
+          "statusRecommendChanges": "已回复，需要修改",
+          "statusRecommendClose": "建议关闭",
+          "statusRecommendNone": "已审查，无需操作"
         },
         "credential": {
           "title": "凭据",
@@ -18699,6 +18703,30 @@
           "latest": "最近步骤",
           "editLabel": "编辑",
           "agentLabel": "助手"
+        },
+        "ForgeInboxMergeButton": {
+          "notFound": "该事项已不存在。",
+          "notMergeRequest": "只有合并请求可以合并。",
+          "notOpen": "该合并请求已不再打开。",
+          "noRecommendation": "智能体没有留下可确认的建议。",
+          "notRecommended": "智能体没有建议合并此变更。",
+          "noExpectedSha": "无法确定已审查的提交，因此没有合并。",
+          "draft": "该合并请求仍是草稿。",
+          "headMoved": "审查后又有新提交，请先重新审查。",
+          "notMergeable": "GitLab 拒绝了合并：冲突、审批或流水线阻止了它。",
+          "forbidden": "GitLab 凭据无法合并此项目。",
+          "noCredential": "未配置 GitLab 写凭据。",
+          "staleConfig": "GitLab 设置已变更，请重试。",
+          "rateLimited": "GitLab 已限流，请稍后重试。",
+          "unknown": "GitLab 没有返回可用结果，合并结果未知。重试前请先检查合并请求。",
+          "cancelled": "合并已取消。",
+          "action": "确认合并",
+          "merged": "已请求合并，GitLab 会在此报告结果。",
+          "title": "合并合并请求 !{{iid}}？",
+          "description": "主机将合并智能体审查的确切提交。若该提交已变动，则不会合并。",
+          "cancel": "取消",
+          "pending": "合并中…",
+          "confirm": "合并"
         }
       }
     },

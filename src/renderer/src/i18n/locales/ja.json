@@ -18483,7 +18483,11 @@
           "statusProcessing": "処理中",
           "statusWaiting": "変更待ち",
           "statusDone": "処理済み",
-          "statusRecorded": "記録済み"
+          "statusRecorded": "記録済み",
+          "statusRecommendMerge": "マージ可能",
+          "statusRecommendChanges": "変更を依頼済み",
+          "statusRecommendClose": "クローズを推奨",
+          "statusRecommendNone": "確認済み、対応不要"
         },
         "credential": {
           "title": "認証情報",
@@ -18699,6 +18703,30 @@
           "latest": "最新のステップ",
           "editLabel": "編集",
           "agentLabel": "Agent"
+        },
+        "ForgeInboxMergeButton": {
+          "notFound": "この項目はもう存在しません。",
+          "notMergeRequest": "マージできるのはマージリクエストだけです。",
+          "notOpen": "このマージリクエストはもうオープンではありません。",
+          "noRecommendation": "Agentは確認できる提案を残していません。",
+          "notRecommended": "Agentはこの変更のマージを推奨していません。",
+          "noExpectedSha": "確認済みのコミットが不明なため、何もマージされていません。",
+          "draft": "このマージリクエストはまだドラフトです。",
+          "headMoved": "レビュー後に新しいコミットが届きました。先に再確認してください。",
+          "notMergeable": "GitLab がマージを拒否しました: 競合、承認、またはパイプラインがブロックしています。",
+          "forbidden": "GitLab の認証情報ではこのプロジェクトをマージできません。",
+          "noCredential": "GitLab の書き込み認証情報が設定されていません。",
+          "staleConfig": "GitLab の設定が変更されました。もう一度お試しください。",
+          "rateLimited": "GitLab のレート制限に達しました。しばらくしてから再試行してください。",
+          "unknown": "GitLab から有効な応答がなく、マージ結果は不明です。再試行する前にマージリクエストを確認してください。",
+          "cancelled": "マージはキャンセルされました。",
+          "action": "マージを確認",
+          "merged": "マージを要求しました。結果は GitLab からここに表示されます。",
+          "title": "マージリクエスト !{{iid}} をマージしますか？",
+          "description": "ホストはAgentが確認した正確なコミットをマージします。そのコミットが移動していた場合は何もマージされません。",
+          "cancel": "キャンセル",
+          "pending": "マージ中…",
+          "confirm": "マージ"
         }
       }
     },

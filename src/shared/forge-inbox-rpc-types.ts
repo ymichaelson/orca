@@ -14,7 +14,10 @@ import type {
   ForgeCredentialStatus,
   ForgeInboxConfig
 } from './forge-inbox-config'
-import type { ForgeDispatchConfirmationView } from './forge-inbox-dispatch-confirmation'
+import type {
+  ForgeDispatchConfirmationView,
+  ForgeDispatchRecommendationAction
+} from './forge-inbox-dispatch-confirmation'
 import type { ForgeRunCancellationView } from './forge-inbox-run-cancellation'
 import type { ForgeRunDispatchViewFields } from './forge-inbox-run-dispatch'
 import type { ForgeItemHandlingView } from './forge-inbox-item-handling'
@@ -36,6 +39,11 @@ import type {
   ForgePushFailureReason,
   ForgePushProposalRefusal
 } from './forge-push'
+export type {
+  ForgeItemMergeFailure,
+  ForgeInboxItemMergeOutcome,
+  ForgeItemMergeOutcome
+} from './forge-inbox-item-merge'
 export type {
   ForgeInboxListenerView,
   ForgeInboxPhase,
@@ -79,6 +87,8 @@ export type ForgeInboxListItem = ForgeItem & {
   handling?: ForgeItemHandlingView
   /** Absent from older hosts and from items that never ran an agent. */
   latestRunState?: ForgeRunState
+  /** What the latest run advised; absent from older hosts and runs without a recommendation. */
+  recommendationAction?: ForgeDispatchRecommendationAction
 }
 
 export type ForgeInboxItemsPage = ForgePage<ForgeInboxListItem> & { ownerHostId: string }

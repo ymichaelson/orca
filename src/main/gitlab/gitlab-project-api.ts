@@ -19,6 +19,8 @@ export type GitlabProjectApiFailureCode =
   | 'event-configuration-rejected'
   | 'rate-limited'
   | 'unknown-outcome'
+  /** 409: the request's precondition moved, so nothing was written. */
+  | 'conflict'
 
 export class GitlabProjectApiError extends Error {
   constructor(readonly code: GitlabProjectApiFailureCode) {
@@ -54,6 +56,9 @@ function failureCodeForHttp(status: number, body: string): GitlabProjectApiFailu
   if (status === 429) {
     return 'rate-limited'
   }
+  if (status === 409) {
+    return 'conflict'
+  }
   if (status === 400 || status === 422) {
     return /blocked|local network/i.test(body) ? 'callback-blocked' : 'invalid-request'
   }
@@ -83,6 +88,9 @@ function failureCode(error: unknown, signal?: AbortSignal): GitlabProjectApiFail
   }
   if (/HTTP 404/i.test(stderr)) {
     return 'not-found'
+  }
+  if (/HTTP 409/i.test(stderr)) {
+    return 'conflict'
   }
   if (/HTTP 429|rate limit/i.test(stderr)) {
     return 'rate-limited'

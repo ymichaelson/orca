@@ -116,7 +116,11 @@ export function ForgeInboxList({
           <ul>
             {items.map((item) => {
               const selected = item.id === selectedItemId
-              const statusTag = forgeItemStatusTag(item.handling, item.latestRunState ?? null)
+              const statusTag = forgeItemStatusTag(
+                item.handling,
+                item.latestRunState ?? null,
+                item.recommendationAction ?? null
+              )
               return (
                 <li key={item.id}>
                   <button

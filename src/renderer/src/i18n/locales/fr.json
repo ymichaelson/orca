@@ -18587,7 +18587,11 @@
           "statusProcessing": "Traitement en cours",
           "statusWaiting": "En attente de changements",
           "statusDone": "Traité",
-          "statusRecorded": "Enregistré"
+          "statusRecorded": "Enregistré",
+          "statusRecommendMerge": "Prêt à fusionner",
+          "statusRecommendChanges": "Modifications demandées",
+          "statusRecommendClose": "À fermer",
+          "statusRecommendNone": "Révisé, aucune action"
         },
         "credential": {
           "title": "Identifiants",
@@ -18803,6 +18807,30 @@
           "latest": "dernières étapes",
           "editLabel": "Modification",
           "agentLabel": "Agent"
+        },
+        "ForgeInboxMergeButton": {
+          "notFound": "Cet élément n'existe plus.",
+          "notMergeRequest": "Seules les demandes de fusion peuvent être fusionnées.",
+          "notOpen": "Cette demande de fusion n'est plus ouverte.",
+          "noRecommendation": "L'agent n'a laissé aucune recommandation à confirmer.",
+          "notRecommended": "L'agent n'a pas recommandé de fusionner cette modification.",
+          "noExpectedSha": "Le commit révisé est inconnu, rien n'a été fusionné.",
+          "draft": "La demande de fusion est encore en brouillon.",
+          "headMoved": "De nouveaux commits sont arrivés après la révision. Révisez-les d'abord.",
+          "notMergeable": "GitLab a refusé la fusion : conflits, approbations ou pipeline l'ont bloquée.",
+          "forbidden": "L'identifiant GitLab ne peut pas fusionner ce projet.",
+          "noCredential": "Aucun identifiant d'écriture GitLab n'est configuré.",
+          "staleConfig": "Les paramètres GitLab ont changé. Réessayez.",
+          "rateLimited": "GitLab a limité la requête. Réessayez plus tard.",
+          "unknown": "GitLab n'a pas donné de réponse exploitable, le résultat de la fusion est inconnu. Vérifiez la demande avant de réessayer.",
+          "cancelled": "La fusion a été annulée.",
+          "action": "Confirmer la fusion",
+          "merged": "Fusion demandée. GitLab signalera le résultat ici.",
+          "title": "Fusionner la demande de fusion !{{iid}} ?",
+          "description": "L'hôte fusionne le commit exact que l'agent a révisé. Si ce commit a changé, rien n'est fusionné.",
+          "cancel": "Annuler",
+          "pending": "Fusion en cours…",
+          "confirm": "Fusionner"
         }
       }
     },

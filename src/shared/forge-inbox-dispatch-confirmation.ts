@@ -1,6 +1,7 @@
 /**
  * What the host could confirm about a dispatched agent's remote changes. Every value here is
- * host-authored and fixed, so a client never receives report text or anything GitLab wrote.
+ * host-authored and fixed except the recommendation reason, which is bounded agent text a client
+ * renders as plain text; no raw report block or GitLab response ever leaves the host.
  */
 export const FORGE_DISPATCH_CONFIRMATION_STATES = [
   'unconfirmed',
@@ -54,6 +55,22 @@ export const FORGE_DISPATCH_CONFIRMATION_CODES = [
 ] as const
 export type ForgeDispatchConfirmationCode = (typeof FORGE_DISPATCH_CONFIRMATION_CODES)[number]
 
+/** What the agent thinks a person should do with the change, in its own fixed vocabulary. */
+export const FORGE_DISPATCH_RECOMMENDATION_ACTIONS = [
+  'merge',
+  'request-changes',
+  'close',
+  'none'
+] as const
+export type ForgeDispatchRecommendationAction =
+  (typeof FORGE_DISPATCH_RECOMMENDATION_ACTIONS)[number]
+
+export type ForgeDispatchRecommendationView = {
+  action: ForgeDispatchRecommendationAction
+  /** Bounded agent text; clients render it as plain text, never as markup. */
+  reason: string | null
+}
+
 export type ForgeDispatchConfirmationClaimView = {
   kind: ForgeDispatchClaimKind
   target: ForgeDispatchClaimTarget
@@ -68,4 +85,6 @@ export type ForgeDispatchConfirmationView = {
   checkedAt: number | null
   /** The fixed reason behind a final verdict; absent while a check is still open. */
   code?: ForgeDispatchConfirmationCode
+  /** Absent from older hosts and from reports that gave no recommendation. */
+  recommendation?: ForgeDispatchRecommendationView
 }

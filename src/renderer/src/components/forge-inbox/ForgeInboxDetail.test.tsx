@@ -148,6 +148,34 @@ describe('ForgeInboxDetail mixed-version display', () => {
     expect(container.querySelector('header')?.textContent).not.toMatch(/Handled|Recorded/)
   })
 
+  it('shows the recommendation and offers the merge a person can confirm', () => {
+    const detail = oldHostDetail()
+    render({
+      ...detail,
+      item: { ...detail.item, kind: 'merge_request', state: 'opened' },
+      runs: [
+        {
+          ...RUN,
+          state: 'succeeded',
+          errorCode: null,
+          dispatchConfirmation: {
+            state: 'confirmed',
+            claims: [],
+            checkedAt: 3,
+            recommendation: { action: 'merge', reason: 'Docs only, safe to merge.' }
+          }
+        }
+      ],
+      handling: { state: 'done', errorCode: null },
+      timeline: []
+    })
+
+    const header = container.querySelector('header')
+    expect(header?.textContent).toContain('Ready to merge')
+    expect(header?.textContent).toContain('Docs only, safe to merge.')
+    expect(container.textContent).toContain('Confirm merge')
+  })
+
   it('names a project item by its kind alone, with no number or placeholder state', () => {
     const detail = oldHostDetail()
     render({

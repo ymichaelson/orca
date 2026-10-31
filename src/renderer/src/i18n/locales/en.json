@@ -18789,7 +18789,11 @@
           "statusProcessing": "Processing",
           "statusWaiting": "Waiting for changes",
           "statusDone": "Handled",
-          "statusRecorded": "Recorded"
+          "statusRecorded": "Recorded",
+          "statusRecommendMerge": "Ready to merge",
+          "statusRecommendChanges": "Changes requested",
+          "statusRecommendClose": "Should be closed",
+          "statusRecommendNone": "Reviewed, no action"
         },
         "credential": {
           "title": "Credentials",
@@ -19005,6 +19009,30 @@
           "latest": "latest steps",
           "editLabel": "Edit",
           "agentLabel": "Agent"
+        },
+        "ForgeInboxMergeButton": {
+          "notFound": "This item no longer exists.",
+          "notMergeRequest": "Only merge requests can be merged.",
+          "notOpen": "This merge request is no longer open.",
+          "noRecommendation": "The agent left no recommendation to confirm.",
+          "notRecommended": "The agent did not recommend merging this change.",
+          "noExpectedSha": "The reviewed commit is unknown, so nothing was merged.",
+          "draft": "The merge request is still a draft.",
+          "headMoved": "New commits arrived after the review. Review them first.",
+          "notMergeable": "GitLab refused the merge: conflicts, approvals or the pipeline blocked it.",
+          "forbidden": "The GitLab credential cannot merge this project.",
+          "noCredential": "No GitLab write credential is configured.",
+          "staleConfig": "The GitLab settings changed. Try again.",
+          "rateLimited": "GitLab rate-limited the request. Try again later.",
+          "unknown": "GitLab gave no usable answer, so the merge result is unknown. Check the merge request before retrying.",
+          "cancelled": "The merge was cancelled.",
+          "action": "Confirm merge",
+          "merged": "Merge requested. GitLab will report the result here.",
+          "title": "Merge merge request !{{iid}}?",
+          "description": "The host merges the exact commit the agent reviewed. If that commit moved, nothing is merged.",
+          "cancel": "Cancel",
+          "pending": "Merging…",
+          "confirm": "Merge"
         }
       }
     },

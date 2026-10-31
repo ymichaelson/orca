@@ -6,6 +6,8 @@ import { FORGE_RUN_STATES, type ForgeRunState } from '../../shared/forge-inbox-t
 import type { ForgeLedgerContext } from './forge-inbox-context'
 import { rowNumber } from './forge-inbox-rows'
 import { forgeDeliveryErrorSource } from './forge-inbox-error-source'
+import type { DispatchRecommendationAction } from './forge-inbox-dispatch-report'
+import { readStoredDispatchReport } from './forge-inbox-dispatch-report'
 import type { SqliteRow } from '../sqlite/sqlite-statement'
 
 export type ForgeItemHandlingInput = {
@@ -97,6 +99,10 @@ export function handlingSelectSql(): string {
   (SELECT r.state FROM runs r WHERE r.item_id = i.id ORDER BY r.id DESC LIMIT 1) AS run_state,
   (SELECT r.cancel_requested_at IS NOT NULL FROM runs r WHERE r.item_id = i.id
     ORDER BY r.id DESC LIMIT 1) AS run_stop_requested,
+  (SELECT c.report_json FROM run_dispatch_confirmations c
+    WHERE c.host_id = i.host_id
+      AND c.run_id = (SELECT r.id FROM runs r WHERE r.item_id = i.id ORDER BY r.id DESC LIMIT 1)
+  ) AS latest_dispatch_report,
   d.action, d.last_error_code AS action_error,
   w.state AS delivery_state, w.decision_state, w.parked_reason, w.last_error_code AS delivery_error`
 }
@@ -143,15 +149,19 @@ export function forgeItemHandlingInputOf(row: SqliteRow): ForgeItemHandlingInput
   }
 }
 
-/** Both facts a list row labels itself with; the run is the latest one, whatever its state. */
+/** What a list row labels itself with; the run and its report are the latest one, whatever its state. */
 export function forgeListItemStatusOf(row: SqliteRow): {
   handling: ForgeItemHandlingView
   latestRunState: ForgeRunState | null
+  recommendationAction: DispatchRecommendationAction | null
 } {
   const runState = optionalText(row, 'run_state')
+  const report = readStoredDispatchReport(optionalText(row, 'latest_dispatch_report'))
   return {
     handling: forgeItemHandling(forgeItemHandlingInputOf(row)),
-    latestRunState: FORGE_RUN_STATES.find((state) => state === runState) ?? null
+    latestRunState: FORGE_RUN_STATES.find((state) => state === runState) ?? null,
+    recommendationAction:
+      report.status === 'claims' ? (report.recommendation?.action ?? null) : null
   }
 }
 
