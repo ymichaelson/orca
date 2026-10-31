@@ -22,6 +22,7 @@ export function seedDispatchRun(
     itemIid?: number
     /** GitLab's state for the stored item, such as `opened`. */
     itemState?: string
+    title?: string
     /** Distinguishes the stored item from the one the confirmation names, so rows never collide. */
     storedIid: number
     expectedSha?: string | null
@@ -40,7 +41,8 @@ export function seedDispatchRun(
     versionToken: `v-${randomUUID()}`,
     sourceOrder: 1,
     payload: {},
-    ...(options.itemState === undefined ? {} : { itemState: options.itemState })
+    ...(options.itemState === undefined ? {} : { itemState: options.itemState }),
+    ...(options.title === undefined ? {} : { title: options.title })
   })
   if (ingested.duplicate) {
     throw new Error('fixture expected a first delivery')

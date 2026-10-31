@@ -171,6 +171,8 @@ describe('ForgeInboxDetail mixed-version display', () => {
     })
 
     const header = container.querySelector('header')
+    // The badge names the workflow state; the recommendation block below carries the advice.
+    expect(header?.textContent).toContain('Reviewed')
     expect(header?.textContent).toContain('Ready to merge')
     expect(header?.textContent).toContain('Docs only, safe to merge.')
     expect(container.textContent).toContain('Confirm merge')
