@@ -7,7 +7,8 @@ import { forgeItemIdentityParts, formatForgeDateTime } from './forge-inbox-displ
 import {
   forgeItemStateLabel,
   forgeItemStatusTag,
-  forgeRecommendationLabel
+  forgeRecommendationLabel,
+  forgeRepliedLabel
 } from './forge-inbox-item-status'
 import { ForgeInboxError, type ForgeInboxRepairActions } from './ForgeInboxError'
 import { ForgeInboxArchiveButton } from './ForgeInboxArchiveButton'
@@ -67,10 +68,13 @@ export function ForgeInboxDetail({
   // The latest run is the newest: run ids only grow within an item.
   const latestRun = runs[0]
   const recommendation = latestRun?.dispatchConfirmation?.recommendation ?? null
+  const replied =
+    latestRun?.dispatchConfirmation?.claims.some((claim) => claim.kind === 'comment') ?? false
   const statusTag = forgeItemStatusTag(
     handling,
     latestRun?.state ?? null,
-    recommendation?.action ?? null
+    recommendation?.action ?? null,
+    replied
   )
   const stateLabel = forgeItemStateLabel(item.kind, item.state)
   const canMerge =
@@ -110,9 +114,12 @@ export function ForgeInboxDetail({
         )}
         {recommendation === null ? null : (
           <div className="mt-1 rounded-md border border-border/60 bg-muted/40 px-3 py-2">
-            <p className="text-xs font-medium text-foreground">
-              {forgeRecommendationLabel(recommendation.action)}
-            </p>
+            <div className="flex flex-wrap items-center gap-2">
+              <p className="text-xs font-medium text-foreground">
+                {forgeRecommendationLabel(recommendation.action)}
+              </p>
+              {replied ? <Badge variant="outline">{forgeRepliedLabel()}</Badge> : null}
+            </div>
             {recommendation.reason === null ? null : (
               <p className="mt-0.5 text-xs text-muted-foreground">{recommendation.reason}</p>
             )}

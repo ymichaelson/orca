@@ -19,12 +19,13 @@ import type { SqliteRow } from '../sqlite/sqlite-statement'
 
 /** A list row carries what it is doing, so it can label itself without opening the item. */
 export function forgeListItemFromRow(row: SqliteRow): ForgeInboxListItem {
-  const { handling, latestRunState, recommendationAction } = forgeListItemStatusOf(row)
+  const { handling, latestRunState, recommendationAction, replied } = forgeListItemStatusOf(row)
   return {
     ...itemFromRowWithMarks(row),
     handling,
     ...(latestRunState === null ? {} : { latestRunState }),
-    ...(recommendationAction === null ? {} : { recommendationAction })
+    ...(recommendationAction === null ? {} : { recommendationAction }),
+    ...(replied ? { replied } : {})
   }
 }
 

@@ -154,14 +154,18 @@ export function forgeListItemStatusOf(row: SqliteRow): {
   handling: ForgeItemHandlingView
   latestRunState: ForgeRunState | null
   recommendationAction: DispatchRecommendationAction | null
+  /** The run reported posting a comment; whether GitLab confirms it stays in the run's confirmation. */
+  replied: boolean
 } {
   const runState = optionalText(row, 'run_state')
   const report = readStoredDispatchReport(optionalText(row, 'latest_dispatch_report'))
+  const claims = report.status === 'claims' ? report.claims : []
   return {
     handling: forgeItemHandling(forgeItemHandlingInputOf(row)),
     latestRunState: FORGE_RUN_STATES.find((state) => state === runState) ?? null,
     recommendationAction:
-      report.status === 'claims' ? (report.recommendation?.action ?? null) : null
+      report.status === 'claims' ? (report.recommendation?.action ?? null) : null,
+    replied: claims.some((claim) => claim.kind === 'comment')
   }
 }
 

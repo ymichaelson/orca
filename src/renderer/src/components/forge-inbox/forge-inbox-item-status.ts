@@ -62,6 +62,11 @@ export function forgeRecommendationLabel(action: ForgeDispatchRecommendationActi
   }
 }
 
+/** The run posted a reply, so the person can read its reasoning instead of starting the review. */
+export function forgeRepliedLabel(): string {
+  return translate('auto.components.forge-inbox.display.statusReplied', 'Replied')
+}
+
 export function forgeRecommendationTag(
   action: ForgeDispatchRecommendationAction
 ): ForgeItemStatusTag {
@@ -85,7 +90,8 @@ export function forgeRecommendationTag(
 export function forgeItemStatusTag(
   handling: ForgeItemHandlingView | undefined,
   latestRunState: ForgeRunState | null,
-  recommendationAction: ForgeDispatchRecommendationAction | null = null
+  recommendationAction: ForgeDispatchRecommendationAction | null = null,
+  replied = false
 ): ForgeItemStatusTag | null {
   if (handling?.state === 'needs-user') {
     return {
@@ -142,15 +148,15 @@ export function forgeItemStatusTag(
       }
     case 'succeeded':
       // The recommendation says what to do next, which is more useful than "it ran".
-      return recommendationAction === null
-        ? {
-            label: translate(
-              'auto.components.forge-inbox.display.statusAgentSucceeded',
-              'Agent run succeeded'
-            ),
+      if (recommendationAction !== null) {
+        return forgeRecommendationTag(recommendationAction)
+      }
+      return replied
+        ? { label: forgeRepliedLabel(), variant: 'secondary' }
+        : {
+            label: translate('auto.components.forge-inbox.display.statusReviewed', 'Reviewed'),
             variant: 'secondary'
           }
-        : forgeRecommendationTag(recommendationAction)
     case null:
     case undefined:
       break
