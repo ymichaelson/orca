@@ -533,6 +533,53 @@ async function seedBundledRipgrep(resourcesDir) {
 }
 
 describe('lazily required packages reach Resources/node_modules', () => {
+  it('excludes runtime builtins while retaining ordinary lazy dependencies', async () => {
+    const sourceDir = await mkdtemp(join(tmpdir(), 'orca-lazy-builtins-'))
+    try {
+      await writeFile(
+        join(sourceDir, 'runtime.ts'),
+        [
+          'const requireFromMain = createRequire(import.meta.url)',
+          "requireFromMain('node:fs')",
+          "requireFromMain('node:sqlite')",
+          "requireFromMain('zod')"
+        ].join('\n')
+      )
+      expect([...collectLazyRequireSpecifiers(sourceDir).keys()]).toEqual(['zod'])
+    } finally {
+      await removeTree(sourceDir)
+    }
+  })
+
+  it('copies every createRequire specifier main uses into the packaged resource plan', () => {
+    const specifiers = collectLazyRequireSpecifiers(join(projectRoot, 'src', 'main'))
+    expect(specifiers.size).toBeGreaterThan(0)
+
+    const destinations = {
+      win: packagedResourceDestinations('win'),
+      mac: packagedResourceDestinations('mac'),
+      linux: packagedResourceDestinations('linux')
+    }
+    for (const [specifier, source] of specifiers) {
+      const packageName = packageNameFromSpecifier(specifier)
+      const covered = (platform) =>
+        destinations[platform].has(`node_modules/${packageName}`) ||
+        destinations[platform].has(`node_modules/${specifier}`)
+      // The Windows CI lane checks the full closure with its native addons installed.
+      if (windowsAddonsInstalled) {
+        expect(
+          covered('win'),
+          `${source} lazily requires '${specifier}', but nothing copies it to Resources/node_modules`
+        ).toBe(true)
+      }
+      if (covered('mac') && covered('linux')) {
+        continue
+      }
+      // Only the Windows-native loaders may be absent from the mac/linux plans.
+      expect(source, `'${specifier}' is packaged for Windows only`).toContain('windows')
+    }
+  })
+
   it('resolves the copied emoji dataset the way the packaged main bundle does', async () => {
     const resourcesDir = await mkdtemp(join(tmpdir(), 'orca-lazy-require-'))
     try {
