@@ -64,7 +64,7 @@ describe('ForgeInboxRunCard dispatch confirmation', () => {
   it('keeps the run badge as the turn verdict and shows the changes as not yet confirmed', () => {
     const text = render({ ...RUN, dispatchConfirmation: confirmation() })
 
-    expect(text).toContain('Succeeded')
+    expect(text).toContain('Agent run succeeded')
     expect(text).toContain('Changes not yet confirmed')
     expect(text).not.toContain('Changes confirmed')
   })
@@ -286,7 +286,7 @@ describe('ForgeInboxRunCard dispatch confirmation', () => {
   it('renders a succeeded dispatch from an older host as unknown, never confirmed', () => {
     const text = render(RUN)
 
-    expect(text).toContain('Succeeded')
+    expect(text).toContain('Agent run succeeded')
     expect(text).toContain('Changes unknown')
     expect(text).not.toMatch(/Changes confirmed|Agent reported/)
   })
@@ -349,7 +349,7 @@ describe('ForgeInboxRunCard stop request', () => {
       })
 
       expect(text).toContain('Stopping')
-      expect(text).not.toContain('Running')
+      expect(text).not.toContain('Agent running')
       expect(text).not.toContain('Cancelled')
     }
   )
@@ -375,12 +375,12 @@ describe('ForgeInboxRunCard stop request', () => {
       cancellation: { requestedAt: 5, delivery: 'accepted' }
     })
 
-    expect(text).toContain('Succeeded')
+    expect(text).toContain('Agent run succeeded')
     expect(text).not.toContain('Stopping')
   })
 
   it('keeps an older host run that carries no stop request as Running', () => {
-    expect(render({ ...RUN, state: 'running' })).toContain('Running')
+    expect(render({ ...RUN, state: 'running' })).toContain('Agent running')
   })
 })
 
@@ -447,7 +447,7 @@ describe('ForgeInboxRunCard dispatch snapshot and terminal exit', () => {
 
     expect(text).toContain(words)
     expect(text).toContain('does not show what the agent did')
-    expect(text).not.toContain('Succeeded')
+    expect(text).not.toContain('Agent run succeeded')
   })
 
   it('shows a terminal dispatch with a stop request as stopping until its exit was seen', () => {

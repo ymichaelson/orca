@@ -101,15 +101,16 @@ function EntryDetail({
       return (
         <div className="flex flex-wrap items-center gap-2">
           <Badge variant="outline">{forgeDecisionActionLabel(entry.action)}</Badge>
-          <Badge variant={forgeDecisionStateVariant(entry.state)}>
-            {forgeDecisionStateLabel(entry.state)}
+          <Badge variant={forgeDecisionStateVariant(entry.state, entry.errorCode)}>
+            {forgeDecisionStateLabel(entry.state, entry.errorCode)}
           </Badge>
           {entry.superseded === true ? (
             <span className="text-2xs text-muted-foreground">
               {translate('auto.components.forge-inbox.ForgeInboxTimeline.replaced', 'Replaced')}
             </span>
           ) : null}
-          {entry.errorCode !== null ? (
+          {/* A skipped duplicate explains itself by its state; the code would only repeat it. */}
+          {entry.errorCode !== null && entry.errorCode !== 'already-dispatched' ? (
             <ForgeInboxError
               code={entry.errorCode}
               source={entry.errorSource}

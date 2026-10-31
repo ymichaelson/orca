@@ -2,6 +2,7 @@ import type {
   ForgeItemHandlingState,
   ForgeItemHandlingView
 } from '../../shared/forge-inbox-item-handling'
+import { FORGE_RUN_STATES, type ForgeRunState } from '../../shared/forge-inbox-types'
 import type { ForgeLedgerContext } from './forge-inbox-context'
 import { rowNumber } from './forge-inbox-rows'
 import { forgeDeliveryErrorSource } from './forge-inbox-error-source'
@@ -42,7 +43,11 @@ export function forgeItemHandling(input: ForgeItemHandlingInput): ForgeItemHandl
   if (awaitingUser) {
     return handling('needs-user')
   }
-  if (input.deliveryState === 'failed' || input.runState === 'failed') {
+  // A duplicate dispatch was refused because this change is already claimed, not because anything failed.
+  const duplicateDispatch =
+    input.runState !== null &&
+    (input.actionError === 'already-dispatched' || input.deliveryError === 'already-dispatched')
+  if (input.runState === 'failed' || (input.deliveryState === 'failed' && !duplicateDispatch)) {
     const errorSource = forgeDeliveryErrorSource({
       decisionState: input.decisionState ?? null,
       action: input.action,
@@ -135,6 +140,18 @@ export function forgeItemHandlingInputOf(row: SqliteRow): ForgeItemHandlingInput
     decisionState: optionalText(row, 'decision_state'),
     parkedReason: optionalText(row, 'parked_reason'),
     deliveryError: optionalText(row, 'delivery_error')
+  }
+}
+
+/** Both facts a list row labels itself with; the run is the latest one, whatever its state. */
+export function forgeListItemStatusOf(row: SqliteRow): {
+  handling: ForgeItemHandlingView
+  latestRunState: ForgeRunState | null
+} {
+  const runState = optionalText(row, 'run_state')
+  return {
+    handling: forgeItemHandling(forgeItemHandlingInputOf(row)),
+    latestRunState: FORGE_RUN_STATES.find((state) => state === runState) ?? null
   }
 }
 

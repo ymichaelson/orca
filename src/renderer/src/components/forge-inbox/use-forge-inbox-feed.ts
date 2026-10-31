@@ -4,8 +4,8 @@ import { forgeGenericErrorLabel } from './forge-inbox-error-code-copy'
 import type { ExecutionHostId } from '../../../../shared/execution-host'
 import type { ForgeInboxArchiveView } from '../../../../shared/forge-inbox-display-preferences'
 import type { ForgeItemHandlingState } from '../../../../shared/forge-inbox-item-handling'
-import type { ForgeItem, ForgeItemKind } from '../../../../shared/forge-inbox-types'
-import type { ForgeInboxStatus } from '../../../../shared/forge-inbox-rpc-types'
+import type { ForgeItemKind } from '../../../../shared/forge-inbox-types'
+import type { ForgeInboxListItem, ForgeInboxStatus } from '../../../../shared/forge-inbox-rpc-types'
 import type { RuntimeClientTarget } from '../../../../shared/runtime-client-target'
 import {
   getRuntimeTargetHostId,
@@ -41,7 +41,7 @@ export function useForgeInboxFeed(target: RuntimeClientTarget = LOCAL_TARGET): F
   } | null>(null)
   const [statusError, setStatusError] = useState<string | null>(null)
   const [loadingStatus, setLoadingStatus] = useState(true)
-  const [items, setItems] = useState<ForgeItem[]>([])
+  const [items, setItems] = useState<ForgeInboxListItem[]>([])
   const [listOwner, setListOwner] = useState<string | null>(null)
   const [itemsError, setItemsError] = useState<string | null>(null)
   const [loadingItems, setLoadingItems] = useState(false)

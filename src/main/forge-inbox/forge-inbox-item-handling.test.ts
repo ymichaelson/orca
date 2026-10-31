@@ -164,6 +164,20 @@ describe('Inbox item handling', () => {
     expect(readForgeItemHandling(ctx, itemId)).toEqual({ state: 'done', errorCode: null })
   })
 
+  it('reads a refused duplicate dispatch as handled when the change already ran', () => {
+    decide('dispatch_agent')
+    const { claim, itemId } = claimLinked()
+    ctx.db
+      .prepare(`INSERT INTO runs (item_id, revision, state, policy_generation, context_digest,
+        analysis_kind, reason, created_at, updated_at)
+        VALUES (?, 1, 'succeeded', 1, 'digest', 'merge_request', 'review-requested', 1, 1)`)
+      .run(itemId)
+    settle(claim, { kind: 'blocked', code: 'already-dispatched' })
+
+    // Anything that actually failed still reads as failed; only the duplicate refusal is not one.
+    expect(readForgeItemHandling(ctx, itemId)).toEqual({ state: 'done', errorCode: null })
+  })
+
   it('reports an unverifiable run as unconfirmed rather than handled', () => {
     decide('notify')
     const { claim, itemId } = claimLinked()

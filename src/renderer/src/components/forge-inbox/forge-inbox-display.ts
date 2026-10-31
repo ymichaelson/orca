@@ -2,6 +2,7 @@ import type { ComponentProps } from 'react'
 import type { Badge } from '@/components/ui/badge'
 import type { ForgeItem, ForgeItemKind, ForgeRunState } from '../../../../shared/forge-inbox-types'
 import type { ForgeItemHandlingState } from '../../../../shared/forge-inbox-item-handling'
+import { forgeItemStateLabel } from './forge-inbox-item-status'
 import type { ForgeRunCancellationView } from '../../../../shared/forge-inbox-run-cancellation'
 import type { ForgeItemTimelineKind } from '../../../../shared/forge-inbox-item-timeline'
 import type { ProjectEventDecisionAction } from '../../../../shared/project-event-decision'
@@ -34,12 +35,13 @@ export function forgeItemKindLabel(kind: ForgeItemKind): string {
 
 /** A project item stands for the whole project, so it has no number or state of its own to show. */
 export function forgeItemIdentityParts(item: Pick<ForgeItem, 'kind' | 'iid' | 'state'>): string[] {
-  return item.kind === 'project'
-    ? [forgeItemKindLabel(item.kind)]
-    : [forgeItemKindLabel(item.kind), `#${item.iid}`, item.state]
+  if (item.kind === 'project') {
+    return [forgeItemKindLabel(item.kind)]
+  }
+  const state = forgeItemStateLabel(item.kind, item.state) ?? item.state
+  return [forgeItemKindLabel(item.kind), `#${item.iid}`, state]
 }
 
-/** A stop request is not a stop: a run keeps its state label until its own turn proves how it ended. */
 export function forgeRunStateLabel(
   state: ForgeRunState,
   cancellation?: ForgeRunCancellationView,
@@ -55,16 +57,16 @@ export function forgeRunStateLabel(
     case 'queued':
       return translate('auto.components.forge-inbox.display.runQueued', 'Queued')
     case 'running':
-      return translate('auto.components.forge-inbox.display.runRunning', 'Running')
+      return translate('auto.components.forge-inbox.display.runRunning', 'Agent running')
     case 'awaiting-approval':
       return translate(
         'auto.components.forge-inbox.display.runAwaitingApproval',
         'Awaiting approval'
       )
     case 'succeeded':
-      return translate('auto.components.forge-inbox.display.runSucceeded', 'Succeeded')
+      return translate('auto.components.forge-inbox.display.runSucceeded', 'Agent run succeeded')
     case 'failed':
-      return translate('auto.components.forge-inbox.display.runFailed', 'Failed')
+      return translate('auto.components.forge-inbox.display.runFailed', 'Agent run failed')
     case 'cancelled':
       return translate('auto.components.forge-inbox.display.runCancelled', 'Cancelled')
     case 'unverifiable':
@@ -118,11 +120,11 @@ export function forgeItemHandlingLabel(state: ForgeItemHandlingState, stopping =
     case 'waiting':
       return translate('auto.components.forge-inbox.display.handlingWaiting', 'Waiting for changes')
     case 'needs-user':
-      return translate('auto.components.forge-inbox.display.handlingNeedsUser', 'Needs you')
+      return translate('auto.components.forge-inbox.display.handlingNeedsUser', 'Waiting for you')
     case 'done':
       return translate('auto.components.forge-inbox.display.handlingDone', 'Handled')
     case 'failed':
-      return translate('auto.components.forge-inbox.display.handlingFailed', 'Failed')
+      return translate('auto.components.forge-inbox.display.handlingFailed', 'Handling failed')
     case 'unconfirmed':
       return translate(
         'auto.components.forge-inbox.display.handlingUnconfirmed',
@@ -177,8 +179,14 @@ export function forgePhaseLabel(phase: ForgeInboxPhase | 'unattached'): string {
   }
 }
 
+/** A refused duplicate is a skip, not a failure: nothing is left for the reader to fix. */
+const SKIPPED_ACTION_CODE = 'already-dispatched'
+
 /** Decision states come from the host's CHECK list; an unlisted value falls back to a neutral label. */
-export function forgeDecisionStateLabel(state: string): string {
+export function forgeDecisionStateLabel(state: string, errorCode: string | null = null): string {
+  if (state === 'blocked' && errorCode === SKIPPED_ACTION_CODE) {
+    return translate('auto.components.forge-inbox.display.decisionSkipped', 'Skipped')
+  }
   switch (state) {
     case 'queued':
       return translate('auto.components.forge-inbox.display.decisionQueued', 'Queued')
@@ -200,7 +208,13 @@ export function forgeDecisionStateLabel(state: string): string {
   }
 }
 
-export function forgeDecisionStateVariant(state: string): ComponentProps<typeof Badge>['variant'] {
+export function forgeDecisionStateVariant(
+  state: string,
+  errorCode: string | null = null
+): ComponentProps<typeof Badge>['variant'] {
+  if (state === 'blocked' && errorCode === SKIPPED_ACTION_CODE) {
+    return 'outline'
+  }
   if (state === 'done') {
     return 'secondary'
   }

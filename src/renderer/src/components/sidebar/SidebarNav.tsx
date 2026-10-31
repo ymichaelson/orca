@@ -1,5 +1,14 @@
 import React from 'react'
-import { BookOpen, CalendarClock, EyeOff, Files, Inbox, Search, Smartphone } from 'lucide-react'
+import {
+  BookOpen,
+  CalendarClock,
+  EyeOff,
+  Files,
+  Inbox,
+  LoaderCircle,
+  Search,
+  Smartphone
+} from 'lucide-react'
 import { useTranslation } from 'react-i18next'
 import { useAppStore } from '@/store'
 import { cn } from '@/lib/utils'
@@ -14,6 +23,7 @@ import { SidebarTaskNavButton } from './SidebarTaskNavButton'
 import { HideSidebarMenu } from './sidebar-nav-controls'
 import { translate } from '@/i18n/i18n'
 import { lazyWithRetry } from '@/lib/lazy-with-retry'
+import { useForgeInboxAttention } from '@/components/forge-inbox/use-forge-inbox-attention'
 import type { GlobalSettings } from '../../../../shared/global-settings-types'
 
 export function shouldShowMobileButton(
@@ -57,6 +67,7 @@ const SidebarNav = React.memo(function SidebarNav() {
   const openMobilePage = useAppStore((s) => s.openMobilePage)
   const openArtifactsPage = useAppStore((s) => s.openArtifactsPage)
   const openInboxPage = useAppStore((s) => s.openInboxPage)
+  const inboxOwnerTarget = useAppStore((s) => s.forgeInboxOwnerTarget)
   const openSkillsPage = useAppStore((s) => s.openSkillsPage)
   const openModal = useAppStore((s) => s.openModal)
   const updateSettings = useAppStore((s) => s.updateSettings)
@@ -70,6 +81,7 @@ const SidebarNav = React.memo(function SidebarNav() {
   const mobileActive = activeView === 'mobile'
   const artifactsActive = activeView === 'artifacts'
   const inboxActive = activeView === 'inbox'
+  const inboxAttention = useForgeInboxAttention(inboxOwnerTarget)
   const skillsActive = activeView === 'skills'
   const mobileOnboardingBadge = useMobileSidebarOnboardingBadge(showMobileButton)
   const hideAutomationsButton = React.useCallback(() => {
@@ -139,6 +151,33 @@ const SidebarNav = React.memo(function SidebarNav() {
         <span className="flex-1">
           {translate('auto.components.sidebar.SidebarNav.inbox', 'Inbox')}
         </span>
+        {inboxAttention.running > 0 ? (
+          <span
+            aria-label={translate(
+              'auto.components.sidebar.SidebarNav.inboxRunning',
+              '{{value}} running',
+              { value: inboxAttention.running }
+            )}
+            className="shrink-0"
+          >
+            <LoaderCircle
+              className="size-3.5 animate-spin text-worktree-sidebar-foreground/70"
+              aria-hidden
+            />
+          </span>
+        ) : null}
+        {inboxAttention.unread !== null && inboxAttention.unread > 0 ? (
+          <span
+            aria-label={translate(
+              'auto.components.sidebar.SidebarNav.inboxUnread',
+              '{{value}} unread',
+              { value: inboxAttention.unread }
+            )}
+            className="shrink-0 rounded-full bg-destructive px-1.5 py-px text-[10px] font-semibold tabular-nums text-destructive-foreground"
+          >
+            {inboxAttention.unread > 99 ? '99+' : inboxAttention.unread}
+          </span>
+        ) : null}
       </button>
       {showArtifactsButton ? (
         <ContextMenu>

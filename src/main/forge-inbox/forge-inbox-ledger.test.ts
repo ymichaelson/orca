@@ -6,6 +6,7 @@ import { afterEach, beforeEach, describe, expect, it } from 'vitest'
 import Database from '../sqlite/sync-database'
 import { ForgeInboxHostMismatchError, ForgeInboxSchemaError } from './forge-inbox-database'
 import { ForgeInboxLedger } from './forge-inbox-ledger'
+import { countUnreadForgeItems } from './forge-inbox-queries'
 import type { ForgeEventIngest, ForgeProposal } from './forge-inbox-types'
 
 const SCOPE = { instanceId: 'gitlab-main' }
@@ -278,14 +279,24 @@ describe('forge inbox ledger', () => {
   it('tracks unread per client independent of run state and re-flags updates', () => {
     const { itemId } = ingest({ queueRun: { reason: 'x' } })
     expect(ledger.listItems({ ...SCOPE, clientId: 'phone', unreadOnly: true }).rows).toHaveLength(1)
+    expect(countUnreadForgeItems(ledger.ledgerContext(), { ...SCOPE, clientId: 'phone' })).toBe(1)
+    // A list row names what it needs without a second read: its handling and its newest run.
+    expect(ledger.listItems({ ...SCOPE, clientId: 'phone' }).rows[0]).toMatchObject({
+      handling: { state: 'processing' },
+      latestRunState: 'queued'
+    })
     expect(ledger.markRead(SCOPE, { clientId: 'phone', itemId })).toBe(true)
     expect(ledger.listItems({ ...SCOPE, clientId: 'phone', unreadOnly: true }).rows).toHaveLength(0)
+    expect(countUnreadForgeItems(ledger.ledgerContext(), { ...SCOPE, clientId: 'phone' })).toBe(0)
     expect(ledger.listItems({ ...SCOPE, clientId: 'desktop', unreadOnly: true }).rows).toHaveLength(
       1
     )
+    expect(countUnreadForgeItems(ledger.ledgerContext(), { ...SCOPE, clientId: 'desktop' })).toBe(1)
     expect(ledger.listRuns(SCOPE, { itemId }).rows[0].state).toBe('queued')
     ingest({ dedupeKey: 'd2', versionToken: 'v2' })
     expect(ledger.getItemDetail(SCOPE, itemId, 'phone')?.item.unread).toBe(true)
+    // A new activity marks the item unread again, so a finished run raises the sidebar count.
+    expect(countUnreadForgeItems(ledger.ledgerContext(), { ...SCOPE, clientId: 'phone' })).toBe(1)
     expect(ledger.markRead({ instanceId: 'other' }, { clientId: 'phone', itemId })).toBe(false)
   })
 

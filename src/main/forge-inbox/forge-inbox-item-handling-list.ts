@@ -1,9 +1,9 @@
+import type { ForgeInboxListItem } from '../../shared/forge-inbox-rpc-types'
 import type { ForgeLedgerContext } from './forge-inbox-context'
 import type { ForgeItemHandlingState } from '../../shared/forge-inbox-item-handling'
 import { itemFromRowWithMarks } from './forge-inbox-item-archive'
 import {
-  forgeItemHandling,
-  forgeItemHandlingInputOf,
+  forgeListItemStatusOf,
   handlingJoinsSql,
   handlingSelectSql
 } from './forge-inbox-item-handling'
@@ -14,7 +14,18 @@ import {
   type ForgeItemListQuery
 } from './forge-inbox-item-list-query'
 import { rowNumber } from './forge-inbox-rows'
-import type { ForgeItem, ForgePage } from './forge-inbox-types'
+import type { ForgePage } from './forge-inbox-types'
+import type { SqliteRow } from '../sqlite/sqlite-statement'
+
+/** A list row carries what it is doing, so it can label itself without opening the item. */
+export function forgeListItemFromRow(row: SqliteRow): ForgeInboxListItem {
+  const { handling, latestRunState } = forgeListItemStatusOf(row)
+  return {
+    ...itemFromRowWithMarks(row),
+    handling,
+    ...(latestRunState === null ? {} : { latestRunState })
+  }
+}
 
 /** One batch per read keeps a filtered page from loading the whole ledger at once. */
 const HANDLING_SCAN_BATCH = 100
@@ -28,13 +39,13 @@ const HANDLING_SCAN_MAX = 1000
 export function listForgeItemsByHandling(
   ctx: ForgeLedgerContext,
   query: ForgeItemListQuery & { handling: ForgeItemHandlingState }
-): ForgePage<ForgeItem> {
+): ForgePage<ForgeInboxListItem> {
   const size = pageSize(query.limit)
   const read = ctx.db.prepare(
     `${itemListSql({ columns: handlingSelectSql(), joins: handlingJoinsSql() })}
        ORDER BY i.id DESC LIMIT ?`
   )
-  const matches: ForgeItem[] = []
+  const matches: ForgeInboxListItem[] = []
   let cursor = query.cursor ?? null
   let scanned = 0
   let exhausted = false
@@ -45,8 +56,9 @@ export function listForgeItemsByHandling(
     scanned += batch.length
     for (const row of batch) {
       cursor = rowNumber(row, 'id')
-      if (forgeItemHandling(forgeItemHandlingInputOf(row)).state === query.handling) {
-        matches.push(itemFromRowWithMarks(row))
+      const item = forgeListItemFromRow(row)
+      if (item.handling?.state === query.handling) {
+        matches.push(item)
       }
     }
     // Why: a short batch is the end of the narrowing, so a further read could only repeat it.
