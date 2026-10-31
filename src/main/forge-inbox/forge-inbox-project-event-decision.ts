@@ -6,7 +6,10 @@ import type {
 } from '../../shared/project-event-decision'
 import type { ForgeLedgerContext } from './forge-inbox-context'
 import { runForgeTransaction } from './forge-inbox-database'
-import { recordProjectEventItem } from './forge-inbox-project-event-delivery-item'
+import {
+  linkExistingProjectEventItem,
+  recordProjectEventItem
+} from './forge-inbox-project-event-delivery-item'
 import { getProjectEventRepoLinkByBinding } from './forge-inbox-project-event-link'
 import { getProjectEventPolicy } from './forge-inbox-project-event-policy'
 import { projectEventSubject } from './forge-inbox-project-event-subject'
@@ -259,6 +262,11 @@ export function decideProjectEventDelivery(
       notify: decision.action === 'notify',
       allowUnknown: finish
     })
+    // Why: a non-project event's item already exists, so the decision must name it here — while the
+    // action waits, nothing else would put it on the item's timeline.
+    if (refusal === null) {
+      linkExistingProjectEventItem(ctx, { deliveryId, bindingId: claim.bindingId, decisionId })
+    }
     ctx.db
       .prepare(`UPDATE webhook_deliveries SET decision_state = 'decided', decision_token = NULL,
       last_error_code = ?, next_attempt_at = NULL, state = ?, finished_at = ?, body = CASE WHEN ? THEN x'' ELSE body END WHERE id = ?`)

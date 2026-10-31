@@ -194,6 +194,9 @@ export function createForgeProjectEventAgentLaunch(
           intent: {
             agent: policy.agentId,
             target: { kind: 'existing', worktree: workspaceId },
+            // Why: this run must report its result and follow-ups back; a terminal handoff cannot,
+            // so the dispatch prefers a structured session over the user's new-tab default.
+            nativeChatDefault: true,
             ...(policy.model ? { sessionOptions: { model: policy.model } } : {}),
             prompt: { text: prompt, delivery: 'submit' },
             launchSource: 'forge-project-event'

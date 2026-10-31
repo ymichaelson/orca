@@ -21,10 +21,15 @@ import {
   terminalRow
 } from './forge-inbox-project-event-terminal-test-kit'
 
+/** This host refuses structured sessions, so the dispatch's terminal fallback is what runs. */
 const TERMINAL_MODE = {
   requireStore: () => ({
     getSettings: () => ({ experimentalNativeChat: false }),
     getRepo: () => ({ path: '/work/repo', connectionId: null })
+  }),
+  getStructuredAgentSessionCreateSupport: async () => ({
+    supported: false,
+    reason: 'agent' as const
   })
 }
 
