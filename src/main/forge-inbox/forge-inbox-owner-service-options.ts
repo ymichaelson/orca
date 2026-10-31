@@ -9,6 +9,7 @@ import type {
   ProjectEventDecisionResult
 } from '../../shared/project-event-decision'
 import type { ForgeNotificationSink } from './forge-inbox-notification-processor'
+import type { ForgeOpenQuestionHold } from './forge-inbox-owner-open-question-watch'
 import type { ProjectEventActionClaim } from './forge-inbox-project-event-action'
 import type { ProjectEventHeadObservation } from './forge-inbox-project-event-observation'
 import type { ForgeWebhookIngressOptions } from './forge-inbox-webhook-ingress'
@@ -33,6 +34,8 @@ export type ForgeInboxOwnerServiceOptions = {
   networkReady?: Promise<void>
   /** Receive at-most-once attention notices; with none, the ledger's notification feed is never claimed. */
   notificationSinks?: readonly ForgeNotificationSink[]
+  /** With none, an open question never holds the machine awake. */
+  openQuestionHold?: ForgeOpenQuestionHold | null
   /** With none, a binding delivery stays pending: nothing is decided and nothing is dropped. */
   decideProjectEvent?: (
     input: ProjectEventDecisionInput,

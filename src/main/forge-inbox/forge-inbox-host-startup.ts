@@ -28,6 +28,8 @@ export async function startForgeInboxForHost(input: {
   attach: (service: ForgeInboxOwnerService) => void
   /** The runtime's notification dispatch; Forge attention rides the same fan-out as every other lane. */
   notify: (event: MobileNotificationDispatchEvent) => void
+  /** With none, an open question never holds the machine awake. */
+  openQuestionHold?: ForgeInboxOwnerServiceOptions['openQuestionHold']
   receiverSettings?: ForgeInboxOwnerServiceOptions['receiverSettings']
   secretStore?: ForgeInboxOwnerServiceOptions['secretStore']
   /** Without one, no background binding can resolve a repo, so none is attempted. */
@@ -48,6 +50,7 @@ export async function startForgeInboxForHost(input: {
     receiverSettings: input.receiverSettings,
     secretStore: input.secretStore,
     notificationSinks: [createForgeNotificationDispatcher(input.notify)],
+    ...(input.openQuestionHold === undefined ? {} : { openQuestionHold: input.openQuestionHold }),
     ...(input.decisionSource
       ? { decideProjectEvent: projectEventDecisionForSource(input.decisionSource, input.http) }
       : {}),
