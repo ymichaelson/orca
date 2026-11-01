@@ -180,6 +180,9 @@ export function openForgeOwnerRunning(
     ...(launchAgentFactory ? { launchAgentFactory } : {}),
     ...(options.observeProjectEventContext
       ? { observeContext: options.observeProjectEventContext(ledger) }
+      : {}),
+    ...(options.observeProjectEventItemState
+      ? { observeItemState: options.observeProjectEventItemState(ledger) }
       : {})
   }
   const actions = createForgeWorkerScheduler({

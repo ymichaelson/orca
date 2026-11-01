@@ -15,6 +15,7 @@ import {
 } from './forge-inbox-owner-service'
 import { createGlabDispatchConfirmationReaderFactory } from './forge-inbox-dispatch-confirmation-reader'
 import { createForgeProjectEventContextObserver } from './forge-inbox-project-event-context-observer'
+import { createForgeProjectEventItemStateObserver } from './forge-inbox-project-event-item-state-observer'
 
 export const FORGE_INBOX_LEDGER_FILE = 'forge-inbox.db'
 
@@ -55,6 +56,7 @@ export async function startForgeInboxForHost(input: {
       ? { decideProjectEvent: projectEventDecisionForSource(input.decisionSource, input.http) }
       : {}),
     observeProjectEventContext: (ledger) => createForgeProjectEventContextObserver(ledger),
+    observeProjectEventItemState: createForgeProjectEventItemStateObserver,
     ...(input.launchProjectEventAgent
       ? { launchProjectEventAgent: input.launchProjectEventAgent }
       : {}),
