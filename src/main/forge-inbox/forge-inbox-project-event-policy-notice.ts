@@ -1,7 +1,7 @@
 import type { ForgeLedgerContext } from './forge-inbox-context'
 import { recordForgeChange } from './forge-inbox-context'
 import { runForgeTransaction } from './forge-inbox-database'
-import { getProjectEventRepoLink } from './forge-inbox-project-event-link'
+import { getProjectEventRepoLinkByBinding } from './forge-inbox-project-event-link'
 import { getProjectEventPolicy } from './forge-inbox-project-event-policy'
 import { rowNumber } from './forge-inbox-rows'
 
@@ -21,7 +21,7 @@ export function projectEventPolicyMissing(
   ctx: ForgeLedgerContext,
   bindingId: string
 ): ProjectEventPolicyMissing | null {
-  const link = getProjectEventRepoLink(ctx, bindingId)
+  const link = getProjectEventRepoLinkByBinding(ctx, bindingId)
   if (link === null || link.bindingId !== bindingId || getProjectEventPolicy(ctx, link.repoId)) {
     return null
   }

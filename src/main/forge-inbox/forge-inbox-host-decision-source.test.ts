@@ -10,6 +10,7 @@ import {
   type OwnerFixture
 } from './forge-inbox-owner-service-test-kit'
 import { ForgeInboxLedger } from './forge-inbox-ledger'
+import { PROJECT_ID, WEBHOOK_TOKEN } from './forge-inbox-webhook-test-harness'
 import { updateProjectEventPolicy } from './forge-inbox-project-event-policy'
 
 const RULES = '合并请求需要评审。'
@@ -113,4 +114,72 @@ describe('forge inbox host decision source', () => {
       { provider: 'laya', action: 'record_only' }
     ])
   })
+
+  it('opens a policy-less push as its own item without asking the model', async () => {
+    fx = createOwnerFixture()
+    const port = await freePort()
+    const services: ForgeInboxOwnerService[] = []
+    let fetched = 0
+
+    await startForgeInboxForHost({
+      profileDirectory: fx.root,
+      receiverSettings: fx.receiverSettings,
+      secretStore: fx.store,
+      http: {
+        fetch: async () => {
+          fetched += 1
+          throw new Error('a repository without a policy has nothing to decide')
+        }
+      },
+      networkReady: Promise.resolve(),
+      notify: () => undefined,
+      attach: (service) => {
+        services.push(service)
+        started.push(service)
+      },
+      decisionSource: {
+        read: () => ({
+          settings: { provider: 'jev', model: '', baseUrl: '' },
+          apiKey: 'key-one'
+        })
+      }
+    })
+    await fx.provision(services[0]!, listenerOn(port))
+    await fx.configureReceiver(services[0]!, listenerOn(port))
+    const ledger = ForgeInboxLedger.open(fx.dbPath, { secretStore: fx.store })
+    try {
+      ledger.ledgerContext().db.prepare('DELETE FROM project_event_policies').run()
+    } finally {
+      ledger.close()
+    }
+
+    const reply = await postHook(port, pushHookBody(), 'push-1', WEBHOOK_TOKEN, 'Push Hook')
+    expect(reply.status).toBe(202)
+    await services[0]!.settled()
+
+    expect(fetched).toBe(0)
+    expect(fx.rows('SELECT state, decision_state, parked_reason FROM webhook_deliveries')).toEqual([
+      { state: 'pending', decision_state: 'decided', parked_reason: 'recorded' }
+    ])
+    expect(fx.rows('SELECT kind, iid, project_id FROM items')).toEqual([
+      { kind: 'project', iid: -1, project_id: 'group/demo' }
+    ])
+    expect(fx.rows('SELECT source, status FROM project_event_questions')).toEqual([
+      { source: 'policy', status: 'open' }
+    ])
+  })
 })
+
+function pushHookBody() {
+  return {
+    object_kind: 'push',
+    user_name: 'alice',
+    project: { id: Number(PROJECT_ID), path_with_namespace: 'group/demo' },
+    ref: 'refs/heads/main',
+    before: '0'.repeat(40),
+    after: 'a'.repeat(40),
+    checkout_sha: 'a'.repeat(40),
+    commits: [],
+    total_commits_count: 1
+  }
+}
