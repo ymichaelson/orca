@@ -72,9 +72,10 @@ export function forgeRecommendationTag(
 ): ForgeItemStatusTag {
   return {
     label: forgeRecommendationLabel(action),
+    // Ready to merge is the advice a person acts on, so it reads green beside the failure tones.
     variant:
       action === 'merge'
-        ? 'default'
+        ? 'success'
         : action === 'close'
           ? 'destructive'
           : action === 'none'
@@ -136,7 +137,7 @@ export function forgeItemStatusTag(
           'auto.components.forge-inbox.display.statusResultUnconfirmed',
           'Result unconfirmed'
         ),
-        variant: 'outline'
+        variant: 'warning'
       }
     case 'superseded':
       return {
@@ -179,7 +180,7 @@ export function forgeItemStatusTag(
         'auto.components.forge-inbox.display.statusResultUnconfirmed',
         'Result unconfirmed'
       ),
-      variant: 'outline'
+      variant: 'warning'
     }
   }
   if (handling.state === 'processing') {
@@ -191,7 +192,7 @@ export function forgeItemStatusTag(
   if (handling.state === 'waiting') {
     return {
       label: translate('auto.components.forge-inbox.display.statusWaiting', 'Waiting for changes'),
-      variant: 'outline'
+      variant: 'warning'
     }
   }
   if (handling.state === 'done') {

@@ -155,10 +155,13 @@ export function forgeRunStateVariant(
   state: ForgeRunState
 ): ComponentProps<typeof Badge>['variant'] {
   if (state === 'succeeded') {
-    return 'secondary'
+    return 'success'
   }
   if (state === 'failed') {
     return 'destructive'
+  }
+  if (state === 'unverifiable') {
+    return 'warning'
   }
   if (state === 'cancelled' || state === 'superseded') {
     return 'outline'
@@ -216,7 +219,10 @@ export function forgeDecisionStateVariant(
     return 'outline'
   }
   if (state === 'done') {
-    return 'secondary'
+    return 'success'
+  }
+  if (state === 'awaiting-event') {
+    return 'warning'
   }
   if (state === 'blocked') {
     return 'destructive'

@@ -195,7 +195,7 @@ export function forgeDispatchConfirmationDisplay(
               'auto.components.forge-inbox.display.dispatchChangesConfirmed',
               'Changes confirmed'
             ),
-        variant: 'secondary',
+        variant: 'success',
         lines,
         explanation,
         stateOnly
@@ -217,7 +217,7 @@ export function forgeDispatchConfirmationDisplay(
           'auto.components.forge-inbox.display.dispatchChangesUnconfirmable',
           'Changes cannot be confirmed'
         ),
-        variant: 'outline',
+        variant: 'warning',
         lines,
         explanation,
         stateOnly
@@ -228,7 +228,7 @@ export function forgeDispatchConfirmationDisplay(
           'auto.components.forge-inbox.display.dispatchChangesUnconfirmed',
           'Changes not yet confirmed'
         ),
-        variant: 'outline',
+        variant: 'warning',
         lines,
         explanation,
         stateOnly

@@ -23,7 +23,11 @@ const badgeVariants = cva(
           'h-4 rounded border-border bg-[var(--host-badge,var(--accent))] px-1.5 text-[10px] leading-none text-[var(--host-badge-foreground,var(--muted-foreground))] dark:border-border/50 dark:bg-[var(--host-badge,color-mix(in_oklab,var(--accent)_80%,transparent))]',
         /** A skill or file sitting inline in the chat message box, ringed while selected. */
         promptPill:
-          'max-w-full border-border bg-secondary px-1.5 py-0 align-baseline text-muted-foreground data-[selected=true]:ring-1 data-[selected=true]:ring-ring'
+          'max-w-full border-border bg-secondary px-1.5 py-0 align-baseline text-muted-foreground data-[selected=true]:ring-1 data-[selected=true]:ring-ring',
+        /** A settled good outcome (merged, confirmed); outline-shaped so it stays quiet. */
+        success: 'border-status-success-border bg-status-success-background text-status-success',
+        /** A settled caution (waiting, unconfirmed); outline-shaped so it stays quiet. */
+        warning: 'border-status-warning-border bg-status-warning-background text-status-warning'
       }
     },
     defaultVariants: {
