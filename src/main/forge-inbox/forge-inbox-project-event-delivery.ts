@@ -38,8 +38,9 @@ function storedState(value: string): ProjectEventDeliveryState {
 }
 
 /**
- * A binding event is admitted for one policy generation: parked while the project has no policy, and
- * finished at once while the policy is off, so turning it on never replays history.
+ * A binding event is admitted for one policy generation: parked while the project has no policy,
+ * finished at once while the policy is off, so turning it on never replays history. A project-level
+ * event is kept pending with a 'recorded' reason so the decision drain can open its own item.
  */
 export function admitProjectEventDelivery(
   ctx: ForgeLedgerContext,
@@ -65,7 +66,13 @@ export function admitProjectEventDelivery(
       }
     }
     const state: ProjectEventDeliveryState =
-      input.policyGeneration === null ? 'parked' : input.policyEnabled ? 'pending' : 'done'
+      input.policyGeneration === null
+        ? input.recordWithoutPolicy === true
+          ? 'pending'
+          : 'parked'
+        : input.policyEnabled
+          ? 'pending'
+          : 'done'
     if (state !== 'done') {
       const status = getForgeWebhookQueueStatus(ctx, limits)
       if (

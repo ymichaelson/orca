@@ -17,7 +17,9 @@ function post(
   port: number,
   path: string,
   token: string,
-  id = 'delivery-1'
+  id = 'delivery-1',
+  event = 'Merge Request Hook',
+  body: string = BODY
 ): Promise<{ status: number; text: string }> {
   return new Promise((resolve, reject) => {
     const req = http.request(
@@ -29,7 +31,7 @@ function post(
         headers: {
           'content-type': 'application/json',
           'x-gitlab-token': token,
-          'x-gitlab-event': 'Merge Request Hook',
+          'x-gitlab-event': event,
           'webhook-id': id
         },
         agent: false
@@ -43,9 +45,21 @@ function post(
       }
     )
     req.on('error', reject)
-    req.end(BODY)
+    req.end(body)
   })
 }
+
+const PUSH_BODY = JSON.stringify({
+  object_kind: 'push',
+  project: { id: PROJECT_ID, path_with_namespace: 'group/demo' },
+  project_id: PROJECT_ID,
+  ref: 'refs/heads/feature',
+  before: 'a'.repeat(40),
+  after: 'b'.repeat(40),
+  commits: []
+})
+
+const NOTE_BODY = JSON.stringify({ object_kind: 'note', project: { id: PROJECT_ID } })
 
 describe('project event webhook ingress', () => {
   let harness: WebhookHarness
@@ -129,6 +143,43 @@ describe('project event webhook ingress', () => {
     expect(reply.status).toBe(202)
     expect(JSON.parse(reply.text)).toEqual({ code: 'parked' })
     expect(stored()).toMatchObject([{ state: 'parked', policy_generation: null }])
+  })
+
+  it('keeps a policy-less push pending so its own item can open, and parks a note', async () => {
+    ledger.ledgerContext().db.prepare('DELETE FROM project_event_policies').run()
+
+    const push = await post(
+      port,
+      `/webhooks/gitlab/${bindingId}`,
+      SECRET,
+      'push-1',
+      'Push Hook',
+      PUSH_BODY
+    )
+    const note = await post(
+      port,
+      `/webhooks/gitlab/${bindingId}`,
+      SECRET,
+      'note-1',
+      'Note Hook',
+      NOTE_BODY
+    )
+
+    expect(push.status).toBe(202)
+    expect(JSON.parse(push.text)).toEqual({ code: 'queued' })
+    expect(note.status).toBe(202)
+    expect(JSON.parse(note.text)).toEqual({ code: 'parked' })
+    expect(
+      ledger
+        .ledgerContext()
+        .db.prepare(
+          `SELECT state, parked_reason, decision_state FROM webhook_deliveries ORDER BY id`
+        )
+        .all()
+    ).toEqual([
+      { state: 'pending', parked_reason: 'recorded', decision_state: 'queued' },
+      { state: 'parked', parked_reason: 'awaiting-policy', decision_state: 'blocked' }
+    ])
   })
 
   it('rejects a body whose project id is not the binding project', async () => {
