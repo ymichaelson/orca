@@ -14,9 +14,11 @@ export type ProjectEventDeliveryState = (typeof DELIVERY_STATES)[number]
 export type ProjectEventDeliveryAdmission = {
   bindingId: string
   projectPath: string
-  /** Null when the binding has no project policy yet, which parks the delivery. */
+  /** Null when the binding has no project policy yet, which parks the delivery unless it may record. */
   policyGeneration: number | null
   policyEnabled: boolean
+  /** A project-level event opens its item and asks for a policy instead of parking on one. */
+  recordWithoutPolicy?: boolean
   eventKind: string
   dedupeKey: string
   correlation: { eventUuid: string | null; configUuid: string | null }
@@ -92,7 +94,11 @@ export function admitProjectEventDelivery(
         state === 'parked' ? null : input.policyGeneration,
         ctx.now(),
         state,
-        state === 'parked' ? 'awaiting-policy' : null,
+        state === 'parked'
+          ? 'awaiting-policy'
+          : input.recordWithoutPolicy === true
+            ? 'recorded'
+            : null,
         finishedAt,
         state === 'done' ? Buffer.alloc(0) : input.body,
         state === 'done' ? 'cancelled' : state === 'parked' ? 'blocked' : 'queued'

@@ -27,6 +27,7 @@ import { createForgeInboxV16TablesSql } from './forge-inbox-schema-run-terminal'
 import { createForgeInboxV17TablesSql } from './forge-inbox-schema-item-archive'
 import { createForgeInboxV18TablesSql } from './forge-inbox-schema-run-question-origin'
 import { createForgeInboxV19TablesSql } from './forge-inbox-schema-question-source'
+import { createForgeInboxV20TablesSql } from './forge-inbox-schema-policy-question'
 
 /** Read-only validation before any persistent pragma, so a damaged file is left byte-identical. */
 export function forgeInboxStorageProblem(
@@ -133,7 +134,9 @@ function expectedForgeInboxShape(version: number): ForgeInboxShape {
                                         ? createForgeInboxV17TablesSql()
                                         : version === 18
                                           ? createForgeInboxV18TablesSql()
-                                          : createForgeInboxV19TablesSql()
+                                          : version === 19
+                                            ? createForgeInboxV19TablesSql()
+                                            : createForgeInboxV20TablesSql()
     )
     const tables: readonly string[] =
       version === 9

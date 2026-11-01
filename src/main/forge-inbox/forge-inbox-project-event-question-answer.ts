@@ -15,6 +15,10 @@ import { runForgeTransaction } from './forge-inbox-database'
 import { getProjectEventRepoLinkByBinding } from './forge-inbox-project-event-link'
 import { rowNumber, rowText } from './forge-inbox-rows'
 import { finishForgeWebhookDelivery } from './forge-inbox-webhook-delivery-state'
+import {
+  answerProjectEventPolicyQuestion,
+  PROJECT_EVENT_POLICY_ANSWERS
+} from './forge-inbox-project-event-policy-notice'
 
 export type ProjectEventQuestionAnswerResult = ProjectEventQuestionAnswerOutcome
 
@@ -129,6 +133,10 @@ export function answerProjectEventQuestion(
     if (!row) {
       return { ok: false, reason: 'not-found' }
     }
+    // A policy question is a repository decision, so only its own choice is an answer to it.
+    if (row.source === 'policy') {
+      return projectEventPolicyAnswer(ctx, row, answer)
+    }
     const answeredAt = ctx.now()
     const update = ctx.db
       .prepare(`UPDATE project_event_questions SET status = 'answered', answer = ?, answered_at = ?
@@ -148,6 +156,24 @@ export function answerProjectEventQuestion(
       }
     }
   })
+}
+
+function projectEventPolicyAnswer(
+  ctx: ForgeLedgerContext,
+  row: SqliteRow,
+  answer: string
+): ProjectEventQuestionAnswerResult {
+  const choice = PROJECT_EVENT_POLICY_ANSWERS.find((known) => known === answer)
+  if (choice === undefined) {
+    return { ok: false, reason: 'question-answer-invalid' }
+  }
+  if (answerProjectEventPolicyQuestion(ctx, rowNumber(row, 'id'), choice).repoId === null) {
+    return { ok: false, reason: 'not-found' }
+  }
+  return {
+    ok: true,
+    question: { ...viewOf(row), status: 'answered', answeredAt: ctx.now() }
+  }
 }
 
 export function listProjectEventQuestions(

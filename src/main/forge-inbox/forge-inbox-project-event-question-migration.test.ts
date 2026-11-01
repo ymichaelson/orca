@@ -75,7 +75,8 @@ describe('forge inbox v9 question migration', () => {
         'subject_kind',
         'subject_iid',
         'subject_title',
-        'source'
+        'source',
+        'policy_repo_id'
       ])
       expect(
         opened.db
@@ -110,7 +111,7 @@ describe('forge inbox v9 question migration', () => {
     const reopened = openForgeInboxDatabase(dbPath, 'host-a')
     try {
       expect(reopened.db.pragma('user_version', { simple: true })).toBe(FORGE_INBOX_SCHEMA_VERSION)
-      expect(questionColumns(reopened.db)).toHaveLength(14)
+      expect(questionColumns(reopened.db)).toHaveLength(15)
       expect(
         reopened.db.prepare('SELECT COUNT(*) AS count FROM project_event_questions').get()
       ).toEqual({ count: 0 })
@@ -172,7 +173,8 @@ describe('forge inbox v9 question migration', () => {
         'subject_kind',
         'subject_iid',
         'subject_title',
-        'source'
+        'source',
+        'policy_repo_id'
       ])
       expect(
         opened.db
@@ -195,7 +197,7 @@ describe('forge inbox v9 question migration', () => {
   it('creates the question table on a fresh file', () => {
     const opened = openForgeInboxDatabase(dbPath, 'host-a')
     try {
-      expect(questionColumns(opened.db)).toHaveLength(14)
+      expect(questionColumns(opened.db)).toHaveLength(15)
     } finally {
       opened.db.close()
     }

@@ -25,6 +25,12 @@ export function forgeQuestionCopy(question: {
   if (question.source === 'answer') {
     return question.question
   }
+  if (question.source === 'policy') {
+    return translate(
+      'auto.components.forge-inbox.ForgeInboxQuestionPanel.questionPolicy',
+      'This repository has no agent policy yet, so events like this cannot reach an agent. Turn the policy on for this project?'
+    )
+  }
   const subject = question.subject
   if (subject === null) {
     return question.question

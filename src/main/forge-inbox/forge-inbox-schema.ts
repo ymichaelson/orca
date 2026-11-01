@@ -1,4 +1,4 @@
-export const FORGE_INBOX_SCHEMA_VERSION = 19
+export const FORGE_INBOX_SCHEMA_VERSION = 20
 
 export const FORGE_INBOX_V1_TABLES = [
   'meta',

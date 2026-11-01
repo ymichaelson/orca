@@ -1,24 +1,22 @@
 import { forgeErrorLabel } from './forge-inbox-error-label'
 import type { ForgeInboxLedger } from './forge-inbox-ledger'
 import { admitProjectEventDelivery } from './forge-inbox-project-event-delivery'
+import { projectEventDeliveryAdmission } from './forge-inbox-project-event-delivery-admission'
 import type { ProjectEventHeaderGate } from './forge-inbox-project-event-headers'
 import {
   legacyDigestDedupeKey,
   messageDedupeKey,
   parseWebhookBody
 } from './forge-inbox-webhook-request'
-import type { ProjectEventBindingAuth } from './forge-inbox-project-event-binding-auth'
 
 type Admitted = Extract<ProjectEventHeaderGate, { ok: true }>
-type Authorized = Extract<ProjectEventBindingAuth, { ok: true }>
 
 export type BindingCommit = { status: number; code: string; wake: boolean } | { failed: true }
 
-/** Re-checks the binding, then commits one delivery. A moved secret or binding never commits. */
+/** Commits one admitted delivery; a binding that moved after its second check never reaches here. */
 export function commitProjectEventDelivery(
   ledger: ForgeInboxLedger,
   headers: Admitted,
-  still: Authorized,
   body: Buffer
 ): BindingCommit {
   const parsed = parseWebhookBody(body)
@@ -34,11 +32,10 @@ export function commitProjectEventDelivery(
       ? legacyDigestDedupeKey(parsed.projectId, headers.eventKind, body)
       : messageDedupeKey(headers.messageId)
   try {
-    const result = admitProjectEventDelivery(ledger.ledgerContext(), ledger.webhookQueueLimits(), {
-      bindingId: headers.bindingId,
-      projectPath: binding.gitlabPath,
-      policyGeneration: still.policyGeneration,
-      policyEnabled: still.policyEnabled,
+    const ctx = ledger.ledgerContext()
+    const result = admitProjectEventDelivery(ctx, ledger.webhookQueueLimits(), {
+      // A project-level event is decided without a policy; only one merge request, issue or note waits.
+      ...projectEventDeliveryAdmission(ctx, { bindingId: headers.bindingId, body }),
       eventKind: headers.eventKind,
       dedupeKey,
       correlation: headers.correlation,

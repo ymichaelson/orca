@@ -17,7 +17,7 @@ describe('forge inbox question origin migration', () => {
 
   it('creates the origin column on a fresh ledger with no guessed value', () => {
     const fresh = openForgeInboxDatabase(path, 'host-a')
-    expect(fresh.db.pragma('user_version')).toEqual([{ user_version: 19 }])
+    expect(fresh.db.pragma('user_version')).toEqual([{ user_version: 20 }])
     const columns = fresh.db.prepare('PRAGMA table_info(runs)').all()
     expect(columns).toContainEqual(
       expect.objectContaining({ name: 'origin_question_id', notnull: 0, dflt_value: null })
