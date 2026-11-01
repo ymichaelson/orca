@@ -245,7 +245,7 @@ export class ForgeWebhookIngress {
       if (this.deadlineExceeded(req.socket)) {
         return reply(503, 'deadline-exceeded')
       }
-      const committed = commitProjectEventDelivery(this.ledger, headers, still, body)
+      const committed = commitProjectEventDelivery(this.ledger, headers, body)
       if ('failed' in committed) {
         return reply(500, 'storage-failed')
       }

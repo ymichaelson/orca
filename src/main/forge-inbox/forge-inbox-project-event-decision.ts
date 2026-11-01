@@ -13,6 +13,7 @@ import {
 import { getProjectEventRepoLinkByBinding } from './forge-inbox-project-event-link'
 import { getProjectEventPolicy } from './forge-inbox-project-event-policy'
 import { projectEventSubject } from './forge-inbox-project-event-subject'
+import { recordProjectEventWithoutPolicy } from './forge-inbox-project-event-policy-free-record'
 import {
   projectEventDecisionFacts,
   PROJECT_EVENT_DECISION_INPUT_VERSION
@@ -80,6 +81,12 @@ export function claimProjectEventDecision(
     const bindingId = rowText(row, 'binding_id')
     const link = getProjectEventRepoLinkByBinding(ctx, bindingId)
     const policy = link ? getProjectEventPolicy(ctx, link.repoId) : null
+    if (!policy && link && row.parked_reason === 'recorded') {
+      // Why: a project-level event is its own subject, so a repository without a policy keeps it as an
+      // item and asks for one there instead of parking a row no policy edit could ever finish.
+      recordProjectEventWithoutPolicy(ctx, { deliveryId, bindingId })
+      return null
+    }
     if (!policy || !link) {
       ctx.db
         .prepare(`UPDATE webhook_deliveries SET decision_state = 'blocked', state = 'parked',

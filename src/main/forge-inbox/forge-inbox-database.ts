@@ -28,6 +28,7 @@ import { migrateForgeInboxToV16Sql } from './forge-inbox-schema-run-terminal'
 import { migrateForgeInboxToV17Sql } from './forge-inbox-schema-item-archive'
 import { migrateForgeInboxToV18Sql } from './forge-inbox-schema-run-question-origin'
 import { migrateForgeInboxToV19Sql } from './forge-inbox-schema-question-source'
+import { migrateForgeInboxToV20Sql } from './forge-inbox-schema-policy-question'
 
 export const FORGE_INBOX_BUSY_TIMEOUT_MS = 5000
 
@@ -169,6 +170,9 @@ function migrateForgeInbox(
     }
     if (stored < 19) {
       db.exec(migrateForgeInboxToV19Sql())
+    }
+    if (stored < 20) {
+      db.exec(migrateForgeInboxToV20Sql())
     }
     const violations = db.pragma('foreign_key_check')
     if (Array.isArray(violations) && violations.length > 0) {

@@ -22,11 +22,12 @@ export type ProjectEventQuestionSubject = {
   title: string
 }
 
-export const FORGE_PROJECT_EVENT_QUESTION_SOURCES = ['answer', 'exhausted'] as const
+export const FORGE_PROJECT_EVENT_QUESTION_SOURCES = ['answer', 'exhausted', 'policy'] as const
 
 /**
  * Why a question could not be asked yet: 'answer' waits for a minimal task to answer it, 'exhausted'
- * means every attempt declined. A client renders both in its own locale.
+ * means every attempt declined, 'policy' asks to turn on a repository's first policy. A client
+ * renders each in its own locale.
  */
 export type ProjectEventQuestionSource = (typeof FORGE_PROJECT_EVENT_QUESTION_SOURCES)[number]
 

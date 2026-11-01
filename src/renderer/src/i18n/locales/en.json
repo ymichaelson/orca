@@ -18992,6 +18992,7 @@
           "tooLong": "The answer is too long.",
           "sendFailed": "Could not send the answer. Retry; your text is still here.",
           "questionProject": "Confirm whether the latest event in this project should still be handled.",
+          "questionPolicy": "This repository has no agent policy yet, so events like this cannot reach an agent. Turn the policy on for this project?",
           "questionNoTitle": "Confirm whether the change in {{kind}} {{reference}} should still be handled.",
           "questionWithTitle": "Confirm whether the change in {{kind}} {{reference}} “{{title}}” should still be handled."
         },

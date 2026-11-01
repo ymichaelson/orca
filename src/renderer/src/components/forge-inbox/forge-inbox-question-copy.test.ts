@@ -21,3 +21,15 @@ describe('forge question copy', () => {
     expect(forgeQuestionCopy({ question: ASKED, subject: null })).toBe(ASKED)
   })
 })
+
+describe('policy question copy', () => {
+  it('asks to turn on the policy in the reader’s language, not the stored sentence', () => {
+    const copy = forgeQuestionCopy({
+      question: 'stored host sentence',
+      subject: { kind: 'project', iid: 0, title: 'group/demo' },
+      source: 'policy'
+    })
+    expect(copy).not.toBe('stored host sentence')
+    expect(copy).toContain('policy')
+  })
+})

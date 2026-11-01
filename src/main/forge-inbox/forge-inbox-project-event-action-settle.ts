@@ -46,9 +46,20 @@ export function finishDelivery(
   outcome: 'done' | 'failed',
   code: string | null
 ): void {
-  if (!finishForgeWebhookDelivery(ctx, deliveryId, outcome, code)) {
+  const row = ctx.db
+    .prepare(
+      'SELECT parked_reason, finished_at FROM webhook_deliveries WHERE id = ? AND host_id = ?'
+    )
+    .get(deliveryId, ctx.hostId)
+  if (row === undefined) {
     throw new Error(`project event action for delivery ${deliveryId} has no delivery row`)
   }
+  // A kept delivery was finished when its run took over, and its record is now the item's.
+  if (row.finished_at !== null) {
+    return
+  }
+  const recordedWithoutPolicy = row.parked_reason === 'recorded'
+  finishForgeWebhookDelivery(ctx, deliveryId, outcome, recordedWithoutPolicy ? null : code)
 }
 
 function questionItemId(ctx: ForgeLedgerContext, claim: ProjectEventActionClaim): number | null {
