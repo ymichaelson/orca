@@ -103,18 +103,14 @@ function upsertItemRevision(
 } {
   const { db } = ctx
   const now = ctx.now()
+  // A signed iid names a project item exactly; a number only finds a real object or its keyed row.
+  const keyedIid = input.iid < 0 ? input.iid : (input.itemIdSuffix ?? input.iid)
   const existing = db
     .prepare(
-      `SELECT id, current_revision, head_order FROM items
+      `SELECT id, iid, current_revision, head_order FROM items
        WHERE host_id = ? AND instance_id = ? AND project_id = ? AND kind = ? AND iid = ?`
     )
-    .get(
-      input.hostId,
-      input.instanceId,
-      input.projectId,
-      input.kind,
-      input.itemIdSuffix ?? input.iid
-    )
+    .get(input.hostId, input.instanceId, input.projectId, input.kind, keyedIid)
   if (!existing) {
     const created = db
       .prepare(
@@ -127,7 +123,7 @@ function upsertItemRevision(
         input.instanceId,
         input.projectId,
         input.kind,
-        input.itemIdSuffix ?? input.iid,
+        keyedIid,
         input.title ?? '',
         input.itemState ?? 'unknown',
         input.sourceOrder,
@@ -140,6 +136,10 @@ function upsertItemRevision(
   }
   const itemId = rowNumber(existing, 'id')
   const head = rowNumber(existing, 'current_revision')
+  if (keyedIid !== rowNumber(existing, 'iid')) {
+    // Why: a project item is keyed by its signed iid; a number-only lookup may land on a real item.
+    throw new Error(`forge inbox item ${input.kind} #${input.iid} matched another item's number`)
+  }
   if (input.sourceOrder <= rowNumber(existing, 'head_order')) {
     // Not newer than the watermark: the event is kept, the head stays put.
     return { itemId, createdItemId: null, revision: head, newRevision: false, advanced: false }
