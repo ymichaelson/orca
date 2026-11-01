@@ -18687,6 +18687,8 @@
           "sendFailed": "回答を送信できませんでした。再試行してください。入力したテキストは残っています。",
           "questionProject": "このプロジェクトの最新イベントを引き続き対応すべきか確認してください。",
           "questionPolicy": "このリポジトリにはまだ Agent ポリシーがないため、このようなイベントは Agent に届きません。このプロジェクトのポリシーを有効にしますか？",
+          "policyEnable": "有効にする",
+          "policyDecline": "今はしない",
           "questionNoTitle": "{{kind}} {{reference}} の変更を引き続き対応すべきか確認してください。",
           "questionWithTitle": "{{kind}} {{reference}}「{{title}}」の変更を引き続き対応すべきか確認してください。"
         },
