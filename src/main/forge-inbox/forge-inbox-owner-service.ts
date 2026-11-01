@@ -11,10 +11,7 @@ import type { ForgeInboxLedger } from './forge-inbox-ledger'
 import type { ForgeInboxOwnerServiceOptions } from './forge-inbox-owner-service-options'
 import { createForgeOwnerActions } from './forge-inbox-owner-actions'
 import { createForgeOwnerProposalActions } from './forge-inbox-owner-proposal-actions'
-import {
-  ForgeInboxOwnerMismatchError,
-  ForgeInboxOwnerNotRunningError
-} from './forge-inbox-owner-errors'
+import { ForgeInboxOwnerNotRunningError } from './forge-inbox-owner-errors'
 import { ackForgeClientCursor, createForgeOwnerCursorReads } from './forge-inbox-owner-cursors'
 import { createForgeOwnerHints } from './forge-inbox-owner-hints'
 import { createForgeOwnerReads } from './forge-inbox-owner-reads'
@@ -26,6 +23,12 @@ import {
 } from './forge-inbox-owner-running'
 import { forgeOwnerDormantView } from './forge-inbox-owner-dormant-view'
 import { createForgeOwnerProjectEvents } from './forge-inbox-owner-project-events'
+import {
+  createForgeOwnerOpen,
+  fenced,
+  forgeOwnerOpensOnStart,
+  forgeOwnerReady
+} from './forge-inbox-owner-open'
 import { recoverRunsOnOpen } from './forge-inbox-project-event-run-recovery-startup'
 import {
   forgeOwnerIdle,
@@ -41,10 +44,9 @@ export type ForgeInboxOwnerService = ReturnType<typeof createForgeInboxOwnerServ
 export function createForgeInboxOwnerService(options: ForgeInboxOwnerServiceOptions) {
   let phase: Phase = 'new'
   let running: ForgeOwnerRunning | null = null
-  let opening: Promise<ForgeOwnerRunning> | null = null
-  let reconciling: Promise<void> = Promise.resolve()
+  let reconciling = Promise.resolve()
   let stopping: Promise<void> | null = null
-  let bindingsWork: Promise<void> = Promise.resolve()
+  let bindingsWork = Promise.resolve()
   const hints = createForgeOwnerHints()
   const dormantHostId = mintForgeHostId(options)
   let knownHostId = dormantHostId
@@ -63,6 +65,15 @@ export function createForgeInboxOwnerService(options: ForgeInboxOwnerServiceOpti
     bindingsWork = Promise.all([bindingsWork, settled]).then(() => undefined)
     return task
   }
+
+  function open(): Promise<ForgeOwnerRunning> {
+    return opening.open(
+      () => running,
+      () => phase
+    )
+  }
+
+  const ready = () => forgeOwnerReady(open, () => running)
 
   const projectEvents = createForgeOwnerProjectEvents(options, {
     isRunning: () => phase === 'running',
@@ -85,75 +96,43 @@ export function createForgeInboxOwnerService(options: ForgeInboxOwnerServiceOpti
     return next
   }
 
-  // A failing open and a concurrent stop share one teardown so the ledger closes exactly once.
   function teardown(state: ForgeOwnerRunning): Promise<void> {
     state.closing ??= closeForgeOwnerRunning(state, reconciling, bindingsWork)
     return state.closing
   }
 
-  /** Serialized and final on failure: concurrent first writes share one open. */
-  function open(): Promise<ForgeOwnerRunning> {
-    if (running) {
-      return Promise.resolve(running)
-    }
-    if (phase !== 'running') {
-      return Promise.reject(new ForgeInboxOwnerNotRunningError())
-    }
-    opening ??= (async () => {
-      let state: ForgeOwnerRunning
-      try {
-        state = openForgeOwnerRunning(
-          options,
-          existsSync(options.dbPath) ? options.hostId : dormantHostId
-        )
-      } catch (error) {
-        phase = 'stopped'
-        detachReceiver()
-        hints.end('open-failed')
-        throw error
-      }
+  const opening = createForgeOwnerOpen({
+    open: () => {
+      const state = openForgeOwnerRunning(
+        options,
+        existsSync(options.dbPath) ? options.hostId : dormantHostId
+      )
       running = state
       hints.attach(state.ledger, knownHostId)
       knownHostId = state.ledger.hostId
-      try {
-        if (options.recoverProjectEventRuns) {
-          await recoverRunsOnOpen(options, state.ledger)
-        }
-        await reconcile(state)
-        state.decisions?.wake()
-        state.actions.wake()
-        state.confirmations?.wake()
-        state.notifications?.wake()
-        projectEvents.bindings.scheduleEnabled(state)
-      } catch (error) {
-        phase = 'stopped'
-        detachReceiver()
-        running = null
-        hints.end('open-failed')
-        await teardown(state)
-        throw error
-      }
       return state
-    })()
-    return opening
-  }
-
-  /** A stop that landed while the open was reconciling must not let the caller use a closed ledger. */
-  async function ready(): Promise<ForgeOwnerRunning> {
-    const state = await open()
-    if (running !== state) {
-      throw new ForgeInboxOwnerNotRunningError()
+    },
+    opened: async (state) => {
+      if (options.recoverProjectEventRuns) {
+        await recoverRunsOnOpen(options, state.ledger)
+      }
+      await reconcile(state)
+      state.decisions?.wake()
+      state.actions.wake()
+      state.confirmations?.wake()
+      state.notifications?.wake()
+      projectEvents.bindings.scheduleEnabled(state)
+    },
+    rejected: async (state) => {
+      running = null
+      await teardown(state)
+    },
+    stop: () => {
+      phase = 'stopped'
+      detachReceiver()
+      hints.end('open-failed')
     }
-    return state
-  }
-
-  /** After a lazy open and before any write: a ledger that appeared later may carry another owner id. */
-  function fenced(state: ForgeOwnerRunning, expectedOwner: string | undefined): ForgeOwnerRunning {
-    if (expectedOwner !== undefined && state.ledger.hostId !== expectedOwner) {
-      throw new ForgeInboxOwnerMismatchError()
-    }
-    return state
-  }
+  })
 
   async function start(): Promise<void> {
     if (phase !== 'new') {
@@ -166,8 +145,17 @@ export function createForgeInboxOwnerService(options: ForgeInboxOwnerServiceOpti
           console.warn('[forge-inbox] receiver reconcile failed', forgeErrorLabel(error))
         }
       })
-      if (existsSync(options.dbPath) || options.receiverSettings?.read()?.enabled) {
-        await open()
+      const opens = forgeOwnerOpensOnStart({
+        dbPath: options.dbPath,
+        receiverEnabled: options.receiverSettings?.read()?.enabled,
+        hasDecisionSource: options.decideProjectEvent !== undefined,
+        hostId: knownHostId
+      })
+      if (opens) {
+        await opening.open(
+          () => running,
+          () => phase
+        )
       }
     } catch (error) {
       detachReceiver()
