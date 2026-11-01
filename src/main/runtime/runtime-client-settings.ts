@@ -1,4 +1,5 @@
 import { normalizeProjectEventReceiverSettings } from '../../shared/project-event-receiver-settings'
+import { normalizeProjectEventDefaultRules } from '../../shared/project-event-default-rules-settings'
 import {
   normalizeProjectEventDecisionSettings,
   projectEventDecisionSettingsView,
@@ -115,6 +116,9 @@ export class RuntimeClientSettingsController {
       worktreeVisibilityDefaults: settings.worktreeVisibilityDefaults ?? { external: 'hide' },
       agentSkillSharingEnabled: isAgentSkillSharingEnabled(settings),
       projectEventReceiver: normalizeProjectEventReceiverSettings(settings.projectEventReceiver),
+      projectEventDefaultRules: normalizeProjectEventDefaultRules(
+        settings.projectEventDefaultRules
+      ),
       projectEventDecision: projectEventDecisionSettingsView(
         normalizeProjectEventDecisionSettings(settings.projectEventDecision),
         settings,

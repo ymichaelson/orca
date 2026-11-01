@@ -177,6 +177,7 @@ export type RuntimeStore = {
     nativeChatShellEnvironmentVariables?: GlobalSettings['nativeChatShellEnvironmentVariables']
     aiVaultSearch?: GlobalSettings['aiVaultSearch']
     projectEventReceiver?: GlobalSettings['projectEventReceiver']
+    projectEventDefaultRules?: GlobalSettings['projectEventDefaultRules']
     projectEventDecision?: GlobalSettings['projectEventDecision']
     projectEventDecisionKey?: GlobalSettings['projectEventDecisionKey']
     projectEventDecisionLayaKey?: GlobalSettings['projectEventDecisionLayaKey']

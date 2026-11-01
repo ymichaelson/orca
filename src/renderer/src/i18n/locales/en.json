@@ -21467,6 +21467,14 @@
       "hostUnavailable": "Could not complete the request. Retry; if it keeps failing, check the connection to the host."
     }
   },
+  "projectEventDefaultRules": {
+    "title": "Default project event rules",
+    "description": "The rules a project starts from when you first enable its event agent. Projects already added keep their own copy; changing this only affects future first saves on this host.",
+    "rules": "Rules",
+    "rulesHelp": "{{used}} of {{limit}} bytes",
+    "save": "Save default rules",
+    "saved": "Default rules saved"
+  },
   "projectEventAgent": {
     "enabled": "Enable project event agent",
     "enabledHelp": "The host keeps receiving events while this is off; only the agent work stops.",

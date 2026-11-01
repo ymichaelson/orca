@@ -8,6 +8,9 @@ export type ProjectEventGlobalSettings = {
   /** Jev or Laya for the project event Agent (§3.2). The key is stored encrypted. Optional for
    *  pre-feature profiles; the persistence merge hydrates the default. */
   projectEventDecision?: ProjectEventDecisionSettings
+  /** The rules template a project starts from when its own policy is first saved. Already-saved
+   *  projects keep their stored copy; editing this only changes future first saves. */
+  projectEventDefaultRules?: string
   /** Jev's key. Each provider keeps its own key so switching never forwards one to the other. */
   projectEventDecisionKey?: string
   /** Laya's optional key, stored encrypted like Jev's. */

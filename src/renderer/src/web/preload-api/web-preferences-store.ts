@@ -207,6 +207,10 @@ export async function syncRuntimeBackedSettings(
   if (forwardsReceiver) {
     runtimeUpdates.projectEventReceiver = updates.projectEventReceiver
   }
+  const forwardsDefaultRules = typeof updates.projectEventDefaultRules === 'string'
+  if (forwardsDefaultRules) {
+    runtimeUpdates.projectEventDefaultRules = updates.projectEventDefaultRules
+  }
   if (Object.keys(runtimeUpdates).length === 0) {
     return localNext
   }
@@ -233,7 +237,7 @@ export async function syncRuntimeBackedSettings(
     writeStoredSettings(next)
     return next
   } catch (error) {
-    if (visibilityDefaults || forwardsReceiver) {
+    if (visibilityDefaults || forwardsReceiver || forwardsDefaultRules) {
       throw error
     }
     // Why: unpaired/offline web clients still need local settings persistence.

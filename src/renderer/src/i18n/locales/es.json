@@ -21186,6 +21186,14 @@
       "hostUnavailable": "No se pudo completar la solicitud. Reinténtalo; si sigue fallando, comprueba la conexión con el host."
     }
   },
+  "projectEventDefaultRules": {
+    "title": "Reglas de eventos de proyecto predeterminadas",
+    "description": "Las reglas con las que empieza un proyecto al activar por primera vez su agente de eventos. Los proyectos ya añadidos conservan su propia copia; cambiar esto solo afecta a los primeros guardados futuros en este host.",
+    "rules": "Reglas",
+    "rulesHelp": "{{used}} / {{limit}} bytes",
+    "save": "Guardar reglas predeterminadas",
+    "saved": "Reglas predeterminadas guardadas"
+  },
   "projectEventAgent": {
     "enabled": "Activar agente de eventos del proyecto",
     "enabledHelp": "El host sigue recibiendo eventos mientras esto está desactivado; solo se detiene el trabajo del agente.",

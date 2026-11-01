@@ -79,6 +79,7 @@ export function createWebSettingsApi(): Partial<PreloadApi> {
         if (runtimeEnvironment) {
           delete localUpdates.worktreeVisibilityDefaults
           delete localUpdates.projectEventReceiver
+          delete localUpdates.projectEventDefaultRules
         }
         const next = mergeSettings(getStoredSettings(), localUpdates, {
           preserveAutoRenameBranchFromWorkUpdate: 'autoRenameBranchFromWork' in sanitizedUpdates
