@@ -31,6 +31,12 @@ export type ProjectEventActionDeps = {
     signal?: AbortSignal
   ) => Promise<ProjectEventHeadObservation>
   limits: ForgeWebhookQueueLimits
+  /** Verifies a hook-reported state change the context dedupe would otherwise swallow. */
+  observeItemState?: (
+    claim: ProjectEventActionClaim,
+    subject: ProjectEventStateSubject,
+    signal?: AbortSignal
+  ) => Promise<string | null>
   /** Each dispatch builds its own launch, so an owner can stop one without killing the next. */
   launchAgentFactory?: ForgeProjectEventAgentLaunchFactory
   /** The owner's fence around that factory call; without one the launch is not fenced. */
@@ -40,6 +46,9 @@ export type ProjectEventActionDeps = {
 }
 
 type ObservedHead = Extract<ProjectEventHeadObservation, { ok: true }>
+
+/** The subject whose state a re-read must verify: the item's own iid, only when the hook moved it. */
+export type ProjectEventStateSubject = { kind: 'merge_request' | 'issue'; iid: number }
 
 function blocked(code: string): ProjectEventActionOutcome {
   return { kind: 'blocked', code }
@@ -118,6 +127,33 @@ function reportedText(
 ): string | null {
   const value = facts[key]
   return typeof value === 'string' ? value.slice(0, limit) : null
+}
+
+/** The subject whose state the hook moved, read from what the delivery reported and the item kept. */
+function reportedStateMoved(
+  ctx: ForgeLedgerContext,
+  claim: ProjectEventActionClaim,
+  request: ContextRequest
+): ProjectEventStateSubject | null {
+  const delivery = ctx.db
+    .prepare('SELECT body FROM webhook_deliveries WHERE id = ? AND host_id = ?')
+    .get(claim.deliveryId, ctx.hostId)
+  if (delivery === undefined || !(delivery.body instanceof Uint8Array)) {
+    return null
+  }
+  const reported = reportedFacts(delivery.body)
+  const reportedState = reportedText(reported, 'state')
+  if (reportedState === null || (request.kind !== 'merge_request' && request.kind !== 'issue')) {
+    return null
+  }
+  const item = ctx.db
+    .prepare('SELECT iid, state FROM items WHERE id = ? AND host_id = ?')
+    .get(request.itemId, ctx.hostId)
+  if (item === undefined || rowText(item, 'state') === reportedState) {
+    return null
+  }
+  const iid = rowNumber(item, 'iid')
+  return iid >= 0 ? { kind: request.kind, iid } : null
 }
 
 /**
@@ -201,7 +237,17 @@ export async function fetchProjectEventContext(
     return blocked('context-unavailable')
   }
   if (contextAlreadyFetched(ctx, claim, request)) {
-    return blocked('context-already-fetched')
+    // A merge repeats the head sha, so the read dedupes — but the reported state can still have
+    // moved. Only an authenticated re-read may record it; the unverified hook text never does.
+    const moved = reportedStateMoved(ctx, claim, request)
+    if (moved === null || !deps.observeItemState || signal?.aborted) {
+      return blocked('context-already-fetched')
+    }
+    const state = await deps.observeItemState(claim, moved, signal)
+    if (signal?.aborted) {
+      return null
+    }
+    return state === null ? blocked('context-already-fetched') : { kind: 'done' }
   }
   if (!deps.observeContext) {
     return blocked('context-unavailable')

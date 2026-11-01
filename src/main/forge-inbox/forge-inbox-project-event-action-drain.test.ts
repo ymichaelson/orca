@@ -150,7 +150,7 @@ describe('project event action drain', () => {
     }
     const result = decideProjectEventDelivery(ctx, deliveryId, decision(action), claim)
     if (!result.ok) {
-      throw new Error('fixture could not record the decision')
+      throw new Error(`fixture could not record the decision: ${JSON.stringify(result)}`)
     }
     return deliveryId
   }

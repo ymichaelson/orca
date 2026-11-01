@@ -12,6 +12,7 @@ import type { ForgeNotificationSink } from './forge-inbox-notification-processor
 import type { ForgeOpenQuestionHold } from './forge-inbox-owner-open-question-watch'
 import type { ProjectEventActionClaim } from './forge-inbox-project-event-action'
 import type { ProjectEventHeadObservation } from './forge-inbox-project-event-observation'
+import type { ProjectEventStateSubject } from './forge-inbox-project-event-action-fetch-context'
 import type { ForgeWebhookIngressOptions } from './forge-inbox-webhook-ingress'
 import type { ProjectBindingContext } from './forge-inbox-project-binding-context'
 import type { ProjectBindingProbe } from './forge-inbox-project-binding-reconcile'
@@ -21,6 +22,12 @@ export type ForgeProjectEventContextObserver = (
   claim: ProjectEventActionClaim,
   signal?: AbortSignal
 ) => Promise<ProjectEventHeadObservation>
+
+export type ForgeProjectEventItemStateObserver = (
+  claim: ProjectEventActionClaim,
+  subject: ProjectEventStateSubject,
+  signal?: AbortSignal
+) => Promise<string | null>
 
 export type ForgeInboxOwnerServiceOptions = {
   dbPath: string
@@ -43,6 +50,8 @@ export type ForgeInboxOwnerServiceOptions = {
   ) => Promise<ProjectEventDecisionResult>
   /** With none, a fetch_context action fails closed as context-unavailable. */
   observeProjectEventContext?: (ledger: ForgeInboxLedger) => ForgeProjectEventContextObserver
+  /** Verifies a hook-reported item state the context dedupe would otherwise swallow. */
+  observeProjectEventItemState?: (ledger: ForgeInboxLedger) => ForgeProjectEventItemStateObserver
   /** With none, dispatch_agent fails closed as dispatch-unavailable. */
   launchProjectEventAgent?: ForgeProjectEventAgentLaunchFactory
   /** Queries the journal for dispatched runs a dead process left unverifiable; absent means never. */
