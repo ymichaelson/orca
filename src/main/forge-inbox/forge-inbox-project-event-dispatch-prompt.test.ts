@@ -65,6 +65,20 @@ describe('project event dispatch prompt', () => {
     expect(frame).toContain('stop and ask instead of merging')
   })
 
+  it('asks for the recommendation reason and every question in Simplified Chinese', () => {
+    const frame = (purpose: 'business' | 'answer') =>
+      buildProjectEventDispatchPrompt(INPUT, purpose).split('<event-data>')[0]
+
+    expect(frame('business')).toContain(
+      'reason is one short sentence shown next to the action, written in Simplified Chinese'
+    )
+    expect(frame('business')).toContain('reads Simplified Chinese')
+    expect(frame('answer')).toContain('Write the question in Simplified Chinese')
+    expect(buildProjectEventDispatchPrompt(INPUT, 'question')).toContain(
+      'Write the question in Simplified Chinese'
+    )
+  })
+
   it('keeps the marker and report frame inside the cap with the largest facts', () => {
     const prompt = buildProjectEventDispatchPrompt({
       ...INPUT,
