@@ -30,6 +30,7 @@ import {
   forgeOwnerReady
 } from './forge-inbox-owner-open'
 import { recoverRunsOnOpen } from './forge-inbox-project-event-run-recovery-startup'
+import { refreshOpenItemStatesOnOpen } from './forge-inbox-project-event-open-state-refresh'
 import {
   forgeOwnerIdle,
   forgeOwnerStatus,
@@ -117,6 +118,8 @@ export function createForgeInboxOwnerService(options: ForgeInboxOwnerServiceOpti
         await recoverRunsOnOpen(options, state.ledger)
       }
       await reconcile(state)
+      // Before the wake: a merged request is decided as merged, not re-analysed as open.
+      await refreshOpenItemStatesOnOpen(state.ledger, { signal: state.abort.signal })
       state.decisions?.wake()
       state.actions.wake()
       state.confirmations?.wake()

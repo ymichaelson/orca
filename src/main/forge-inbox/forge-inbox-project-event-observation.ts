@@ -79,7 +79,7 @@ export function projectScopedRequesters(
   }
 }
 
-function projectScopedReader(
+export function projectScopedReader(
   host: string,
   repoPath: string,
   projectId: number,
