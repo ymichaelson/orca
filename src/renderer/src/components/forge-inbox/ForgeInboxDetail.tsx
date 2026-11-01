@@ -97,7 +97,14 @@ export function ForgeInboxDetail({
             {statusTag === null ? null : (
               <Badge variant={statusTag.variant}>{statusTag.label}</Badge>
             )}
-            {stateLabel === null ? null : <Badge variant="outline">{stateLabel}</Badge>}
+            {stateLabel === null ? null : (
+              // A settled GitLab state (merged / resolved) reads green; the rest stay neutral.
+              <Badge
+                variant={item.state === 'merged' || item.state === 'closed' ? 'success' : 'outline'}
+              >
+                {stateLabel}
+              </Badge>
+            )}
             {handling?.errorCode != null && handling.errorCode !== 'already-dispatched' ? (
               <ForgeInboxError
                 code={handling.errorCode}
