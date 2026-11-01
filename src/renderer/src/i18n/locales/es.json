@@ -21519,6 +21519,8 @@
           "sendFailed": "No se pudo enviar la respuesta. Reinténtalo; tu texto sigue aquí.",
           "questionProject": "Confirma si el último evento de este proyecto aún debe gestionarse.",
           "questionPolicy": "Este repositorio aún no tiene una política de agente, así que eventos como este no pueden llegar a un agente. ¿Activar la política para este proyecto?",
+          "policyEnable": "Activar",
+          "policyDecline": "Ahora no",
           "questionNoTitle": "Confirma si el cambio en {{kind}} {{reference}} aún debe gestionarse.",
           "questionWithTitle": "Confirma si el cambio en {{kind}} {{reference}} “{{title}}” aún debe gestionarse.",
           "questionPolicy": "Este repositorio aún no tiene una política de agente, así que eventos como este no pueden llegar a un agente. ¿Activar la política para este proyecto?",

@@ -21745,6 +21745,8 @@
           "sendFailed": "Impossible d'envoyer la réponse. Réessayez ; votre texte est toujours là.",
           "questionProject": "Confirmez si le dernier événement de ce projet doit toujours être traité.",
           "questionPolicy": "Ce dépôt n'a pas encore de stratégie d'agent, donc des événements comme celui-ci ne peuvent pas atteindre un agent. Activer la stratégie pour ce projet ?",
+          "policyEnable": "Activer",
+          "policyDecline": "Pas maintenant",
           "questionNoTitle": "Confirmez si la modification de {{kind}} {{reference}} doit toujours être traitée.",
           "questionWithTitle": "Confirmez si la modification de {{kind}} {{reference}} « {{title}} » doit toujours être traitée.",
           "questionPolicy": "Ce dépôt n'a pas encore de stratégie d'agent, donc des événements comme celui-ci ne peuvent pas atteindre un agent. Activer la stratégie pour ce projet ?",

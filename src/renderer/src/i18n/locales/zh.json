@@ -21053,6 +21053,8 @@
           "sendFailed": "无法发送回答。请重试；你的文本仍在此处。",
           "questionProject": "确认是否仍应处理此项目中的最新事件。",
           "questionPolicy": "此仓库还没有 Agent 策略，这类事件暂时无法交给 Agent 处理。要为此项目开启策略吗？",
+          "policyEnable": "开启",
+          "policyDecline": "暂不",
           "questionNoTitle": "确认是否仍应处理 {{kind}} {{reference}} 中的变更。",
           "questionWithTitle": "确认是否仍应处理 {{kind}} {{reference}}“{{title}}”中的变更。",
           "questionPolicy": "此仓库还没有 Agent 策略，这类事件暂时无法交给 Agent 处理。要为此项目开启策略吗？",
