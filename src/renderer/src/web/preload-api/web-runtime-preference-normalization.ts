@@ -1,5 +1,6 @@
 import type { GlobalSettings } from '../../../../shared/global-settings-types'
 import { normalizeProjectEventReceiverSettings } from '../../../../shared/project-event-receiver-settings'
+import { normalizeProjectEventDefaultRules } from '../../../../shared/project-event-default-rules-settings'
 import { normalizePRBotAuthorOverrides } from '../../../../shared/pr-bot-author-overrides'
 import { runtimeChatPermissionSetting } from './web-preference-normalization'
 
@@ -39,6 +40,11 @@ export function normalizeRuntimePreferences(
   if (settings.projectEventReceiver !== undefined) {
     runtimeSettings.projectEventReceiver = normalizeProjectEventReceiverSettings(
       settings.projectEventReceiver
+    )
+  }
+  if (typeof settings.projectEventDefaultRules === 'string') {
+    runtimeSettings.projectEventDefaultRules = normalizeProjectEventDefaultRules(
+      settings.projectEventDefaultRules
     )
   }
   return runtimeSettings

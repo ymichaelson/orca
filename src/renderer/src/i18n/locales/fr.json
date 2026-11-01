@@ -25565,6 +25565,14 @@
       "hostUnavailable": "Impossible de terminer la requête. Réessayez ; si l'échec persiste, vérifiez la connexion à l'hôte."
     }
   },
+  "projectEventDefaultRules": {
+    "title": "Règles d'événements de projet par défaut",
+    "description": "Les règles dont un projet part lors de la première activation de son agent d'événements. Les projets déjà ajoutés conservent leur propre copie ; cette modification n'affecte que les prochaines premières sauvegardes sur cet hôte.",
+    "rules": "Règles",
+    "rulesHelp": "{{used}} / {{limit}} octets",
+    "save": "Enregistrer les règles par défaut",
+    "saved": "Règles par défaut enregistrées"
+  },
   "projectEventAgent": {
     "enabled": "Activer l'agent d'événements de projet",
     "enabledHelp": "L'hôte continue de recevoir les événements tant que cette option est désactivée ; seul le travail de l'agent s'arrête.",

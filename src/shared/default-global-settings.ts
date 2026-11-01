@@ -17,6 +17,7 @@ import { DEFAULT_SOURCE_CONTROL_GROUP_ORDER } from './source-control-group-order
 import { DESKTOP_TERMINAL_SCROLLBACK_ROWS_DEFAULT } from './terminal-scrollback-policy'
 import { DEFAULT_PROJECT_EVENT_RECEIVER_SETTINGS } from './project-event-receiver-settings'
 import { DEFAULT_PROJECT_EVENT_DECISION_SETTINGS } from './project-event-decision-settings'
+import { DEFAULT_PROJECT_EVENT_RULES } from './project-event-default-rules'
 
 export function buildDefaultSettings(args: {
   workspaceDir: string
@@ -299,6 +300,7 @@ export function buildDefaultSettings(args: {
     // Why: hydrate a stable shape so renderer optional-chained reads never hit undefined.
     projectEventReceiver: { ...DEFAULT_PROJECT_EVENT_RECEIVER_SETTINGS },
     projectEventDecision: { ...DEFAULT_PROJECT_EVENT_DECISION_SETTINGS },
+    projectEventDefaultRules: DEFAULT_PROJECT_EVENT_RULES,
     projectEventDecisionKey: '',
     projectEventDecisionLayaKey: '',
     voice: args.voice

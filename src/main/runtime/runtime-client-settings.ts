@@ -1,6 +1,7 @@
 import { publishedLegacyChatPermissionMode } from '../../shared/agent-chat-permission-mode'
 import { getClaudeAgentViewService } from '../claude/agent-view-service'
 import { normalizeProjectEventReceiverSettings } from '../../shared/project-event-receiver-settings'
+import { normalizeProjectEventDefaultRules } from '../../shared/project-event-default-rules-settings'
 import {
   normalizeProjectEventDecisionSettings,
   projectEventDecisionSettingsView,
@@ -137,6 +138,9 @@ export class RuntimeClientSettingsController {
         ? {}
         : { agentSkillSharingEnabled: isAgentSkillSharingEnabled(settings) }),
       projectEventReceiver: normalizeProjectEventReceiverSettings(settings.projectEventReceiver),
+      projectEventDefaultRules: normalizeProjectEventDefaultRules(
+        settings.projectEventDefaultRules
+      ),
       projectEventDecision: projectEventDecisionSettingsView(
         normalizeProjectEventDecisionSettings(settings.projectEventDecision),
         settings,

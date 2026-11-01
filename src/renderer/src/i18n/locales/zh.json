@@ -24890,6 +24890,14 @@
       "hostUnavailable": "无法完成请求。请重试；如果持续失败，请检查与主机的连接。"
     }
   },
+  "projectEventDefaultRules": {
+    "title": "默认项目事件规则",
+    "description": "项目首次启用事件智能体时，规则从这里开始。已添加的项目保留各自的副本；修改此处只影响以后在该主机上的首次保存。",
+    "rules": "规则",
+    "rulesHelp": "{{used}} / {{limit}} 字节",
+    "save": "保存默认规则",
+    "saved": "默认规则已保存"
+  },
   "projectEventAgent": {
     "enabled": "启用项目事件智能体",
     "enabledHelp": "关闭时，主机仍会继续接收事件；仅智能体工作会停止。",

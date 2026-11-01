@@ -1,6 +1,5 @@
 import { useEffect, useRef, useState } from 'react'
 import { translate } from '@/i18n/i18n'
-import { getAgentCatalog } from '@/lib/agent-catalog'
 import { ensureLocalRuntimeCapabilities } from '@/runtime/local-runtime-capabilities'
 import { runtimeEnvironmentSupportsCapability } from '@/runtime/runtime-rpc-client'
 import { readForgeInboxStatus } from '@/runtime/forge-inbox-client'
@@ -15,6 +14,13 @@ import type { ProjectEventBindingView } from '../../../../shared/forge-inbox-pro
 import type { ProjectEventPolicyView } from '../../../../shared/forge-inbox-project-event-policy'
 import { FORGE_INBOX_PROJECT_EVENT_AGENT_RUNTIME_CAPABILITY } from '../../../../shared/forge-inbox-runtime-capabilities'
 import { DEFAULT_PROJECT_EVENT_RULES } from '../../../../shared/project-event-default-rules'
+import {
+  draftFromPolicy,
+  hasValidAgent,
+  rulesByteLength,
+  validDraft
+} from './project-event-agent-draft-validity'
+import { readProjectEventDefaultRules } from './project-event-default-rules-read'
 import type { RuntimeClientTarget } from '../../../../shared/runtime-client-target'
 import {
   loadStateWithoutCapability,
@@ -32,22 +38,6 @@ export type ProjectEventAgentDraft = {
 
 export type ProjectEventAgentLoadState = OwnerScopeLoadState
 
-function draftFromPolicy(policy: ProjectEventPolicyView | null): ProjectEventAgentDraft {
-  return policy === null
-    ? { enabled: false, agentId: null, model: '', rules: DEFAULT_PROJECT_EVENT_RULES }
-    : {
-        enabled: policy.enabled,
-        agentId: policy.agentId,
-        model: policy.model ?? '',
-        rules: policy.rules
-      }
-}
-
-/** Rules are stored as UTF-8 bytes, so the limit is counted the same way the owner counts it. */
-function rulesByteLength(rules: string): number {
-  return new TextEncoder().encode(rules).length
-}
-
 /** The repo's project event policy as the owner host has it, edited with a compare-and-set write. */
 export function useProjectEventAgentSettings(input: {
   repoId: string
@@ -58,7 +48,9 @@ export function useProjectEventAgentSettings(input: {
   const [ownerHostId, setOwnerHostId] = useState<string | null>(null)
   // Why a ref: a write made right after another save must use the generation that save returned.
   const generation = useRef(0)
-  const [draft, setDraft] = useState<ProjectEventAgentDraft>(() => draftFromPolicy(null))
+  const [draft, setDraft] = useState<ProjectEventAgentDraft>(() =>
+    draftFromPolicy(null, DEFAULT_PROJECT_EVENT_RULES)
+  )
   const [loadState, setLoadState] = useState<ProjectEventAgentLoadState>('loading')
   const [error, setError] = useState<string | null>(null)
   const [mergeNotice, setMergeNotice] = useState(false)
@@ -122,7 +114,11 @@ export function useProjectEventAgentSettings(input: {
       setPolicy(view.policy)
       setBinding(view.binding)
       generation.current = view.policy?.generation ?? 0
-      setDraft(draftFromPolicy(view.policy))
+      const templateRules = await readProjectEventDefaultRules(target)
+      if (!current()) {
+        return
+      }
+      setDraft(draftFromPolicy(view.policy, templateRules))
       setLoadState('ready')
     })().catch(() => {
       if (current()) {
@@ -189,22 +185,14 @@ export function useProjectEventAgentSettings(input: {
 
   const rulesBytes = rulesByteLength(draft.rules)
   const rulesRejected = rulesBytes > MAX_RULES_BYTES || draft.rules.includes('\u0000')
-  const validAgent = (value: string | null): boolean =>
-    value !== null && getAgentCatalog().some((entry) => entry.id === value)
-  const validDraft = (candidate: ProjectEventAgentDraft): boolean =>
-    rulesByteLength(candidate.rules) <= MAX_RULES_BYTES &&
-    !candidate.rules.includes('\u0000') &&
-    (!candidate.enabled || validAgent(candidate.agentId)) &&
-    (policy?.automaticAnalysis !== true ||
-      (candidate.agentId !== null && candidate.agentId !== '' && candidate.model.trim() !== ''))
-  const needsAgentToEnable = !validAgent(draft.agentId)
+  const needsAgentToEnable = !hasValidAgent(draft.agentId)
   const needsAgent = draft.enabled && needsAgentToEnable
   const needsAgentAndModel =
     policy?.automaticAnalysis === true &&
     (draft.agentId === null || draft.agentId === '' || draft.model.trim() === '')
   const writable = loadState === 'ready' && ownerHostId !== null && !saving
-  const canSave = writable && validDraft(draft)
-  const canEnable = writable && validDraft({ ...draft, enabled: true })
+  const canSave = writable && validDraft(draft, policy)
+  const canEnable = writable && validDraft({ ...draft, enabled: true }, policy)
 
   /** Saves the four editable fields, with `overrides` winning over the draft. A stale generation keeps the draft and asks for a second save. */
   const save = async (overrides: Partial<ProjectEventAgentDraft> = {}): Promise<boolean> => {
@@ -213,7 +201,7 @@ export function useProjectEventAgentSettings(input: {
       !scope.active ||
       scope.busy ||
       !writable ||
-      !validDraft(effective) ||
+      !validDraft(effective, policy) ||
       ownerHostId === null
     ) {
       return false

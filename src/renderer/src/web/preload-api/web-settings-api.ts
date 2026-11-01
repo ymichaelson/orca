@@ -84,6 +84,7 @@ export function createWebSettingsApi(): Pick<Partial<PreloadApi>, 'agentAwake'> 
         if (runtimeEnvironment) {
           delete localUpdates.worktreeVisibilityDefaults
           delete localUpdates.projectEventReceiver
+          delete localUpdates.projectEventDefaultRules
         }
         const next = mergeSettings(stored, localUpdates, {
           preserveAutoRenameBranchFromWorkUpdate: 'autoRenameBranchFromWork' in sanitizedUpdates

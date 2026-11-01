@@ -24,6 +24,7 @@ import { readLegacySidekickFlag } from '../applying-settings/onboarding-normaliz
 import { normalizeMachineName } from '../../../shared/machine-name'
 import { normalizeProjectEventReceiverSettings } from '../../../shared/project-event-receiver-settings'
 import { normalizeProjectEventDecisionSettings } from '../../../shared/project-event-decision-settings'
+import { normalizeProjectEventDefaultRules } from '../../../shared/project-event-default-rules-settings'
 import type { PersistedState } from '../../../shared/persisted-state-types'
 import type { PreparedLoadedTerminalSettings } from './prepare-loaded-terminal-settings'
 import type { PreparedLoadedProfileSettings } from './prepare-loaded-profile-settings'
@@ -189,6 +190,9 @@ export function normalizeLoadedGlobalSettings(
     ),
     projectEventDecision: normalizeProjectEventDecisionSettings(
       parsed.settings?.projectEventDecision
+    ),
+    projectEventDefaultRules: normalizeProjectEventDefaultRules(
+      parsed.settings?.projectEventDefaultRules
     )
   }
 }

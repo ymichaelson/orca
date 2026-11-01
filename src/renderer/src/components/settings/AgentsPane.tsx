@@ -33,6 +33,7 @@ import {
   type AgentPermissionsSettingProps
 } from './AgentPermissionsSetting'
 import { ProjectEventDecisionSettingsCard } from './ProjectEventDecisionSettingsCard'
+import { ProjectEventDefaultRulesSetting } from './ProjectEventDefaultRulesSetting'
 import type { PublicKnownRuntimeEnvironment } from '../../../../shared/runtime-environments'
 import type { SettingsHostScope } from './settings-host-scope'
 
@@ -91,6 +92,7 @@ export function AgentsPane({
         hostScope={hostScope}
         runtimeEnvironments={runtimeEnvironments}
       />
+      <ProjectEventDefaultRulesSetting settings={settings} updateSettings={updateSettings} />
       <section className="space-y-8">
         <SettingsSubsectionHeader title={getLocalExecutionHostLabel()} />
         <AgentRuntimeSetting

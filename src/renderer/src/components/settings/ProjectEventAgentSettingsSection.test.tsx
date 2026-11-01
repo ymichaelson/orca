@@ -26,7 +26,8 @@ const fake = vi.hoisted(() => ({
   rotate: vi.fn(),
   supports: vi.fn(),
   capabilities: vi.fn(),
-  modelCatalog: vi.fn()
+  modelCatalog: vi.fn(),
+  rpc: vi.fn()
 }))
 const store = vi.hoisted(() => ({ settingsSearchQuery: '' }))
 const updateRepo = vi.fn()
@@ -37,7 +38,8 @@ vi.mock('@/store', () => {
   return { useAppStore }
 })
 vi.mock('@/runtime/runtime-rpc-client', () => ({
-  runtimeEnvironmentSupportsCapability: fake.supports
+  runtimeEnvironmentSupportsCapability: fake.supports,
+  callRuntimeRpc: fake.rpc
 }))
 vi.mock('@/runtime/local-runtime-capabilities', () => ({
   ensureLocalRuntimeCapabilities: fake.capabilities
@@ -170,6 +172,7 @@ beforeEach(() => {
     fetchedAt: 1,
     models: [{ id: 'sonnet', label: 'Sonnet', isDefault: false, efforts: [] }]
   })
+  fake.rpc.mockRejectedValue(new Error('unreachable'))
   updateRepo.mockResolvedValue(true)
 })
 afterEach(cleanup)
@@ -182,6 +185,26 @@ describe('project event agent settings', () => {
     await waitFor(() => expect(screen.getByText('Agent')).toBeTruthy())
     expect(fake.readPolicy).toHaveBeenCalledWith('owner', 'repo', TARGET)
     expect(screen.getByRole('switch').getAttribute('aria-checked')).toBe('false')
+    expect(screen.getByLabelText<HTMLTextAreaElement>('Rules').value).toBe(
+      DEFAULT_PROJECT_EVENT_RULES
+    )
+  })
+
+  it('pre-fills a new policy from the owner host’s global template', async () => {
+    fake.rpc.mockResolvedValue({ settings: { projectEventDefaultRules: '主机的全局模板。' } })
+    fake.readPolicy.mockResolvedValue({ ...policyView(), policy: null })
+    render(<ProjectEventAgentSettingsSection repo={repo()} updateRepo={updateRepo} forceVisible />)
+
+    await waitFor(() =>
+      expect(screen.getByLabelText<HTMLTextAreaElement>('Rules').value).toBe('主机的全局模板。')
+    )
+  })
+
+  it('keeps the shipped template when the host global rules read fails', async () => {
+    fake.readPolicy.mockResolvedValue({ ...policyView(), policy: null })
+    render(<ProjectEventAgentSettingsSection repo={repo()} updateRepo={updateRepo} forceVisible />)
+
+    await waitFor(() => expect(screen.getByText('Agent')).toBeTruthy())
     expect(screen.getByLabelText<HTMLTextAreaElement>('Rules').value).toBe(
       DEFAULT_PROJECT_EVENT_RULES
     )

@@ -4,6 +4,7 @@ import {
   parseProjectEventDecisionSettings,
   projectEventDecisionKeySchema
 } from '../../../shared/project-event-decision-settings'
+import { normalizeProjectEventDefaultRules } from '../../../shared/project-event-default-rules-settings'
 import {
   PROTECTED_SECRET_SLOT,
   protectedSecretStorageAvailable,
@@ -22,6 +23,13 @@ export function sanitizeProjectEventSettingsUpdate(
   if ('projectEventDecision' in updates) {
     sanitizedUpdates.projectEventDecision = parseProjectEventDecisionSettings(
       updates.projectEventDecision
+    )
+  }
+  if ('projectEventDefaultRules' in updates) {
+    // Why normalize, not reject: the template is a starting point, so an oversized edit is
+    // clamped back to the shipped default instead of blocking the whole settings write.
+    sanitizedUpdates.projectEventDefaultRules = normalizeProjectEventDefaultRules(
+      updates.projectEventDefaultRules
     )
   }
   for (const field of ['projectEventDecisionKey', 'projectEventDecisionLayaKey'] as const) {
