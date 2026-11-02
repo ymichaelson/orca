@@ -1,4 +1,4 @@
-import { providerDiagnostic, withProviderDiagnostic } from '../../shared/agent-session-failure'
+import { providerDiagnostic, withProviderDiagnostic } from '../../shared/agent-session/failures/agent-session-failure'
 import { providerStderrForDisplay } from '../provider-process/provider-spawn-failure-report'
 
 export type ClaudeExitStatus = { code: number | null; signal: NodeJS.Signals | null }

@@ -6,12 +6,12 @@ import { AGENT_CHAT_PERMISSION_MODE_OPTION_ID } from '../../../../shared/agent-c
 import {
   isProtectedClaudeRecordBinding,
   type ProtectedClaudeLaunchV1
-} from '../../shared/agent-session-protected-claude-launch'
+} from '../../../../shared/agent-session-protected-claude-launch'
 import {
   AGENT_SESSION_PROTECTED_RECORD_SCHEMA_VERSION,
   PROTECTED_ANALYSIS_CONVERSATION_NAME,
   type AgentSessionProtectedAnalysis
-} from '../../shared/agent-session-protected-analysis'
+} from '../../../../shared/agent-session-protected-analysis'
 import {
   AGENT_SESSION_RECORD_SCHEMA_VERSION,
   type AgentSessionRecord
