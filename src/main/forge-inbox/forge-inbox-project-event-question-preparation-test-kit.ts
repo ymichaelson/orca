@@ -1,4 +1,4 @@
-import type { AgentSessionTurnCompletionEvent } from '../../shared/agent-session-wire'
+import type { AgentSessionTurnCompletionEvent } from '../../shared/agent-session/agent-session-wire'
 import type { AgentJournalTurnOutcome } from '../../shared/agent-turn-outcome'
 import { LOCAL_EXECUTION_HOST_ID } from '../../shared/execution-host'
 import { FORGE_ITEM_KINDS } from '../../shared/forge-inbox-types'

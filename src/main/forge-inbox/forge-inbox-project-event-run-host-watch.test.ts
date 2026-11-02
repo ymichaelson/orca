@@ -7,7 +7,7 @@ import {
 } from '../native-chat/agent-session-wire/structured-agent-session-registry'
 import type { StructuredAgentSessionHost } from '../native-chat/agent-session-wire/structured-agent-session-host'
 import { LOCAL_EXECUTION_HOST_ID } from '../../shared/execution-host'
-import type { AgentSessionTurnCompletionEvent } from '../../shared/agent-session-wire'
+import type { AgentSessionTurnCompletionEvent } from '../../shared/agent-session/agent-session-wire'
 import { createForgeProjectEventRunHostWatch } from './forge-inbox-project-event-run-host-watch'
 import {
   bindForgeRunDispatchTurn,

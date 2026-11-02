@@ -2,7 +2,7 @@
 // the hook store — none of which can draw protected content inertly. Its prompt, tool line and
 // reply are that content, so a protected analysis publishes the state and none of the text.
 
-import { AGENT_JOURNAL_THREAD_SCOPE } from '../../../shared/agent-session-journal-types'
+import { AGENT_JOURNAL_THREAD_SCOPE } from '../../../shared/agent-session/journal/agent-session-journal-types'
 import { mkdtemp, rm } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
@@ -16,7 +16,7 @@ import { PROTECTED_ANALYSIS_MARKER } from '../../../shared/agent-session-protect
 import type {
   AgentSessionStatusEvent,
   AgentSessionStatusSummary
-} from '../../../shared/agent-session-wire'
+} from '../../../shared/agent-session/agent-session-wire'
 import { codexProviderHandle } from '../../../shared/agent-session-provider-handle-encoding'
 import { createTrackedJournalOpener } from '../agent-session-journal/journal-host-database-test-support'
 import { indexedStatusFeedSession as indexed } from './structured-agent-session-status-feed-test-session'

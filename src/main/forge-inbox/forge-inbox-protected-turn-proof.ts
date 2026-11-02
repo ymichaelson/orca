@@ -6,7 +6,7 @@ import type {
   AgentJournalSubmission,
   AgentJournalTurnLifecycle,
   AgentJournalTurnOutcome
-} from '../../shared/agent-session-journal-types'
+} from '../../shared/agent-session/journal/agent-session-journal-types'
 import {
   readAgentJournalTurn,
   readAgentJournalTurnOutcome

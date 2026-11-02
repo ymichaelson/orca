@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it } from 'vitest'
-import type { AgentSessionTurnCompletionEvent } from '../../shared/agent-session-wire'
+import type { AgentSessionTurnCompletionEvent } from '../../shared/agent-session/agent-session-wire'
 import { LOCAL_EXECUTION_HOST_ID } from '../../shared/execution-host'
 import {
   claimProjectEventAction,

@@ -2,11 +2,11 @@ import { agentJournalSubmissionKey } from '../../shared/agent-session/journal/ag
 import type {
   AgentJournalRenderItem,
   AgentJournalTurnOutcome
-} from '../../shared/agent-session-journal-types'
+} from '../../shared/agent-session/journal/agent-session-journal-types'
 import type {
   AgentSessionStatusEvent,
   AgentSessionTurnCompletionEvent
-} from '../../shared/agent-session-wire'
+} from '../../shared/agent-session/agent-session-wire'
 import { refuseUnclassified } from '../../shared/agent-session-wire-refusals'
 import type { ProjectEventRunCancelHost } from './forge-inbox-project-event-run-cancel'
 import {

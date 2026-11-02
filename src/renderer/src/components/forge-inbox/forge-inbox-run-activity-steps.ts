@@ -1,7 +1,7 @@
 import { translate } from '@/i18n/i18n'
-import type { AgentJournalRenderItem } from '../../../../shared/agent-session-journal-types'
-import { isTextBlock, type NativeChatBlock } from '../../../../shared/native-chat-types'
-import { describeToolInput } from '../../../../shared/native-chat-tool-summary'
+import type { AgentJournalRenderItem } from '../../../../shared/agent-session/journal/agent-session-journal-types'
+import { isTextBlock, type NativeChatBlock } from '../../../../shared/native-chat/native-chat-types'
+import { describeToolInput } from '../../../../shared/native-chat/tools/native-chat-tool-summary'
 
 export type ForgeRunActivityStepKind = 'tool' | 'message' | 'edit'
 export type ForgeRunActivityStepState = 'running' | 'completed' | 'failed'

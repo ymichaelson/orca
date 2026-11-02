@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest'
 import type {
   AgentJournalItemBody,
   AgentJournalRenderItem
-} from '../../../../shared/agent-session-journal-types'
+} from '../../../../shared/agent-session/journal/agent-session-journal-types'
 import { forgeRunActivitySteps } from './forge-inbox-run-activity-steps'
 
 function item(itemId: string, body: AgentJournalItemBody, sequence = 1): AgentJournalRenderItem {

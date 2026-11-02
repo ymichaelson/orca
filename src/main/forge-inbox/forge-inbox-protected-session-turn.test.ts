@@ -3,12 +3,12 @@ import { agentJournalSubmissionKey } from '../../shared/agent-session/journal/ag
 import type {
   AgentJournalRenderItem,
   AgentJournalSubmission
-} from '../../shared/agent-session-journal-types'
+} from '../../shared/agent-session/journal/agent-session-journal-types'
 import {
   refuse,
   type AgentSessionHistoryPage,
   type AgentSessionHistoryResult
-} from '../../shared/agent-session-wire'
+} from '../../shared/agent-session/agent-session-wire'
 import {
   FORGE_PROTECTED_TURN_DEADLINE_MS,
   sendForgeProtectedSessionTurn

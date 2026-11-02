@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from 'vitest'
-import type { AgentSessionJournalIdentity } from '../../shared/agent-session-journal-types'
+import type { AgentSessionJournalIdentity } from '../../shared/agent-session/journal/agent-session-journal-types'
 import { protectedClaudeLaunchFixture } from '../../shared/agent-session-protected-claude-launch.test-fixture'
 import type { openClaudeStreamJsonConnection } from './claude-stream-json-connection'
 import { ClaudeStructuredSessionAdapter } from './claude-structured-session-adapter'

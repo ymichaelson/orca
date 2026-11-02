@@ -1,6 +1,6 @@
 import { randomUUID } from 'node:crypto'
 import type { AgentSessionLease } from '../../shared/agent-session-record'
-import type { AgentSessionTurnCompletion } from '../../shared/agent-session-wire'
+import type { AgentSessionTurnCompletion } from '../../shared/agent-session/agent-session-wire'
 import { createStructuredAgentSessionOperationId } from '../../shared/agent-session/lifecycle/structured-agent-session-mutation'
 import { runKeyedSerializedOperation } from '../cli/keyed-promise-queue'
 import type { StructuredAgentSessionHost } from '../native-chat/agent-session-wire/structured-agent-session-host'

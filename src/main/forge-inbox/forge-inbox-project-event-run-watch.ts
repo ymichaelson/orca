@@ -1,4 +1,4 @@
-import type { AgentSessionTurnCompletionEvent } from '../../shared/agent-session-wire'
+import type { AgentSessionTurnCompletionEvent } from '../../shared/agent-session/agent-session-wire'
 import type { AgentJournalTurnOutcome } from '../../shared/agent-turn-outcome'
 import { withTimeout } from '../../shared/promise-timeout-fallback'
 import type { ForgeLedgerContext } from './forge-inbox-context'

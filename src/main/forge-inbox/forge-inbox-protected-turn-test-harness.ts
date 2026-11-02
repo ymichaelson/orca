@@ -6,12 +6,12 @@ import type {
   AgentJournalRenderItem,
   AgentJournalSubmission,
   AgentJournalTurnOutcome
-} from '../../shared/agent-session-journal-types'
+} from '../../shared/agent-session/journal/agent-session-journal-types'
 import type {
   AgentSessionHistoryResult,
   AgentSessionTurnCompletion,
   AgentSessionWireRefusal
-} from '../../shared/agent-session-wire'
+} from '../../shared/agent-session/agent-session-wire'
 import type { ForgeProtectedSessionTurnHost } from './forge-inbox-protected-session-turn'
 
 export const TURN_SESSION = 'protected-session'

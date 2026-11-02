@@ -1,4 +1,4 @@
-import type { AgentType } from '../../shared/native-chat-types'
+import type { AgentType } from '../../shared/agent-status-types'
 import { agentHookServer } from '../agent-hooks/server'
 import { nativeChatTranscriptPathOnExecutionHost } from '../native-chat/ssh-transcript-path'
 import { PROTECTED_TRANSCRIPT_REFUSAL } from '../../shared/agent-session-protected-output-capability'

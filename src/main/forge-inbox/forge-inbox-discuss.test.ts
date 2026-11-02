@@ -11,13 +11,13 @@ import type {
   AgentJournalDispatchState,
   AgentJournalRenderItem,
   AgentJournalSubmission
-} from '../../shared/agent-session-journal-types'
+} from '../../shared/agent-session/journal/agent-session-journal-types'
 import type {
   AgentSessionHistoryPage,
   AgentSessionHistoryResult,
   AgentSessionSendResult,
   AgentSessionTurnCompletion
-} from '../../shared/agent-session-wire'
+} from '../../shared/agent-session/agent-session-wire'
 import { LOCAL_EXECUTION_HOST_ID } from '../../shared/execution-host'
 import { ForgeInboxLedger } from './forge-inbox-ledger'
 import type { ForgeObservationInput } from './forge-inbox-observation'

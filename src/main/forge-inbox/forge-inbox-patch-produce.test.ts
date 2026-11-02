@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { refuse } from '../../shared/agent-session-wire'
+import { refuse } from '../../shared/agent-session/agent-session-wire'
 import type { ForgeItem, ForgeRun } from '../../shared/forge-inbox-types'
 import type { GitlabApiReader } from './forge-inbox-gitlab-api-client'
 import { buildForgePatchDraft, sha256OfContent } from './forge-inbox-patch-draft'

@@ -1,7 +1,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import type { ForgeProtectedTurnProof } from './forge-inbox-protected-turn-proof'
 import type { AgentJournalTurnOutcome } from '../../shared/agent-turn-outcome'
-import type { AgentSessionTurnCompletionEvent } from '../../shared/agent-session-wire'
+import type { AgentSessionTurnCompletionEvent } from '../../shared/agent-session/agent-session-wire'
 import { LOCAL_EXECUTION_HOST_ID } from '../../shared/execution-host'
 import type { ForgeInboxLedger } from './forge-inbox-ledger'
 import { createForgeProjectEventRunWatch } from './forge-inbox-project-event-run-watch'

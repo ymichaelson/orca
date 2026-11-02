@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from 'react'
-import type { AgentSessionModelCatalogResult } from '../../../../shared/agent-session-wire'
+import type { AgentSessionModelCatalogResult } from '../../../../shared/agent-session/agent-session-wire'
 import type { RuntimeClientTarget } from '../../../../shared/runtime-client-target'
 import { readHostModelCatalogSnapshot } from '@/runtime/host-model-catalog-snapshots'
 import { structuredAgentSessionHostKey } from '@/runtime/structured-agent-session-host-capability'
@@ -7,7 +7,7 @@ import { callStructuredAgentSession } from '@/runtime/structured-agent-session-c
 import {
   isHostModelListingWaitInFlight,
   joinHostModelListingWait
-} from '../native-chat/host-model-listing-waits'
+} from '../../../../shared/host-model-listing-waits'
 
 export type ProjectEventModelChoice = { id: string; label: string }
 

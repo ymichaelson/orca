@@ -1,4 +1,4 @@
-import type { AgentSessionStatusEvent } from '../../shared/agent-session-wire'
+import type { AgentSessionStatusEvent } from '../../shared/agent-session/agent-session-wire'
 
 export type StopWaiterEntry = { runId: number; sessionId: string }
 

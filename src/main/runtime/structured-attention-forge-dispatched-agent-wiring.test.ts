@@ -3,7 +3,7 @@ import type {
   AgentSessionAttentionEdge,
   StructuredAttentionState
 } from '../../shared/agent-session-attention'
-import type { AgentSessionStatusSummary } from '../../shared/agent-session-wire'
+import type { AgentSessionStatusSummary } from '../../shared/agent-session/agent-session-wire'
 import { getDefaultWorkspaceSession } from '../../shared/constants'
 import { getDefaultNotificationSettings } from '../../shared/notification-settings-defaults'
 import Database from '../sqlite/sync-database'
