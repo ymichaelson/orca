@@ -3,7 +3,7 @@ name: Build Installers
 on:
   workflow_dispatch:
   push:
-    branches: [feat/project-event-agent]
+    branches: [feat/project-event-agent, feat/project-event-agent-v1.4.246]
     paths: [.github/workflows/build-installers.yml]
 
 permissions:

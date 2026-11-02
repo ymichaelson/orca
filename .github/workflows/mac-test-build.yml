@@ -17,6 +17,7 @@ on:
     branches:
       - feat/gitlab-webhook-inbox
       - feat/project-event-agent
+      - feat/project-event-agent-v1.4.246
 
 permissions:
   contents: read
