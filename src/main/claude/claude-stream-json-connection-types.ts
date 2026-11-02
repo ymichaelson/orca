@@ -45,4 +45,6 @@ export type ClaudeChildExitVerdict = {
   root: DescendantTreeVerdict
   tree: DescendantTreeVerdict
   processless?: boolean
+  /** Latched evidence that the close ladder sent the kill; a close that returns true may carry it. */
+  killDelivered?: boolean
 }

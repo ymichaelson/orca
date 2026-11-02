@@ -1,13 +1,13 @@
 import { describe, expect, it } from 'vitest'
-import { foundAgentSessionRecord } from '../main/runtime/agent-session-record-founding'
+import { foundAgentSessionRecord } from '../main/runtime/agent-session/records/agent-session-record-founding'
 import {
   isPersistedAgentSessionRecord,
   type AgentSessionExecutionLocation
-} from './agent-session-record'
+} from './agent-session/lifecycle/agent-session-record'
 import {
   decodePersistedAgentSessionRecord,
   encodeAgentSessionRecord
-} from './agent-session-record-stored-form'
+} from './agent-session/lifecycle/agent-session-record-stored-form'
 
 const LOCATION: AgentSessionExecutionLocation = {
   executionHostId: 'local',

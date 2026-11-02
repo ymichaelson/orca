@@ -1,5 +1,5 @@
 import { z } from 'zod'
-import { isSafeDisplayCharacter } from './skill-display-text'
+import { isSafeDisplayCharacter } from './display-text-safety'
 
 export const PROJECT_EVENT_DECISION_ACTIONS = [
   'record_only',

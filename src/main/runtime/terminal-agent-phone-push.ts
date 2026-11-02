@@ -52,6 +52,7 @@ export class TerminalAgentPhonePush {
       readHookRow: (paneKey) => deps.readHookRow(paneKey),
       prepare: ({ paneKey, worktreeId, row }) => ({
         worktreeId,
+        paneKey,
         event: this.buildEvent(worktreeId, paneKey, row)
       }),
       deliver: (news) => this.send(news),

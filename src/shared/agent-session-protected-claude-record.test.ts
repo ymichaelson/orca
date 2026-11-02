@@ -1,11 +1,11 @@
 import { describe, expect, it } from 'vitest'
-import { foundAgentSessionRecord } from '../main/runtime/agent-session-record-founding'
-import { isPersistedAgentSessionRecord } from './agent-session-record'
-import { agentSessionRecordFixture } from './agent-session-record.test-fixture'
+import { foundAgentSessionRecord } from '../main/runtime/agent-session/records/agent-session-record-founding'
+import { isPersistedAgentSessionRecord } from './agent-session/lifecycle/agent-session-record'
+import { agentSessionRecordFixture } from './agent-session/lifecycle/agent-session-record.test-fixture'
 import {
   decodePersistedAgentSessionRecord,
   encodeAgentSessionRecord
-} from './agent-session-record-stored-form'
+} from './agent-session/lifecycle/agent-session-record-stored-form'
 import {
   PROTECTED_ANALYSIS_MARKER,
   protectedClaudeLaunchFixture
