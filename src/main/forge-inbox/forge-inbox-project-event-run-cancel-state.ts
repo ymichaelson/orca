@@ -4,7 +4,7 @@ import {
   type ForgeRunCancelDelivery,
   type ForgeRunCancellationView
 } from '../../shared/forge-inbox-run-cancellation'
-import { createStructuredAgentSessionOperationId } from '../../shared/structured-agent-session-mutation'
+import { createStructuredAgentSessionOperationId } from '../../shared/agent-session/lifecycle/structured-agent-session-mutation'
 import { recordForgeChange, type ForgeLedgerContext } from './forge-inbox-context'
 import { runForgeTransaction } from './forge-inbox-database'
 import { PROJECT_EVENT_DISPATCH_RUN_REASON } from './forge-inbox-project-event-run-reason'

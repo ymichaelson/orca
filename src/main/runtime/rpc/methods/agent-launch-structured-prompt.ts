@@ -19,8 +19,8 @@
 import {
   structuredAgentSessionMessageSendMutation,
   structuredAgentSessionSendBody
-} from '../../../../shared/structured-agent-session-send-mutation'
-import { createStructuredAgentSessionOperationId } from '../../../../shared/structured-agent-session-mutation'
+} from '../../../../shared/agent-session/requests/structured-agent-session-send-mutation'
+import { createStructuredAgentSessionOperationId } from '../../../../shared/agent-session/lifecycle/structured-agent-session-mutation'
 import { randomUUID } from 'node:crypto'
 import type { StructuredAgentSessionHost } from '../../../native-chat/agent-session-wire/structured-agent-session-host'
 import type { StructuredAgentSessionCaller } from '../../../native-chat/agent-session-wire/structured-agent-session-host-types'

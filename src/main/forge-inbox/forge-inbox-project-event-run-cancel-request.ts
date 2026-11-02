@@ -1,4 +1,4 @@
-import { structuredAgentSessionPayloadFingerprint } from '../../shared/structured-agent-session-mutation'
+import { structuredAgentSessionPayloadFingerprint } from '../../shared/agent-session/lifecycle/structured-agent-session-mutation'
 import { boundedCall } from './forge-inbox-bounded-call'
 import type { ProjectEventRunCancelHost } from './forge-inbox-project-event-run-cancel'
 import type { RunCancelRequest } from './forge-inbox-project-event-run-cancel-state'

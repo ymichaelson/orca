@@ -1,8 +1,8 @@
 import { randomUUID } from 'node:crypto'
-import { narrowStructuredLaunchSeedOptions } from '../../shared/native-chat-session-option-defaults'
-import { createStructuredAgentSessionId } from '../../shared/structured-agent-session-create'
-import { createStructuredAgentSessionOperationId } from '../../shared/structured-agent-session-mutation'
-import { structuredAgentSessionTabId } from '../../shared/structured-agent-session-projection'
+import { narrowStructuredLaunchSeedOptions } from '../../shared/native-chat/input/native-chat-session-option-defaults'
+import { createStructuredAgentSessionId } from '../../shared/agent-session/structured-agent-session-create'
+import { createStructuredAgentSessionOperationId } from '../../shared/agent-session/lifecycle/structured-agent-session-mutation'
+import { structuredAgentSessionTabId } from '../../shared/agent-session/view/structured-agent-session-projection'
 import {
   AgentLaunchStructuredSessionRefusedError,
   type AgentLaunchSurfaceFactory

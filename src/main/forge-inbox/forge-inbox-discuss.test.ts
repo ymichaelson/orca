@@ -1,6 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import type { AgentSessionProtectedAnalysis } from '../../shared/agent-session-protected-analysis'
-import { agentJournalSubmissionKey } from '../../shared/agent-session-journal-item-key'
+import { agentJournalSubmissionKey } from '../../shared/agent-session/journal/agent-session-journal-item-key'
 import {
   PROTECTED_CLAUDE_NATIVE_HASHES,
   PROTECTED_CLAUDE_PROFILE,

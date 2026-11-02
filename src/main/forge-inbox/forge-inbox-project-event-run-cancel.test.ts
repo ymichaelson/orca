@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
-import { structuredAgentSessionPayloadFingerprint } from '../../shared/structured-agent-session-mutation'
+import { structuredAgentSessionPayloadFingerprint } from '../../shared/agent-session/lifecycle/structured-agent-session-mutation'
 import type { ForgeInboxLedger } from './forge-inbox-ledger'
 import {
   createForgeProjectEventRunCancel,
